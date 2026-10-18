@@ -530,8 +530,16 @@ export class RoomViewStore extends EventEmitter {
     }
 
     private viewThread(payload: ThreadPayload): void {
+        const initialEvent = this.state.initialEventId
+            ? this.stores.client?.getRoom(this.state.roomId ?? undefined)?.findEventById(this.state.initialEventId)
+            : undefined;
+        const hasChangedThread =
+            !!payload.thread_id && !!initialEvent?.threadRootId && initialEvent.threadRootId !== payload.thread_id;
+
         this.setState({
             threadId: payload.thread_id,
+            // A permalink into another thread must not reopen it on the next store update.
+            ...(hasChangedThread ? { initialEventId: null } : {}),
         });
     }
 

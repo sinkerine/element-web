@@ -212,6 +212,37 @@ describe("RoomViewStore", function () {
         stores._RoomViewStore = roomViewStore;
     });
 
+    it.each([
+        ["$original-thread", "$reply"],
+        ["$other-thread", null],
+        [null, "$reply"],
+    ])("retains the thread permalink only when appropriate for %s", async (threadId, expectedEventId) => {
+        const reply = mkEvent({
+            event: true,
+            type: "m.room.message",
+            room: roomId,
+            user: userId,
+            content: {
+                "body": "Thread reply",
+                "msgtype": "m.text",
+                "m.relates_to": { rel_type: "m.thread", event_id: "$original-thread" },
+            },
+        });
+        vi.spyOn(reply, "getId").mockReturnValue("$reply");
+        const findEvent = vi.spyOn(room, "findEventById").mockReturnValue(reply);
+
+        dis.dispatch<ViewRoomPayload>(
+            { action: Action.ViewRoom, room_id: roomId, event_id: "$reply", metricsTrigger: undefined },
+            true,
+        );
+        await flushPromises();
+        dis.dispatch({ action: Action.ViewThread, thread_id: threadId }, true);
+
+        expect(roomViewStore.getThreadId()).toBe(threadId);
+        expect(roomViewStore.getInitialEventId()).toBe(expectedEventId);
+        findEvent.mockRestore();
+    });
+
     it("can be used to view a room by ID and join", async () => {
         dis.dispatch({ action: Action.ViewRoom, room_id: roomId });
         dis.dispatch({ action: Action.JoinRoom });
