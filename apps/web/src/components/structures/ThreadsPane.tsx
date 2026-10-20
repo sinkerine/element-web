@@ -74,7 +74,15 @@ export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: Th
                       })
                     : _t("threads_view|caught_up")}
             </Text>
-            <ScopedRoomContextProvider {...context} room={room} roomId={room.roomId}>
+            <ScopedRoomContextProvider
+                {...context}
+                room={room}
+                roomId={room.roomId}
+                roomViewStore={sdk.roomViewStore}
+                canSendMessages={room.currentState.maySendMessage(room.client.getSafeUserId())}
+                membersLoaded={true}
+                matrixClientIsReady={true}
+            >
                 <ThreadView
                     key={`${room.roomId}:${thread.id}`}
                     room={room}
@@ -85,6 +93,7 @@ export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: Th
                     initialEvent={initialEvent}
                     initialEventScrollIntoView={true}
                     isInitialEventHighlighted={true}
+                    fullWindow={true}
                     newDividerEventId={initialEvent?.getId()}
                 />
             </ScopedRoomContextProvider>

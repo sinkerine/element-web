@@ -127,6 +127,7 @@ export enum KeyBindingAction {
     SelectPrevUnreadRoom = "KeyBinding.previousUnreadRoom",
     /** Select next room with unread messages */
     SelectNextUnreadRoom = "KeyBinding.nextUnreadRoom",
+    ThreadsView = "KeyBinding.threadsView",
 
     /** Switches to a space by number */
     SwitchToSpaceByNumber = "KeyBinding.switchToSpaceByNumber",
@@ -302,6 +303,7 @@ export const CATEGORIES: Record<CategoryName, ICategory> = {
             KeyBindingAction.GoToHome,
             KeyBindingAction.FilterRooms,
             KeyBindingAction.SelectNextUnreadRoom,
+            KeyBindingAction.ThreadsView,
             KeyBindingAction.SelectPrevUnreadRoom,
             KeyBindingAction.SelectNextRoom,
             KeyBindingAction.SelectPrevRoom,
@@ -548,6 +550,10 @@ export const KEYBOARD_SHORTCUTS: IKeyboardShortcuts = {
             key: Key.H,
         },
         displayName: _td("keyboard|go_home_view"),
+    },
+    [KeyBindingAction.ThreadsView]: {
+        default: { shiftKey: true, altKey: true, key: Key.T },
+        displayName: _td("keyboard|threads_view"),
     },
     [KeyBindingAction.SelectNextUnreadRoom]: {
         default: {

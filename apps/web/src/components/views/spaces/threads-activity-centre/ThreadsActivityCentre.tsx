@@ -6,7 +6,8 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import React, { type JSX, useState } from "react";
+import React, { type JSX, useState, useEffect } from "react";
+import { useSettingValue } from "../../../../hooks/useSettings";
 import { Menu, MenuItem, NavBar, NavItem, Text } from "@vector-im/compound-web";
 import { NotificationDecoration, type NotificationDecorationData } from "@element-hq/web-shared-components";
 
@@ -65,6 +66,13 @@ function getActiveTabContent(
  * The popup is displayed when the user clicks on the `Threads` button.
  */
 export function ThreadsActivityCentre({ displayButtonLabel }: ThreadsActivityCentreProps): JSX.Element {
+    const threadsViewEnabled = useSettingValue("feature_threads_view");
+    const [threadsViewActive, setThreadsViewActive] = useState(window.location.hash === "#/threads");
+    useEffect(() => {
+        const update = (): void => setThreadsViewActive(window.location.hash === "#/threads");
+        window.addEventListener("hashchange", update);
+        return () => window.removeEventListener("hashchange", update);
+    }, []);
     const [open, setOpen] = useState(false);
     const [view, setView] = useState<TACView>("my_threads");
     const roomsAndNotifications = useUnreadThreadRooms(open);
@@ -73,6 +81,18 @@ export function ThreadsActivityCentre({ displayButtonLabel }: ThreadsActivityCen
         view,
         roomsAndNotifications,
     );
+
+    if (threadsViewEnabled)
+        return (
+            <div className="mx_ThreadsActivityCentre_container">
+                <ThreadsActivityCentreButton
+                    displayLabel={displayButtonLabel}
+                    notificationLevel={roomsAndNotifications.greatestNotificationLevel}
+                    aria-pressed={threadsViewActive}
+                    onClick={() => defaultDispatcher.fire(Action.ViewThreads)}
+                />
+            </div>
+        );
 
     return (
         <div

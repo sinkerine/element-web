@@ -22,10 +22,19 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { type MatrixCall } from "matrix-js-sdk/src/webrtc/call";
 import classNames from "classnames";
-import { GroupView, SeparatorView, Panel, LeftResizablePanelView } from "@element-hq/web-shared-components";
+import {
+    GroupView,
+    SeparatorView,
+    Panel,
+    LeftResizablePanelView,
+    ThreadsListView,
+} from "@element-hq/web-shared-components";
 
 import { isOnlyCtrlOrCmdKeyEvent, Key } from "../../Keyboard";
 import PageTypes from "../../PageTypes";
+import { ThreadsListViewModel } from "../../viewmodels/threads/ThreadsListViewModel";
+import { ThreadsPane } from "./ThreadsPane";
+import { UPDATE_SELECTED_SPACE } from "../../stores/spaces";
 import MediaDeviceHandler from "../../MediaDeviceHandler";
 import dis from "../../dispatcher/dispatcher";
 import { type IMatrixClientCreds } from "../../utils/createMatrixClient";
@@ -125,6 +134,18 @@ class LoggedInView extends React.Component<IProps, IState> {
     protected timezoneProfileUpdateRef?: string[];
 
     private resizerViewModel?: ResizerViewModel;
+    private threadsViewModel?: ThreadsListViewModel;
+
+    public componentDidUpdate(previous: IProps): void {
+        if (previous.page_type !== this.props.page_type && this.props.page_type === PageTypes.ThreadsView) {
+            this.ensureThreadsViewModel();
+            this.setState({});
+        }
+        if (previous.page_type !== this.props.page_type && this.props.page_type !== PageTypes.ThreadsView) {
+            this.threadsViewModel?.dispose();
+            this.threadsViewModel = undefined;
+        }
+    }
 
     public static contextType = SDKContext;
     declare public context: React.ContextType<typeof SDKContext>;
@@ -149,6 +170,11 @@ class LoggedInView extends React.Component<IProps, IState> {
     }
 
     public componentDidMount(): void {
+        if (this.props.page_type === PageTypes.ThreadsView) {
+            this.ensureThreadsViewModel();
+            this.setState({});
+        }
+        this.context.spaceStore.on(UPDATE_SELECTED_SPACE, this.onThreadsSpaceChange);
         document.addEventListener("keydown", this.onNativeKeyDown, false);
         this.context.legacyCallHandler.addListener(LegacyCallHandlerEvent.CallState, this.onCallState);
 
@@ -227,6 +253,7 @@ class LoggedInView extends React.Component<IProps, IState> {
     };
 
     public componentWillUnmount(): void {
+        this.context.spaceStore.off(UPDATE_SELECTED_SPACE, this.onThreadsSpaceChange);
         document.removeEventListener("keydown", this.onNativeKeyDown, false);
         this.context.legacyCallHandler.removeListener(LegacyCallHandlerEvent.CallState, this.onCallState);
         this._matrixClient.removeListener(ClientEvent.AccountData, this.onAccountData);
@@ -238,6 +265,15 @@ class LoggedInView extends React.Component<IProps, IState> {
         SettingsStore.unwatchSetting(this.backgroundImageWatcherRef);
         this.timezoneProfileUpdateRef?.forEach((s) => SettingsStore.unwatchSetting(s));
         this.disposeResizerViewModel();
+        this.threadsViewModel?.dispose();
+    }
+
+    private onThreadsSpaceChange = (): void => {
+        if (this.props.page_type === PageTypes.ThreadsView) dis.fire(Action.ViewHomePage);
+    };
+
+    private ensureThreadsViewModel(): ThreadsListViewModel {
+        return (this.threadsViewModel ??= new ThreadsListViewModel({ client: this._matrixClient }));
     }
 
     private onCallState = (): void => {
@@ -419,6 +455,17 @@ class LoggedInView extends React.Component<IProps, IState> {
     };
 
     private onNativeKeyDown = (ev: KeyboardEvent): void => {
+        if (
+            this.props.page_type === PageTypes.ThreadsView &&
+            ev.key === "Escape" &&
+            !getInputableElement(ev.target as HTMLElement) &&
+            !Modal.hasDialogs()
+        ) {
+            dis.fire(Action.ExitThreads);
+            ev.preventDefault();
+            ev.stopPropagation();
+            return;
+        }
         // only pass this if there is no focused element.
         // if there is, onKeyDown will be called by the
         // react keydown handler that respects the react bubbling order.
@@ -519,6 +566,13 @@ class LoggedInView extends React.Component<IProps, IState> {
                     delta: -1,
                     unread: true,
                 });
+                break;
+            case KeyBindingAction.ThreadsView:
+                if (SettingsStore.getValue("feature_threads_view")) {
+                    if (this.props.page_type === PageTypes.ThreadsView) this.threadsViewModel?.next();
+                    else dis.fire(Action.ViewThreads);
+                    handled = true;
+                }
                 break;
             case KeyBindingAction.SelectNextUnreadRoom:
                 dis.dispatch<ViewRoomDeltaPayload>({
@@ -639,6 +693,9 @@ class LoggedInView extends React.Component<IProps, IState> {
                 );
                 break;
 
+            case PageTypes.ThreadsView:
+                pageElement = this.threadsViewModel && <ThreadsPane vm={this.threadsViewModel} />;
+                break;
             case PageTypes.HomePage:
                 pageElement = <HomePage justRegistered={this.props.justRegistered} />;
                 break;
@@ -676,18 +733,21 @@ class LoggedInView extends React.Component<IProps, IState> {
             return <AudioFeedArrayForLegacyCall call={call} key={call.callId} />;
         });
 
-        const leftPanel = (
-            <div className="mx_LeftPanel_outerWrapper">
-                <LeftPanelLiveShareWarning isMinimized={false} />
-                <div className={leftPanelWrapperClasses}>
-                    {!moduleRenderer && (
-                        <div className="mx_LeftPanel_wrapper--user">
-                            <LeftPanel isMinimized={false} resizeNotifier={this.context.resizeNotifier} />
-                        </div>
-                    )}
+        const leftPanel =
+            this.props.page_type === PageTypes.ThreadsView ? (
+                this.threadsViewModel && <ThreadsListView vm={this.threadsViewModel} />
+            ) : (
+                <div className="mx_LeftPanel_outerWrapper">
+                    <LeftPanelLiveShareWarning isMinimized={false} />
+                    <div className={leftPanelWrapperClasses}>
+                        {!moduleRenderer && (
+                            <div className="mx_LeftPanel_wrapper--user">
+                                <LeftPanel isMinimized={false} resizeNotifier={this.context.resizeNotifier} />
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </div>
-        );
+            );
 
         const roomView = <div className="mx_RoomView_wrapper">{pageElement}</div>;
 

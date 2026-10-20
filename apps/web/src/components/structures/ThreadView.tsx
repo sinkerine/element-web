@@ -65,6 +65,8 @@ interface IProps {
     initialEventScrollIntoView?: boolean;
     /** Stable unread boundary for the full window Threads view. */
     newDividerEventId?: string;
+    /** The host owns navigation in the full Threads view. */
+    fullWindow?: boolean;
 }
 
 interface IState {
@@ -126,7 +128,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
         const roomId = this.props.mxEvent.getRoomId();
         SettingsStore.unwatchSetting(this.layoutWatcherRef);
 
-        const hasRoomChanged = this.context.roomViewStore.getRoomId() !== roomId;
+        const hasRoomChanged = this.props.fullWindow || this.context.roomViewStore?.getRoomId() !== roomId;
         if (this.props.initialEvent && !hasRoomChanged) {
             dis.dispatch<ViewRoomPayload>({
                 action: Action.ViewRoom,
@@ -286,6 +288,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
     }
 
     private resetJumpToEvent = (event?: string): void => {
+        if (this.props.fullWindow) return;
         if (
             this.props.initialEvent &&
             this.props.initialEventScrollIntoView &&

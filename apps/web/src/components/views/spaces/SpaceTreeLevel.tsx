@@ -142,6 +142,7 @@ export const SpaceButton = <T extends keyof HTMLElementTagNameMap>({
         // space is set here because of the assignment condition of onClick
         defaultDispatcher.dispatch({ action: Action.ViewRoom, room_id: space!.roomId });
     const activateSpace = (): void => {
+        if (window.location.hash === "#/threads") defaultDispatcher.fire(Action.ViewHomePage);
         if (spaceKey) sdkContext.spaceStore.setActiveSpace(spaceKey);
     };
     const onClick = props.onClick ?? (selected && space ? viewSpaceHome : activateSpace);

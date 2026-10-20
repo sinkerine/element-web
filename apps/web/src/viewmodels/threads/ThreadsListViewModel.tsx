@@ -160,6 +160,24 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         const data = [...this.my, ...this.other].find((item) => item.thread.id === id);
         if (!data || this.selection?.data.thread.id === id) return;
         this.selection = { data, initialEvent: getFirstUnreadEvent(this.props.client, data.thread) };
+        const selection = this.selection;
+        if (!selection.initialEvent && this.unread.has(id)) {
+            void this.props.client
+                .getLatestTimeline(data.thread.timelineSet)
+                .then(() => {
+                    if (this.isDisposed || this.selection !== selection) return;
+                    selection.initialEvent =
+                        getFirstUnreadEvent(this.props.client, data.thread) ??
+                        data.thread.timelineSet
+                            .getLiveTimeline()
+                            .getEvents()
+                            .find((event) => event.getId() !== data.thread.id);
+                    this.publish();
+                })
+                .catch(() => {
+                    if (!this.isDisposed) this.snapshot.merge({ error: _t("threads_view|load_failed") });
+                });
+        }
         this.visited.add(id);
         // The timeline sends receipts as replies are displayed. Keep the selected row out of the queue.
         this.unread.delete(id);

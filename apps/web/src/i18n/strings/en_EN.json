@@ -3341,6 +3341,7 @@
     "threads_view": {
         "all_read": "All read",
         "caught_up": "You're all caught up",
+        "load_failed": "Could not load the thread. Please try again.",
         "mark_failed": "Could not mark threads as read. Please try again.",
         "new": "New",
         "next": {

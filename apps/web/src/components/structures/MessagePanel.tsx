@@ -718,7 +718,12 @@ export default class MessagePanel extends React.Component<IProps, IState> {
                     // replacing all the DOM elements every time we paginate.
                     if (eventId === this.props.newDividerEventId) {
                         ret.push(
-                            <li key={`new_${eventId}`} className="mx_ThreadsPane_newDivider" role="separator">
+                            <li
+                                key={`new_${eventId}`}
+                                className="mx_ThreadsPane_newDivider"
+                                role="separator"
+                                aria-label={_t("threads_view|new")}
+                            >
                                 {_t("threads_view|new")}
                             </li>,
                         );
