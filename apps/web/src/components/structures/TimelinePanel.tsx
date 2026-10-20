@@ -95,6 +95,8 @@ interface IProps {
 
     // id of an event to jump to. If not given, will go to the end of the live timeline.
     eventId?: string;
+    /** Fixed first unread event for this thread visit. */
+    newDividerEventId?: string;
 
     // whether we should scroll the event into view
     eventScrollIntoView?: boolean;
@@ -1870,6 +1872,7 @@ class TimelinePanel extends React.Component<IProps, IState> {
                 forwardPaginating={forwardPaginating}
                 events={events}
                 highlightedEventId={this.props.highlightedEventId}
+                newDividerEventId={this.props.newDividerEventId}
                 readMarkerEventId={this.state.readMarkerEventId}
                 readMarkerVisible={this.state.readMarkerVisible}
                 canBackPaginate={this.state.canBackPaginate}

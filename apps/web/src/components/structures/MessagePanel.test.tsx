@@ -507,6 +507,23 @@ describe("MessagePanel", function () {
         );
     });
 
+    it("should keep the Threads New divider before its initial unread reply when receipts move", () => {
+        const props = {
+            events,
+            newDividerEventId: events[4].getId(),
+            readMarkerEventId: events[2].getId(),
+            readMarkerVisible: true,
+        };
+        const options = clientAndSDKContextRenderOptions(client, sdkContext);
+        const { container, rerender } = render(getComponent(props), options);
+        const divider = container.querySelector(".mx_ThreadsPane_newDivider");
+        expect(divider?.nextSibling).toBe(container.getElementsByClassName("mx_EventTile")[4]);
+        rerender(getComponent({ ...props, readMarkerEventId: events[6].getId() }));
+        expect(container.querySelector(".mx_ThreadsPane_newDivider")?.nextSibling).toBe(
+            container.getElementsByClassName("mx_EventTile")[4],
+        );
+    });
+
     it("should insert the read-marker in the right place", function () {
         const { container } = render(
             getComponent({

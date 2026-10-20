@@ -146,6 +146,8 @@ interface IProps {
 
     // event after which we should show a read marker
     readMarkerEventId?: string | null;
+    /** Stable first unread reply in Threads view. */
+    newDividerEventId?: string;
 
     // whether the read marker should be visible
     readMarkerVisible?: boolean;
@@ -714,6 +716,13 @@ export default class MessagePanel extends React.Component<IProps, IState> {
                     // make sure we unpack the array returned by getTilesForEvent,
                     // otherwise React will auto-generate keys, and we will end up
                     // replacing all the DOM elements every time we paginate.
+                    if (eventId === this.props.newDividerEventId) {
+                        ret.push(
+                            <li key={`new_${eventId}`} className="mx_ThreadsPane_newDivider" role="separator">
+                                {_t("threads_view|new")}
+                            </li>,
+                        );
+                    }
                     ret.push(
                         ...this.getTilesForEvent(
                             prevEvent,

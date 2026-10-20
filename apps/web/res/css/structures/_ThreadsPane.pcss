@@ -1,0 +1,50 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.mx_ThreadsPane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+
+    /* ThreadView fills the main panel instead of the usual narrow right panel. */
+    & .mx_ThreadView {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+    }
+}
+.mx_ThreadsPane_header {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-3x);
+    padding: var(--cpd-space-4x);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    & h1 {
+        flex: 1;
+        margin: 0;
+    }
+}
+.mx_ThreadsPane_upNext {
+    padding: var(--cpd-space-2x) var(--cpd-space-4x);
+    background: var(--cpd-color-bg-subtle-primary);
+}
+.mx_ThreadsPane_empty {
+    display: grid;
+    height: 100%;
+    place-items: center;
+}
+.mx_ThreadsPane_newDivider {
+    text-align: center;
+    color: var(--cpd-color-text-critical-primary);
+    border-top: 1px solid var(--cpd-color-text-critical-primary);
+    font: var(--cpd-font-body-xs-semibold);
+}
+.mx_ThreadsActivityCentreButton[aria-pressed="true"] {
+    background: var(--cpd-color-bg-action-primary-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+}

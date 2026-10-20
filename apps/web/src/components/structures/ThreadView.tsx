@@ -63,6 +63,8 @@ interface IProps {
     initialEvent?: MatrixEvent;
     isInitialEventHighlighted?: boolean;
     initialEventScrollIntoView?: boolean;
+    /** Stable unread boundary for the full window Threads view. */
+    newDividerEventId?: string;
 }
 
 interface IState {
@@ -399,6 +401,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
                             editState={this.state.editState}
                             eventId={this.props.initialEvent?.getId()}
                             highlightedEventId={highlightedEventId}
+                            newDividerEventId={this.props.newDividerEventId}
                             eventScrollIntoView={this.props.initialEventScrollIntoView}
                             onEventScrolledIntoView={this.resetJumpToEvent}
                         />
