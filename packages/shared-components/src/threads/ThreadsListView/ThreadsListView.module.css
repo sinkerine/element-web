@@ -1,0 +1,92 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.list {
+    height: 100%;
+    min-width: 0;
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-text-primary);
+}
+.list button {
+    font: var(--cpd-font-body-sm-regular);
+    cursor: pointer;
+    border: 0;
+    border-radius: var(--cpd-space-2x);
+    padding: var(--cpd-space-2x);
+    color: inherit;
+    background: transparent;
+}
+.list button:hover {
+    background: var(--cpd-color-bg-subtle-secondary);
+}
+.list button:focus-visible {
+    outline: var(--cpd-space-0-5x) solid var(--cpd-color-border-focused);
+}
+.header,
+.controls,
+.footer {
+    padding: var(--cpd-space-3x);
+    gap: var(--cpd-space-2x);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+.header h1 {
+    flex: 1;
+    margin: 0;
+}
+.controls {
+    flex-wrap: wrap;
+}
+.controls [aria-selected="true"],
+.controls [aria-pressed="true"] {
+    background: var(--cpd-color-bg-subtle-secondary);
+    font-weight: var(--cpd-font-weight-semibold);
+}
+.list .jump {
+    margin: var(--cpd-space-3x);
+    background: var(--cpd-color-bg-action-primary-rest);
+    color: var(--cpd-color-text-on-solid-primary);
+}
+.rows {
+    flex: 1;
+    overflow: auto;
+    padding: var(--cpd-space-2x);
+}
+.list .row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: 100%;
+    gap: var(--cpd-space-3x);
+    text-align: start;
+    padding: var(--cpd-space-3x);
+}
+.row[aria-current="true"] {
+    background: var(--cpd-color-bg-subtle-secondary);
+}
+.row[data-read="true"] .preview {
+    color: var(--cpd-color-text-secondary);
+}
+.preview,
+.side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cpd-space-1x);
+    min-width: 0;
+}
+.preview > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.side {
+    align-items: end;
+    color: var(--cpd-color-text-secondary);
+    font: var(--cpd-font-body-xs-regular);
+}
+.footer {
+    font: var(--cpd-font-body-xs-regular);
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+}

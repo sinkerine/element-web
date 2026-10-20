@@ -34,6 +34,7 @@
         "save": "Save",
         "search": "Search",
         "start_chat": "Start chat",
+        "undo": "Undo",
         "unpin": "Unpin",
         "view_source": "View source",
         "yes": "Yes"
@@ -44,7 +45,8 @@
         "loading": "Loading…",
         "options": "Options",
         "preferences": "Preferences",
-        "state_encryption_enabled": "Experimental state encryption enabled"
+        "state_encryption_enabled": "Experimental state encryption enabled",
+        "threads": "Threads"
     },
     "composer": {
         "url_preview": {
@@ -286,6 +288,21 @@
     },
     "threads": {
         "error_start_thread_existing_relation": "You can't start a thread from this message."
+    },
+    "threads_view": {
+        "all": "All",
+        "caught_up": "You're all caught up",
+        "exit": "Exit",
+        "filter": "Filter",
+        "latest": "Open latest unread",
+        "mark_all": "Mark all as read",
+        "my": "My threads",
+        "other": "Other threads",
+        "unread": "Unread",
+        "unread_count": {
+            "one": "%(count)s unread across all rooms",
+            "other": "%(count)s unread across all rooms"
+        }
     },
     "time": {
         "about_day_ago": "about a day ago",

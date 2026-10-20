@@ -79,6 +79,7 @@ export * from "./core/rich-list/RichItem";
 export * from "./core/rich-list/RichList";
 export * from "./room-list/RoomListHeaderView";
 export * from "./room-list/RoomListSearchView";
+export * from "./threads/ThreadsListView";
 export * from "./room-list/SectionCreationView";
 export * from "./room-list/RoomListView";
 export * from "./room-list/VirtualizedRoomListView/RoomListItemWrapper/RoomListItemView";
