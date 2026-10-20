@@ -844,6 +844,16 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             case "view_welcome_page":
                 this.viewWelcome();
                 break;
+            case Action.ViewThreads:
+                this.viewThreads();
+                break;
+            case Action.ExitThreads:
+                if (this.previousThreadsRoomId) {
+                    dis.dispatch({ action: Action.ViewRoom, room_id: this.previousThreadsRoomId });
+                } else {
+                    this.viewHome();
+                }
+                break;
             case Action.ViewHomePage:
                 this.viewHome(payload.justRegistered);
                 break;
@@ -1116,6 +1126,18 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             ...otherState,
         });
         this.notifyNewScreen("login");
+    }
+
+    private previousThreadsRoomId: string | null = null;
+
+    private viewThreads(): void {
+        if (!SettingsStore.getValue("feature_threads_view")) return;
+        if (this.state.page_type !== PageType.ThreadsView) {
+            this.previousThreadsRoomId = this.state.currentRoomId ?? null;
+        }
+        this.setStateForNewView({ view: Views.LOGGED_IN });
+        this.setPage(PageType.ThreadsView);
+        this.notifyNewScreen("threads");
     }
 
     private viewHome(justRegistered = false): void {
@@ -1931,6 +1953,8 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             dis.dispatch({
                 action: "view_welcome_page",
             });
+        } else if (screen === "threads") {
+            this.viewThreads();
         } else if (screen === "home") {
             dis.dispatch({
                 action: Action.ViewHomePage,

@@ -212,6 +212,7 @@ export interface Settings {
 
     // We can't use the following type because of `feature_sliding_sync_proxy_url` & `feature_hidebold` being in the namespace incorrectly
     // [settingName: `feature_${string}`]: IFeature;
+    "feature_threads_view": IFeature;
     "feature_video_rooms": IFeature;
     [Features.NotificationSettings2]: IFeature;
     "feature_msc3531_hide_messages_pending_moderation": IFeature;
@@ -393,6 +394,15 @@ export const SETTINGS: Settings = {
     "test_setting": {
         supportedLevels: [],
         default: "",
+    },
+
+    "feature_threads_view": {
+        isFeature: true,
+        labsGroup: LabGroup.Threads,
+        displayName: _td("labs|threads_view"),
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG,
+        default: false,
+        controller: new ReloadOnChangeController(),
     },
 
     "feature_video_rooms": {

@@ -61,6 +61,10 @@ export enum Action {
      * Navigates to app home
      */
     ViewHomePage = "view_home_page",
+    /** Enter the full window threads view. */
+    ViewThreads = "view_threads",
+    /** Return to the room visited before entering threads. */
+    ExitThreads = "exit_threads",
 
     /**
      * Forces the theme to reload. No additional payload information required.
