@@ -11,6 +11,7 @@ import {
     ClientEvent,
     type MatrixClient,
     MatrixEventEvent,
+    type MatrixEvent,
     NotificationCountType,
     type Room,
     RoomEvent,
@@ -28,6 +29,42 @@ import { isRoomVisible } from "../../../../stores/room-list-v3/isRoomVisible";
 import { getRoomNotifsState, RoomNotifState } from "../../../../RoomNotifs";
 
 const MIN_UPDATE_INTERVAL_MS = 500;
+
+/** Return the first loaded reply after the user's threaded receipt. */
+export function getFirstUnreadEvent(client: MatrixClient, thread: Thread): MatrixEvent | undefined {
+    const readId = thread.getEventReadUpTo(client.getSafeUserId());
+    const index = thread.events.findIndex((event) => event.getId() === readId);
+    return thread.events
+        .slice(index + 1)
+        .find(
+            (event) =>
+                event.getId() !== thread.id && !thread.room.hasUserReadEvent(client.getSafeUserId(), event.getId()!),
+        );
+}
+
+/** List one tab, retaining threads read during this visit without changing their order. */
+export function getThreadsViewList(
+    threads: ThreadData[],
+    unreadIds: ReadonlySet<string>,
+    filter: "unread" | "all",
+    visited: ReadonlySet<string> = new Set(),
+): ThreadData[] {
+    return threads
+        .filter(({ thread }) => filter === "all" || unreadIds.has(thread.id) || visited.has(thread.id))
+        .sort((a, b) => (b.thread.events.at(-1)?.getTs() ?? 0) - (a.thread.events.at(-1)?.getTs() ?? 0));
+}
+
+/** Follow My threads newest first, then Other threads, across rooms. */
+export function getNextUnreadThread(
+    participating: ThreadData[],
+    other: ThreadData[],
+    unreadIds: ReadonlySet<string>,
+): ThreadData | undefined {
+    return [
+        ...getThreadsViewList(participating, unreadIds, "unread"),
+        ...getThreadsViewList(other, unreadIds, "unread"),
+    ][0];
+}
 
 /**
  * An unread thread displayed in the Threads Activity Centre.
@@ -129,7 +166,7 @@ export function useUnreadThreadRooms(forceComputation: boolean): UnreadThreadRoo
  * @param msc3946ProcessDynamicPredecessor
  * @param settingTACOnlyNotifs
  */
-function computeUnreadThreadRooms(
+export function computeUnreadThreadRooms(
     mxClient: MatrixClient,
     msc3946ProcessDynamicPredecessor: boolean,
     settingTACOnlyNotifs: boolean,
@@ -237,7 +274,7 @@ type ThreadUnread = {
  *
  * @returns the thread's unread state, or `null` when there is nothing unread to surface.
  */
-function evaluateThreadUnread(client: MatrixClient, room: Room, thread: Thread): ThreadUnread | null {
+export function evaluateThreadUnread(client: MatrixClient, room: Room, thread: Thread): ThreadUnread | null {
     // Reading writes a local echo receipt straight away, but the server's `total` count only clears
     // when the homeserver pushes fresh counts in a sync (the js-sdk deliberately doesn't recompute
     // totals locally). Without this, a thread you just read stays listed, with its count, until the

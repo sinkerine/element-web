@@ -11,6 +11,7 @@ import {
     LOCAL_NOTIFICATION_SETTINGS_PREFIX,
     NotificationCountType,
     type Room,
+    type Thread,
     type LocalNotificationSettings,
     ReceiptType,
     type IMarkedUnreadEvent,
@@ -116,6 +117,23 @@ export async function clearRoomNotification(room: Room, client: MatrixClient): P
             room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Total, 0);
         }
     }
+}
+
+/** Mark one thread as read without clearing unrelated room notifications. */
+export async function clearThreadNotification(thread: Thread, client: MatrixClient): Promise<void> {
+    const lastEvent = thread.events.at(-1);
+    if (!lastEvent) return;
+    const receiptType = SettingsStore.getValue("sendReadReceipts", thread.roomId)
+        ? ReceiptType.Read
+        : ReceiptType.ReadPrivate;
+    await client.sendReadReceipt(lastEvent, receiptType, false);
+    thread.room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Highlight, 0);
+    thread.room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Total, 0);
+}
+
+/** Send a threaded receipt for every selected thread. */
+export async function clearThreadsNotifications(threads: Thread[], client: MatrixClient): Promise<void> {
+    await Promise.all(threads.map((thread) => clearThreadNotification(thread, client)));
 }
 
 /**
