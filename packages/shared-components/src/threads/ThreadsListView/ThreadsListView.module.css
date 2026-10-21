@@ -38,17 +38,80 @@ Please see LICENSE in the repository root for full details.
     margin: 0;
 }
 .controls {
-    flex-wrap: wrap;
+    align-items: end;
+    padding-block: 0;
+    padding-inline: var(--cpd-space-3x);
+    gap: var(--cpd-space-1x);
 }
-.controls [aria-selected="true"],
-.controls [aria-pressed="true"] {
+.tabs {
+    flex: 1;
+    min-width: 0;
+}
+.tabs button {
+    position: relative;
+    padding-block: var(--cpd-space-3x);
+    padding-inline: var(--cpd-space-2x);
+    border-radius: 0;
+    white-space: nowrap;
+    font: var(--cpd-font-body-sm-regular);
+}
+.tabs [aria-selected="true"] {
+    font-weight: var(--cpd-font-weight-semibold);
+}
+.tabs [aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: var(--cpd-space-1x);
+    background: var(--cpd-color-text-primary);
+    border-radius: var(--cpd-space-1x) var(--cpd-space-1x) 0 0;
+}
+.filter {
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: var(--cpd-space-2x);
+    padding: var(--cpd-space-0-5x);
+    gap: var(--cpd-space-0-5x);
+    margin-block-end: var(--cpd-space-2x);
+}
+.filter button {
+    padding-block: var(--cpd-space-0-5x);
+    padding-inline: var(--cpd-space-1x);
+    font: var(--cpd-font-body-xs-regular);
+}
+.filter [aria-pressed="true"] {
     background: var(--cpd-color-bg-subtle-secondary);
     font-weight: var(--cpd-font-weight-semibold);
 }
 .list .jump {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--cpd-space-2x);
     margin: var(--cpd-space-3x);
+    padding: var(--cpd-space-3x);
+    text-align: start;
     background: var(--cpd-color-bg-action-primary-rest);
     color: var(--cpd-color-text-on-solid-primary);
+}
+.jumpPreview {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.jumpPreview > * {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.jumpPreview > span:last-child {
+    font: var(--cpd-font-body-xs-regular);
+}
+.jump kbd {
+    border: 1px solid currentColor;
+    border-radius: var(--cpd-space-1x);
+    padding: var(--cpd-space-0-5x);
+    font: var(--cpd-font-body-xs-regular);
 }
 .rows {
     flex: 1;
@@ -64,7 +127,17 @@ Please see LICENSE in the repository root for full details.
     padding: var(--cpd-space-3x);
 }
 .row[aria-current="true"] {
+    position: relative;
     background: var(--cpd-color-bg-subtle-secondary);
+}
+.row[aria-current="true"]::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block: var(--cpd-space-3x);
+    width: var(--cpd-space-1x);
+    border-radius: var(--cpd-space-0-5x);
+    background: var(--cpd-color-border-focused);
 }
 .row[data-read="true"] .preview {
     color: var(--cpd-color-text-secondary);

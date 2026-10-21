@@ -35,7 +35,8 @@ export function GroupView({ vm, children }: PropsWithChildren<Props>): React.Rea
      */
     const onLayoutChanged = (layout: Layout): void => {
         const newSize = layout[LEFT_PANEL_ID];
-        vm.onLeftPanelResized(newSize);
+        // Full-window modes can replace the room list with a fixed panel of their own.
+        if (newSize !== undefined) vm.onLeftPanelResized(newSize);
     };
 
     return <Group onLayoutChanged={onLayoutChanged}>{children}</Group>;

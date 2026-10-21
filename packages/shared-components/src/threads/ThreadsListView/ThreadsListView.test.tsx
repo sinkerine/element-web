@@ -44,6 +44,7 @@ describe("ThreadsListView", () => {
             filter: "unread",
             canUndo: true,
             markedCount: 2,
+            latestUnreadPreview: "Engineering · New reply",
             selectedId: "thread",
         });
         render(<ThreadsListView vm={vm} />);
@@ -56,6 +57,8 @@ describe("ThreadsListView", () => {
         expect(row).toHaveAttribute("aria-current", "true");
         await user.click(row);
         expect(vm.select).toHaveBeenCalledWith("thread");
+        expect(screen.getByText("Engineering · New reply")).toBeVisible();
+        expect(screen.getByText("Alt+Shift+T")).toBeVisible();
         await user.click(screen.getByRole("button", { name: "Open latest unread" }));
         expect(vm.next).toHaveBeenCalledOnce();
         await user.click(screen.getByRole("button", { name: "Mark all as read" }));

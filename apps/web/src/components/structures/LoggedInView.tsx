@@ -759,15 +759,27 @@ class LoggedInView extends React.Component<IProps, IState> {
             content = (
                 <GroupView vm={resizerViewModel}>
                     <SpacePanel />
-                    <LeftResizablePanelView
-                        vm={resizerViewModel}
-                        className="mx_LeftPanel_panel"
-                        minSize="200px"
-                        maxSize="370px"
-                        defaultSize="370px"
-                    >
-                        {leftPanel}
-                    </LeftResizablePanelView>
+                    {this.props.page_type === PageTypes.ThreadsView ? (
+                        <Panel
+                            id="threads-list"
+                            className="mx_LeftPanel_panel"
+                            minSize="400px"
+                            maxSize="400px"
+                            defaultSize="400px"
+                        >
+                            {leftPanel}
+                        </Panel>
+                    ) : (
+                        <LeftResizablePanelView
+                            vm={resizerViewModel}
+                            className="mx_LeftPanel_panel"
+                            minSize="200px"
+                            maxSize="370px"
+                            defaultSize="370px"
+                        >
+                            {leftPanel}
+                        </LeftResizablePanelView>
+                    )}
                     <SeparatorView className="mx_Separator" vm={resizerViewModel} />
                     <Panel className="mx_LeftPanel_panel">{roomView}</Panel>
                 </GroupView>

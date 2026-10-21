@@ -7,6 +7,8 @@ Please see LICENSE in the repository root for full details.
 
 import React, { type JSX, type ReactNode } from "react";
 import { Text } from "@vector-im/compound-web";
+import CheckAllIcon from "@vector-im/compound-design-tokens/assets/web/icons/check";
+import ArrowRightIcon from "@vector-im/compound-design-tokens/assets/web/icons/arrow-right";
 
 import { type ViewModel, useViewModel } from "../../core/viewmodel";
 import { useI18n } from "../../core/i18n/i18nContext";
@@ -66,14 +68,14 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                     {_t("common|threads")}
                 </Text>
                 <button type="button" onClick={vm.markAll} aria-label={_t("threads_view|mark_all")}>
-                    ✓
+                    <CheckAllIcon width={20} height={20} />
                 </button>
                 <button type="button" onClick={vm.exit}>
                     {_t("threads_view|exit")}
                 </button>
             </Flex>
             <Flex className={styles.controls} align="center">
-                <Flex role="tablist" aria-label={_t("common|threads")}>
+                <Flex className={styles.tabs} role="tablist" aria-label={_t("common|threads")}>
                     <button type="button" role="tab" aria-selected={s.tab === "my"} onClick={() => vm.setTab("my")}>
                         {_t("threads_view|my")} ({s.myCount})
                     </button>
@@ -86,7 +88,7 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                         {_t("threads_view|other")} ({s.otherCount})
                     </button>
                 </Flex>
-                <Flex role="group" aria-label={_t("threads_view|filter")}>
+                <Flex className={styles.filter} role="group" aria-label={_t("threads_view|filter")}>
                     <button type="button" aria-pressed={s.filter === "unread"} onClick={() => vm.setFilter("unread")}>
                         {_t("threads_view|unread")}
                     </button>
@@ -96,8 +98,15 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                 </Flex>
             </Flex>
             {s.myCount + s.otherCount > 0 && (
-                <button type="button" className={styles.jump} onClick={vm.next}>
-                    {_t("threads_view|latest")}
+                <button type="button" className={styles.jump} onClick={vm.next} aria-label={_t("threads_view|latest")}>
+                    <ArrowRightIcon width={20} height={20} />
+                    <span className={styles.jumpPreview}>
+                        <Text as="span" size="sm" weight="semibold">
+                            {_t("threads_view|latest")}
+                        </Text>
+                        <span>{s.latestUnreadPreview}</span>
+                    </span>
+                    <kbd>Alt+Shift+T</kbd>
                 </button>
             )}
             <div role="tabpanel" className={styles.rows}>
@@ -136,10 +145,12 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                         ? _t("threads_view|marked_read", { count: s.markedCount ?? 0 })
                         : _t("threads_view|unread_count", { count: s.myCount + s.otherCount })}
                 </span>
-                {s.canUndo && (
+                {s.canUndo ? (
                     <button type="button" onClick={vm.undo}>
                         {_t("action|undo")}
                     </button>
+                ) : (
+                    <span>{_t("threads_view|escape_hint")}</span>
                 )}
                 {s.error && <span role="alert">{s.error}</span>}
             </Flex>

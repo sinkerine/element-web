@@ -29,7 +29,7 @@ function renderPanel(): MockViewModel {
     const vm = new MockViewModel();
     render(
         <GroupView vm={vm}>
-            <Panel>Test</Panel>
+            <Panel id="left-panel">Test</Panel>
             <Separator />
             <Panel>Test</Panel>
         </GroupView>,
@@ -41,6 +41,24 @@ describe("<GroupView />", () => {
     it("renders Default story", () => {
         const { container } = render(<Default />);
         expect(container).toMatchSnapshot();
+    });
+
+    it("should ignore layouts belonging to a full-window mode", async () => {
+        const vm = new MockViewModel();
+        render(
+            <GroupView vm={vm}>
+                <Panel id="threads-list">Threads</Panel>
+                <Separator />
+                <Panel>Timeline</Panel>
+            </GroupView>,
+        );
+        const user = userEvent.setup();
+        await user.pointer([
+            { target: screen.getByRole("separator"), keys: "[MouseLeft>]" },
+            { coords: { x: 400, y: 200 } },
+            { keys: "[/MouseLeft]" },
+        ]);
+        expect(vm.onLeftPanelResized).not.toHaveBeenCalled();
     });
 
     it("should call onLeftPanelResize", async () => {

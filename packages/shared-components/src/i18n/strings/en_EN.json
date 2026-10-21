@@ -292,6 +292,7 @@
     "threads_view": {
         "all": "All",
         "caught_up": "You're all caught up",
+        "escape_hint": "Esc to leave",
         "exit": "Exit",
         "filter": "Filter",
         "latest": "Open latest unread",
