@@ -148,6 +148,19 @@ describe("ThreadsListViewModel", () => {
         vm.dispose();
     });
 
+    it("should load the beginning when a receiptless thread only has recent replies cached", async () => {
+        const { vm, b } = setup();
+        Object.assign(b.thread, {
+            timelineSet: { getLiveTimeline: () => ({ getPaginationToken: () => "older-page" }) },
+        });
+        const load = vi.spyOn(helpers, "loadFirstUnreadEvent").mockResolvedValue(b.thread.events[1]);
+        vm.select("b");
+        expect(vm.selection?.loading).toBe(true);
+        await vi.waitFor(() => expect(load).toHaveBeenCalledWith(expect.anything(), b.thread, null));
+        await vi.waitFor(() => expect(vm.selection?.loading).toBe(false));
+        vm.dispose();
+    });
+
     it("should hold unread loading until the boundary resolves and allow retry after failure", async () => {
         const { vm, b } = setup();
         vi.spyOn(helpers, "getFirstUnreadEvent").mockReturnValue(undefined);

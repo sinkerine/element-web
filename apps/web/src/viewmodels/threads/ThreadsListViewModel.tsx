@@ -18,6 +18,7 @@ import {
     ThreadEvent,
     RoomEvent,
     MatrixEventEvent,
+    EventTimeline,
     type MatrixClient,
     type MatrixEvent,
 } from "matrix-js-sdk/src/matrix";
@@ -195,8 +196,13 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         }
         this.snapshot.merge({ error: undefined });
         const readId = getThreadReadReceiptId(this.props.client, data.thread);
+        const startsAtBeginning = !data.thread.timelineSet
+            ?.getLiveTimeline()
+            .getPaginationToken(EventTimeline.BACKWARDS);
         const receiptLoaded =
-            !readId || readId === data.thread.id || data.thread.events.some((event) => event.getId() === readId);
+            readId && readId !== data.thread.id
+                ? data.thread.events.some((event) => event.getId() === readId)
+                : startsAtBeginning;
         const initialEvent =
             this.unread.has(id) && receiptLoaded ? getFirstUnreadEvent(this.props.client, data.thread) : undefined;
         this.selection = { data, initialEvent, readId };
