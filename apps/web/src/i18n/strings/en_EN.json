@@ -3341,14 +3341,21 @@
     "threads_view": {
         "all_read": "All read",
         "caught_up": "You're all caught up",
+        "latest": "threads_view|latest",
         "load_failed": "Could not load the thread. Please try again.",
         "mark_failed": "Could not mark threads as read. Please try again.",
         "new": "New",
+        "new_replies": {
+            "one": "%(count)s thread has new replies.",
+            "other": "%(count)s threads have new replies."
+        },
         "next": {
             "one": "Next unread (%(count)s)",
             "other": "Next unread (%(count)s)"
         },
+        "no_new_replies": "No threads have new replies.",
         "open_in_room": "Open in room",
+        "pick_thread": "Pick a thread",
         "up_next": "Up next: %(room)s · %(preview)s"
     },
     "time": {

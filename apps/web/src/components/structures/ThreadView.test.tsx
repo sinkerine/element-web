@@ -48,7 +48,7 @@ describe("ThreadView", () => {
 
     let changeEvent: (event: MatrixEvent) => void;
 
-    function TestThreadView({ initialEvent }: { initialEvent?: MatrixEvent }) {
+    function TestThreadView({ initialEvent, fullWindow }: { initialEvent?: MatrixEvent; fullWindow?: boolean }) {
         const [event, setEvent] = useState(rootEvent);
         changeEvent = setEvent;
 
@@ -64,6 +64,7 @@ describe("ThreadView", () => {
                         onClose={vi.fn()}
                         mxEvent={event}
                         initialEvent={initialEvent}
+                        fullWindow={fullWindow}
                         resizeNotifier={new ResizeNotifier()}
                     />
                 </ScopedRoomContextProvider>
@@ -72,8 +73,8 @@ describe("ThreadView", () => {
         );
     }
 
-    async function getComponent(initialEvent?: MatrixEvent): Promise<RenderResult> {
-        const renderResult = render(<TestThreadView initialEvent={initialEvent} />, {
+    async function getComponent(initialEvent?: MatrixEvent, fullWindow = false): Promise<RenderResult> {
+        const renderResult = render(<TestThreadView initialEvent={initialEvent} fullWindow={fullWindow} />, {
             wrapper: ({ children }) => (
                 <SDKContext.Provider value={SDKContextClass.instance}>{children}</SDKContext.Provider>
             ),
@@ -191,6 +192,13 @@ describe("ThreadView", () => {
             rootEvent2.getId(),
             expectedMessageBody(rootEvent2, "yolo"),
         );
+    });
+
+    it("should let the full window host own the header without a nested close button", async () => {
+        const { container } = await getComponent(undefined, true);
+        expect(container.querySelector(".mx_BaseCard_header")).toBeNull();
+        expect(container.querySelector(".mx_ThreadView")).not.toBeNull();
+        expect(container.querySelector("[data-testid=basicmessagecomposer]")).not.toBeNull();
     });
 
     it("sets the correct thread in the room view store", async () => {

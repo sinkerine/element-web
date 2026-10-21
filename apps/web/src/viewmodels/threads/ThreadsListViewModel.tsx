@@ -153,6 +153,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
             otherCount: this.other.filter((data) => this.unread.has(data.thread.id)).length,
             selectedId: this.selection?.data.thread.id,
             canUndo: this.pending.size > 0,
+            markedCount: this.pending.size,
         });
     };
 

@@ -296,6 +296,10 @@
         "filter": "Filter",
         "latest": "Open latest unread",
         "mark_all": "Mark all as read",
+        "marked_read": {
+            "one": "Marked %(count)s thread as read",
+            "other": "Marked %(count)s threads as read"
+        },
         "my": "My threads",
         "other": "Other threads",
         "unread": "Unread",

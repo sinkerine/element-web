@@ -43,6 +43,7 @@ describe("ThreadsListView", () => {
             tab: "my",
             filter: "unread",
             canUndo: true,
+            markedCount: 2,
             selectedId: "thread",
         });
         render(<ThreadsListView vm={vm} />);
@@ -59,6 +60,7 @@ describe("ThreadsListView", () => {
         expect(vm.next).toHaveBeenCalledOnce();
         await user.click(screen.getByRole("button", { name: "Mark all as read" }));
         expect(vm.markAll).toHaveBeenCalledOnce();
+        expect(screen.getByText("Marked 2 threads as read")).toBeVisible();
         await user.click(screen.getByRole("button", { name: "Undo" }));
         expect(vm.undo).toHaveBeenCalledOnce();
         await user.click(screen.getByRole("button", { name: "Exit" }));

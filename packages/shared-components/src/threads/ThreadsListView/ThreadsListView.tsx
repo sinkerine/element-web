@@ -34,6 +34,10 @@ export interface ThreadsListViewSnapshot {
     otherCount: number;
     selectedId?: string;
     canUndo: boolean;
+    /** Number of receipts pending during the undo grace period. */
+    markedCount?: number;
+    /** Destination of Open latest unread, in the queue order. */
+    latestUnreadPreview?: string;
     error?: string;
 }
 
@@ -127,7 +131,11 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                 )}
             </div>
             <Flex className={styles.footer} justify="space-between" aria-live="polite">
-                <span>{_t("threads_view|unread_count", { count: s.myCount + s.otherCount })}</span>
+                <span>
+                    {s.canUndo
+                        ? _t("threads_view|marked_read", { count: s.markedCount ?? 0 })
+                        : _t("threads_view|unread_count", { count: s.myCount + s.otherCount })}
+                </span>
                 {s.canUndo && (
                     <button type="button" onClick={vm.undo}>
                         {_t("action|undo")}

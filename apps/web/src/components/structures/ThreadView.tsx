@@ -434,7 +434,8 @@ export default class ThreadView extends React.Component<IProps, IState> {
                         })}
                         onClose={this.props.onClose}
                         withoutScrollContainer={true}
-                        header={this.renderThreadViewHeader()}
+                        header={this.props.fullWindow ? null : this.renderThreadViewHeader()}
+                        hideHeaderButtons={this.props.fullWindow}
                         ref={this.card}
                         onKeyDown={this.onKeyDown}
                         onBack={(ev: ButtonEvent) => {
