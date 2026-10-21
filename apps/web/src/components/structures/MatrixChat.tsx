@@ -1131,7 +1131,6 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
     private previousThreadsRoomId: string | null = null;
 
     private viewThreads(): void {
-        if (!SettingsStore.getValue("feature_threads_view")) return;
         if (this.state.page_type !== PageType.ThreadsView) {
             this.previousThreadsRoomId = this.state.currentRoomId ?? null;
         }

@@ -349,7 +349,6 @@ const InnerSpacePanel = React.memo<IInnerSpacePanelProps>(
                             size="32px"
                             selected={activeSpace === item.spaceKey}
                             onClick={() => {
-                                if (window.location.hash === "#/threads") defaultDispatcher.fire(Action.ViewHomePage);
                                 sdkContext.spaceStore.setActiveSpace(item.spaceKey);
                                 item.onSelected?.();
                             }}

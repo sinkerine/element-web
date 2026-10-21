@@ -8,254 +8,123 @@
 
 import { rejectToast } from "@element-hq/element-web-playwright-common";
 
-import { expect, test } from ".";
+import { expect, test } from "../../../element-web-test";
 import { CommandOrControl } from "../../utils";
-import { isDendrite } from "../../../plugins/homeserver/dendrite";
-import { getRoomList, getRoomOptionsMenu } from "../../left-panel/room-list-panel/utils";
 
-test.describe("Threads Activity Centre", { tag: "@no-firefox" }, () => {
-    test.skip(
-        isDendrite,
-        "due to Dendrite lacking full threads support https://github.com/element-hq/dendrite/issues/3283",
-    );
+/** The space-bar entry retains notification and layout behavior after replacing the popup. */
+test.describe("Threads space-bar entry", () => {
+    test.use({ displayName: "Alice", botCreateOpts: { displayName: "Other User", autoAcceptInvites: true } });
 
-    test.use({
-        displayName: "Alice",
-        botCreateOpts: { displayName: "Other User" },
-    });
-
-    test.beforeEach(async ({ page, app, user }) => {
+    test.beforeEach(async ({ page, user }) => {
         await rejectToast(page, "Verify this device");
         await rejectToast(page, "Notifications");
     });
 
-    test(
-        "should have the button correctly aligned and displayed in the space panel when expanded",
-        { tag: "@screenshot" },
-        async ({ util, page }) => {
-            // Open the space panel
-            await util.expandSpacePanel();
-            // The buttons in the space panel should be aligned when expanded
-            await expect(util.getSpacePanel()).toMatchScreenshot("tac-button-expanded.png");
-        },
-    );
-
-    test(
-        "should not show indicator when there is no thread",
-        { tag: "@screenshot" },
-        async ({ room1, util, app, page }) => {
-            // No indicator should be shown
-            await util.assertNoTacIndicator();
-
-            await util.goTo(room1);
-            await util.receiveMessages(room1, ["Msg1"]);
-
-            // A message in the main timeline should not affect the indicator
-            await util.assertNoTacIndicator();
-        },
-    );
-
-    test("should show a notification indicator when there is a message in a thread", async ({
-        room1,
-        util,
-        msg,
-        app,
-        page,
-    }) => {
-        await util.goTo(room1);
-        await util.receiveMessages(room1, ["Msg1", msg.threadedOff("Msg1", "Resp1")]);
-
-        // The indicator should be shown
-        await util.assertNotificationTac();
+    test("should keep the expanded Threads button aligned when entering and leaving", async ({ page }) => {
+        const spaces = page.getByRole("navigation", { name: "Spaces" });
+        await spaces.getByRole("button", { name: "Expand", exact: true }).click();
+        const button = spaces.getByRole("button", { name: "Threads", exact: true });
+        await expect(button).toContainText("Threads");
+        const before = await button.boundingBox();
+        await button.hover();
+        await button.click();
+        await expect(page).toHaveURL(/#\/threads$/);
+        await expect(button).toHaveAttribute("aria-pressed", "true");
+        expect(await button.boundingBox()).toEqual(before);
+        await expect(page.getByRole("menu", { name: "Threads" })).toHaveCount(0);
+        await page.getByRole("button", { name: "Exit", exact: true }).click();
+        await expect(button).toHaveAttribute("aria-pressed", "false");
+        expect(await button.boundingBox()).toEqual(before);
     });
 
-    test("should show a highlight indicator when there is a mention in a thread", async ({
-        room1,
-        util,
-        msg,
-        user,
-        app,
-        page,
-    }) => {
-        await util.goTo(room1);
-        await util.receiveMessages(room1, [
-            "Msg1",
-            msg.threadedOff("Msg1", {
-                "body": "User",
-                "format": "org.matrix.custom.html",
-                "formatted_body": `<a href="https://matrix.to/#/${user.userId}">User</a>`,
-                "m.mentions": {
-                    user_ids: [user.userId],
-                },
-            }),
-        ]);
-
-        // The indicator should be shown
-        await util.assertHighlightIndicator();
+    test("should keep main-timeline messages out of the thread indicator", async ({ page, app, bot }) => {
+        const room = await app.client.createRoom({ name: "Main messages" });
+        await app.client.inviteUser(room, bot.credentials!.userId);
+        await bot.joinRoom(room);
+        await bot.sendMessage(room, "Main timeline message");
+        const button = page
+            .getByRole("navigation", { name: "Spaces" })
+            .getByRole("button", { name: "Threads", exact: true });
+        await expect(button.locator("[data-indicator='accent'], [data-indicator='critical']")).toHaveCount(0);
     });
 
-    test(
-        "should show threads from other users in the Other threads tab",
-        { tag: "@screenshot" },
-        async ({ room1, room2, util, msg, user, app, page }) => {
-            await util.goTo(room2);
-            await util.populateThreads(room1, room2, msg, user);
-            // The indicator should be shown
-            await util.assertHighlightIndicator();
-
-            // The thread mentioning us is relevant to us, so it lands in "My threads"
-            await util.openTac();
-            await util.assertThreadsInTac([{ room: room2.name, notificationLevel: "highlight" }]);
-
-            // The other bot-sent threads land in "Other threads", most recent first
-            await util.switchToOtherThreadsTab();
-            await util.assertThreadsInTac([
-                { room: room1.name, notificationLevel: "notification" },
-                { room: room2.name, notificationLevel: "notification" },
-            ]);
-
-            // Verify that we don't have a visual regression
-            await expect(util.getTacPanel()).toMatchScreenshot("tac-panel-mix-unread.png");
-        },
-    );
-
-    test(
-        "should update with a thread is read",
-        { tag: "@screenshot" },
-        async ({ room1, room2, util, msg, user, app, page }) => {
-            await util.goTo(room2);
-            await util.populateThreads(room1, room2, msg, user);
-
-            // The thread mentioning us is in "My threads", the tab shown by default
-            await util.openTac();
-            await util.clickThreadInTac(room2.name);
-
-            // Verify that the thread panel is opened after a click on a thread in the TAC
-            await util.assertThreadPanelIsOpened();
-
-            // Open a thread and mark it as read
-            // The room 2 doesn't have a mention anymore in its unread, so the highest notification level is notification
-            await util.openThread("Msg1");
-            await util.assertNotificationTac();
-            await util.openTac();
-            await util.switchToOtherThreadsTab();
-            await util.assertThreadsInTac([
-                { room: room1.name, notificationLevel: "notification" },
-                { room: room2.name, notificationLevel: "notification" },
-            ]);
-            await expect(util.getTacPanel()).toMatchScreenshot("tac-panel-notification-unread.png");
-        },
-    );
-
-    test("should order by recency after notification level", async ({ room1, room2, util, msg, user, app, page }) => {
-        await util.goTo(room2);
-        await util.populateThreads(room1, room2, msg, user, false);
-
-        await util.openTac();
-        await util.switchToOtherThreadsTab();
-        await util.assertThreadsInTac([
-            { room: room1.name, notificationLevel: "notification" },
-            { room: room2.name, notificationLevel: "notification" },
-        ]);
+    test("should show notification and mention indicators for new thread replies", async ({ page, app, bot, user }) => {
+        const room = await app.client.createRoom({ name: "Thread notifications" });
+        await app.client.inviteUser(room, bot.credentials!.userId);
+        await bot.joinRoom(room);
+        const root = await app.client.sendMessage(room, "Followed root");
+        await bot.sendMessage(room, "Unread reply", root.event_id);
+        const button = page
+            .getByRole("navigation", { name: "Spaces" })
+            .getByRole("button", { name: "Threads", exact: true });
+        await expect(button.locator("[data-indicator='accent']")).toBeVisible();
+        await bot.sendMessage(
+            room,
+            { "msgtype": "m.text", "body": "Mentioned Alice", "m.mentions": { user_ids: [user.userId] } },
+            root.event_id,
+        );
+        await expect(button.locator("[data-indicator='critical']")).toBeVisible();
+        await button.click();
+        await expect(page.getByRole("heading", { name: "Thread notifications › Thread" })).toBeVisible();
+        await expect(page.getByRole("separator", { name: "New", exact: true })).toBeVisible();
     });
 
-    test("should block the Spotlight to open when the TAC is opened", async ({ util, page, app }) => {
-        const toggleSpotlight = () => page.keyboard.press(`${CommandOrControl}+k`);
-
-        // Sanity check
-        // Open and close the spotlight
-        await toggleSpotlight();
-        await expect(page.locator(".mx_SpotlightDialog")).toBeVisible();
-        await toggleSpotlight();
-
-        await util.openTac();
-        // The spotlight should not be opened
-        await toggleSpotlight();
-        await expect(page.locator(".mx_SpotlightDialog")).not.toBeVisible();
+    test("should show other users' threads newest first and retain a read selection", async ({ page, app, bot }) => {
+        const original = await app.client.createRoom({ name: "Original room" });
+        const rooms: string[] = [];
+        for (const name of ["Older other", "Newer other"]) {
+            const room = await app.client.createRoom({ name });
+            await app.client.inviteUser(room, bot.credentials!.userId);
+            await bot.joinRoom(room);
+            const root = await bot.sendMessage(room, `${name} root`);
+            await bot.sendMessage(room, `${name} reply`, root.event_id);
+            rooms.push(room);
+        }
+        await page.goto(`/#/room/${original}`);
+        await expect
+            .poll(() =>
+                app.client.evaluate(
+                    (client, roomIds) =>
+                        roomIds.every((id) =>
+                            client
+                                .getRoom(id)
+                                ?.getThreads()
+                                .some((thread) => thread.events.length >= 2),
+                        ),
+                    rooms,
+                ),
+            )
+            .toBe(true);
+        await page
+            .getByRole("navigation", { name: "Spaces" })
+            .getByRole("button", { name: "Threads", exact: true })
+            .click();
+        await expect(page.getByRole("heading", { name: "Newer other › Thread" })).toBeVisible();
+        const list = page.getByRole("region", { name: "Threads", exact: true });
+        await expect(list.getByRole("tab", { name: /Other threads/, selected: true })).toBeVisible();
+        const rows = list.getByRole("tabpanel").getByRole("button");
+        await expect(rows).toHaveCount(2);
+        await expect(rows.nth(0)).toContainText("Newer other");
+        await expect(rows.nth(1)).toContainText("Older other");
+        await expect(rows.nth(0)).toHaveAttribute("data-read", "true");
+        await page.getByRole("button", { name: "Next unread (1)" }).click();
+        await expect(page.getByRole("heading", { name: "Older other › Thread" })).toBeVisible();
+        await expect(rows).toHaveCount(2);
+        await expect(page.getByRole("button", { name: "All read", exact: true })).toBeDisabled();
+        await page.getByRole("button", { name: "Open in room", exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`#/room/${rooms[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+        await expect(
+            page.getByRole("complementary").getByRole("heading", { name: "Thread", exact: true }),
+        ).toBeVisible();
     });
 
-    test("should have the correct hover state", { tag: "@screenshot" }, async ({ util, page, app }) => {
-        await util.hoverTacButton();
-        await expect(util.getSpacePanel()).toMatchScreenshot("tac-hovered.png");
-
-        // Expand the space panel, hover the button and take a screenshot
-        await util.expandSpacePanel();
-        await util.hoverTacButton();
-        await expect(util.getSpacePanel()).toMatchScreenshot("tac-hovered-expanded.png");
-    });
-
-    test("should mark all threads as read", { tag: "@screenshot" }, async ({ room1, room2, util, msg, page, app }) => {
-        await util.receiveMessages(room1, ["Msg1", msg.threadedOff("Msg1", "Resp1")]);
-
-        await util.assertNotificationTac();
-
-        // Bot-sent thread appears in "Other threads" tab
-        await util.openTac();
-        await util.switchToOtherThreadsTab();
-        await util.clickThreadInTac(room1.name);
-
-        // The TAC opens the thread itself, so step back to the list to reach its menu
-        await util.clickBackToThreadList();
-        await util.clickMarkAllThreadsRead();
-
-        await util.assertNoTacIndicator();
-    });
-
-    test("should focus the thread tab when clicking an item in the TAC", async ({
-        room1,
-        room2,
-        util,
-        msg,
-        app,
-        page,
-    }) => {
-        await util.receiveMessages(room1, ["Msg1", msg.threadedOff("Msg1", "Resp1")]);
-
-        // Bot-sent thread appears in "Other threads" tab
-        await util.openTac();
-        await util.switchToOtherThreadsTab();
-        await util.clickThreadInTac(room1.name);
-
-        await util.assertThreadPanelIsOpened();
-    });
-
-    // The target room is named so that A-Z sorting places it at the very bottom of the room list.
-    test.describe("scrolling the room list when a room is selected", () => {
-        test.use({ room1Name: "zzz thread room" });
-
-        test("should scroll the room list to reveal the room clicked in the TAC", async ({
-            room1,
-            util,
-            msg,
-            app,
-            page,
-        }) => {
-            // Give the target room an unread thread so it shows up in the TAC.
-            await util.receiveMessages(room1, ["Msg1", msg.threadedOff("Msg1", "Resp1")]);
-            await util.assertNotificationTac();
-
-            // Create filler rooms that sort before "zzz …" so A-Z sorting pushes the target below the fold.
-            for (let i = 0; i < 20; i++) {
-                await app.client.createRoom({ name: `room ${String(i).padStart(2, "0")}` });
-            }
-
-            // Sort A-Z so room positions are deterministic and the target sits at the bottom.
-            await getRoomOptionsMenu(page).click();
-            await page.getByRole("menuitemradio", { name: "A-Z" }).click();
-
-            const roomList = getRoomList(page);
-            const targetRow = roomList.getByRole("option", { name: `Open room ${room1.name}` });
-
-            await expect(roomList.getByRole("option", { name: "Open room room 00" })).toBeVisible();
-            await expect(targetRow).not.toBeInViewport();
-
-            // Clicking the thread in the TAC dispatches view_room with show_room_tile…
-            await util.openTac();
-            await util.switchToOtherThreadsTab();
-            await util.clickThreadInTac(room1.name);
-
-            // …which scrolls the room list to bring the room's tile into view.
-            await expect(targetRow).toBeInViewport();
-        });
+    test("should allow Spotlight from the full-window Threads view", async ({ page }) => {
+        await page
+            .getByRole("navigation", { name: "Spaces" })
+            .getByRole("button", { name: "Threads", exact: true })
+            .click();
+        await expect(page).toHaveURL(/#\/threads$/);
+        await page.keyboard.press(`${CommandOrControl}+k`);
+        await expect(page.getByRole("dialog")).toBeVisible();
     });
 });

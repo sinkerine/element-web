@@ -270,7 +270,15 @@ class LoggedInView extends React.Component<IProps, IState> {
     }
 
     private onThreadsSpaceChange = (): void => {
-        if (this.props.page_type === PageTypes.ThreadsView) dis.fire(Action.ViewHomePage);
+        // Let the space store's queued room navigation win before applying a fallback for
+        // changes that do not switch context themselves.
+        setTimeout(() => {
+            if (this.props.page_type !== PageTypes.ThreadsView) return;
+            const activeSpace = this.context.spaceStore.activeSpace;
+            const space = this._matrixClient.getRoom(activeSpace);
+            if (space?.isSpaceRoom()) dis.dispatch({ action: Action.ViewRoom, room_id: space.roomId });
+            else dis.fire(Action.ViewHomePage);
+        }, 0);
     };
 
     private ensureThreadsViewModel(): ThreadsListViewModel {
@@ -569,11 +577,9 @@ class LoggedInView extends React.Component<IProps, IState> {
                 });
                 break;
             case KeyBindingAction.ThreadsView:
-                if (SettingsStore.getValue("feature_threads_view")) {
-                    if (this.props.page_type === PageTypes.ThreadsView) this.threadsViewModel?.next();
-                    else dis.fire(Action.ViewThreads);
-                    handled = true;
-                }
+                if (this.props.page_type === PageTypes.ThreadsView) this.threadsViewModel?.next();
+                else dis.fire(Action.ViewThreads);
+                handled = true;
                 break;
             case KeyBindingAction.SelectNextUnreadRoom:
                 dis.dispatch<ViewRoomDeltaPayload>({

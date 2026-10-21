@@ -10,13 +10,14 @@ import { test, expect } from "../../element-web-test";
 test.describe("Threads view", () => {
     test.use({
         displayName: "Tom",
-        labsFlags: ["feature_threads_view"],
         botCreateOpts: { displayName: "Alice", autoAcceptInvites: true },
     });
 
     test("should catch up across rooms and return without moving the Threads button", async ({ page, app, bot }) => {
         const original = await app.client.createRoom({ name: "Original room" });
-        const rooms = [];
+        const space = await app.client.createSpace({ name: "Thread test space" });
+        await app.client.sendStateEvent(space, "m.space.child", { via: ["localhost"] }, original);
+        const rooms: { roomId: string; root: string }[] = [];
         for (const name of ["First room", "Second room"]) {
             const roomId = await app.client.createRoom({ name });
             await app.client.inviteUser(roomId, bot.credentials!.userId);
@@ -26,6 +27,20 @@ test.describe("Threads view", () => {
         }
         await page.goto(`/#/room/${original}`);
         for (const { roomId, root } of rooms) await bot.sendMessage(roomId, `Unread reply in ${roomId}`, root);
+        await expect
+            .poll(() =>
+                app.client.evaluate(
+                    (client, ids) =>
+                        ids.every((id) =>
+                            client
+                                .getRoom(id)
+                                ?.getThreads()
+                                .some((thread) => thread.events.length >= 2),
+                        ),
+                    rooms.map((room) => room.roomId),
+                ),
+            )
+            .toBe(true);
         const threads = page
             .getByRole("navigation", { name: "Spaces" })
             .getByRole("button", { name: "Threads", exact: true });
@@ -53,6 +68,9 @@ test.describe("Threads view", () => {
         await threads.click();
         await page.getByRole("button", { name: "Home", exact: true }).click();
         await expect(page).not.toHaveURL(/#\/threads$/);
+        await threads.click();
+        await page.getByRole("button", { name: "Thread test space", exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`#/room/${space.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
     });
 
     test("should offer new arrivals from an empty pane and undo only the current tab", async ({ page, app, bot }) => {
