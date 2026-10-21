@@ -10,6 +10,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import {
     MatrixEvent,
     ClientEvent,
+    SyncState,
     TypedEventEmitter,
     type MatrixClient,
     type Room,
@@ -71,7 +72,7 @@ describe("ThreadsListViewModel", () => {
         });
         vi.spyOn(helpers, "evaluateThreadUnread").mockReturnValue(null);
         const clear = vi.spyOn(notifications, "clearThreadsNotifications").mockResolvedValue();
-        return { vm: new ThreadsListViewModel({ client }), clear, client };
+        return { vm: new ThreadsListViewModel({ client }), clear, client, a, b };
     }
     it("should open My threads first and retain the read row when advancing across rooms", () => {
         const { vm, client } = setup();
@@ -85,6 +86,40 @@ describe("ThreadsListViewModel", () => {
         vm.dispose();
         expect(client.listenerCount(ClientEvent.Sync)).toBe(0);
     });
+    it("should move a newly relevant thread between tabs without duplicating it", () => {
+        const { vm, client, a, b } = setup();
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [a, b],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        client.emit(ClientEvent.Sync, SyncState.Syncing, null);
+        expect(vm.getSnapshot().myCount).toBe(1);
+        expect(vm.getSnapshot().otherCount).toBe(0);
+        vm.setTab("other");
+        expect(vm.getSnapshot().rows).toHaveLength(0);
+        vm.dispose();
+    });
+
+    it("should hold unread loading until the boundary resolves and allow retry after failure", async () => {
+        const { vm, b } = setup();
+        vi.spyOn(helpers, "getFirstUnreadEvent").mockReturnValue(undefined);
+        const load = vi
+            .spyOn(helpers, "loadFirstUnreadEvent")
+            .mockRejectedValueOnce(new Error("offline"))
+            .mockResolvedValueOnce(b.thread.events[1]);
+        vm.select("b");
+        expect(vm.selection?.loading).toBe(true);
+        await vi.waitFor(() => expect(vm.getSnapshot().error).toBeTruthy());
+        expect(vm.selection?.loading).toBe(false);
+        vm.select("b");
+        await vi.waitFor(() => expect(vm.selection?.initialEvent).toBe(b.thread.events[1]));
+        expect(vm.getSnapshot().error).toBeUndefined();
+        expect(load).toHaveBeenCalledTimes(2);
+        vm.dispose();
+    });
+
     it("should allow undo before sending irreversible receipts", () => {
         vi.useFakeTimers();
         const { vm, clear } = setup();

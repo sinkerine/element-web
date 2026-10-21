@@ -24,6 +24,7 @@ import {
     computeUnreadThreadRooms,
     evaluateThreadUnread,
     getFirstUnreadEvent,
+    loadFirstUnreadEvent,
     getNextUnreadThread,
     getThreadsViewList,
     type ThreadData,
@@ -45,6 +46,9 @@ import { getRoomNotifsState, RoomNotifState } from "../../RoomNotifs";
 export interface ThreadsSelection {
     data: ThreadData;
     initialEvent?: MatrixEvent;
+    /** Captured before the timeline can echo new receipts. */
+    readId?: string | null;
+    loading?: boolean;
 }
 
 interface Props {
@@ -84,11 +88,16 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
             SettingsStore.getValue("feature_dynamic_room_predecessors"),
             SettingsStore.getValue("Notifications.tac_only_notifications"),
         );
-        const merge = (old: ThreadData[], fresh: ThreadData[]): ThreadData[] => [
-            ...new Map([...old, ...fresh].map((data) => [data.thread.id, data])).values(),
+        // Fresh relevance is authoritative; retain read rows only in their current tab.
+        const freshMy = new Set(result.participatingThreads.map((data) => data.thread.id));
+        const freshOther = new Set(result.otherThreads.map((data) => data.thread.id));
+        const merge = (old: ThreadData[], fresh: ThreadData[], moved: ReadonlySet<string>): ThreadData[] => [
+            ...new Map(
+                [...old.filter((data) => !moved.has(data.thread.id)), ...fresh].map((data) => [data.thread.id, data]),
+            ).values(),
         ];
-        this.my = merge(this.my, result.participatingThreads);
-        this.other = merge(this.other, result.otherThreads);
+        this.my = merge(this.my, result.participatingThreads, freshOther);
+        this.other = merge(this.other, result.otherThreads, freshMy);
         // All includes loaded recent threads, even when already read before this visit.
         for (const room of this.props.client.getVisibleRooms(
             SettingsStore.getValue("feature_dynamic_room_predecessors"),
@@ -162,30 +171,40 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
 
     public select = (id: string): void => {
         const data = [...this.my, ...this.other].find((item) => item.thread.id === id);
-        if (!data || this.selection?.data.thread.id === id) return;
-        this.selection = { data, initialEvent: getFirstUnreadEvent(this.props.client, data.thread) };
-        const selection = this.selection;
-        if (!selection.initialEvent && this.unread.has(id)) {
-            void this.props.client
-                .getLatestTimeline(data.thread.timelineSet)
-                .then(() => {
-                    if (this.isDisposed || this.selection !== selection) return;
-                    selection.initialEvent =
-                        getFirstUnreadEvent(this.props.client, data.thread) ??
-                        data.thread.timelineSet
-                            .getLiveTimeline()
-                            .getEvents()
-                            .find((event) => event.getId() !== data.thread.id);
-                    this.publish();
-                })
-                .catch(() => {
-                    if (!this.isDisposed) this.snapshot.merge({ error: _t("threads_view|load_failed") });
-                });
+        if (!data) return;
+        if (this.selection?.data.thread.id === id) {
+            if (this.getSnapshot().error && !this.selection.loading) this.loadSelection(this.selection);
+            return;
         }
+        this.snapshot.merge({ error: undefined });
+        const readId = data.thread.getEventReadUpTo(this.props.client.getSafeUserId());
+        const receiptLoaded =
+            !readId || readId === data.thread.id || data.thread.events.some((event) => event.getId() === readId);
+        const initialEvent =
+            this.unread.has(id) && receiptLoaded ? getFirstUnreadEvent(this.props.client, data.thread) : undefined;
+        this.selection = { data, initialEvent, readId };
+        if (!initialEvent && this.unread.has(id)) this.loadSelection(this.selection);
         this.visited.add(id);
         // The timeline sends receipts as replies are displayed. Keep the selected row out of the queue.
         this.unread.delete(id);
         this.publish();
+    };
+
+    private loadSelection = (selection: ThreadsSelection): void => {
+        selection.loading = true;
+        this.snapshot.merge({ error: undefined });
+        void loadFirstUnreadEvent(this.props.client, selection.data.thread, selection.readId ?? null)
+            .then((initialEvent) => {
+                if (this.isDisposed || this.selection !== selection) return;
+                selection.initialEvent = initialEvent;
+                selection.loading = false;
+                this.publish();
+            })
+            .catch(() => {
+                if (this.isDisposed || this.selection !== selection) return;
+                selection.loading = false;
+                this.snapshot.merge({ error: _t("threads_view|load_failed") });
+            });
     };
 
     public next = (): void => {

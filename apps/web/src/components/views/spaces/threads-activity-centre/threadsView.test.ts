@@ -7,9 +7,22 @@ Please see LICENSE in the repository root for full details.
 
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { type MatrixClient, type Thread, type Room, MatrixEvent, ReceiptType } from "matrix-js-sdk/src/matrix";
+import {
+    type MatrixClient,
+    type Thread,
+    type Room,
+    type EventTimeline,
+    MatrixEvent,
+    ReceiptType,
+} from "matrix-js-sdk/src/matrix";
 
-import { getFirstUnreadEvent, getNextUnreadThread, getThreadsViewList, type ThreadData } from "./useUnreadThreadRooms";
+import {
+    getFirstUnreadEvent,
+    loadFirstUnreadEvent,
+    getNextUnreadThread,
+    getThreadsViewList,
+    type ThreadData,
+} from "./useUnreadThreadRooms";
 import { clearThreadsNotifications } from "../../../../utils/notifications";
 import SettingsStore from "../../../../settings/SettingsStore";
 import { NotificationLevel } from "../../../../stores/notifications/NotificationLevel";
@@ -54,6 +67,47 @@ describe("Threads view helpers", () => {
         const { thread } = data("a", 1);
         expect(getFirstUnreadEvent(client, thread)).toBe(thread.events[1]);
     });
+    it("should find the reply after an unloaded receipt instead of the newest page", async () => {
+        const { thread } = data("a", 1);
+        const read = new MatrixEvent({ event_id: "old-receipt" });
+        const first = new MatrixEvent({ event_id: "first-unread" });
+        const timeline = { getEvents: () => [read, first], getPaginationToken: () => null } as unknown as EventTimeline;
+        const getEventTimeline = vi.fn().mockResolvedValue(timeline);
+        const loader = {
+            ...client,
+            getLatestTimeline: vi.fn().mockResolvedValue({ getEvents: () => thread.events }),
+            getEventTimeline,
+        } as unknown as MatrixClient;
+        expect(await loadFirstUnreadEvent(loader, thread, "old-receipt")).toBe(first);
+        expect(getEventTimeline).toHaveBeenCalledWith(thread.timelineSet, "old-receipt");
+    });
+    it("should paginate to the start when a thread has no receipt", async () => {
+        const { thread } = data("a", 1);
+        const first = new MatrixEvent({ event_id: "first" });
+        let events = [...thread.events];
+        let token: string | null = "earlier";
+        const timeline = { getEvents: () => events, getPaginationToken: () => token } as unknown as EventTimeline;
+        const loader = {
+            ...client,
+            getLatestTimeline: vi.fn().mockResolvedValue(timeline),
+            paginateEventTimeline: vi.fn().mockImplementation(async () => {
+                events = [thread.events[0], first, thread.events[1]];
+                token = null;
+                return true;
+            }),
+        } as unknown as MatrixClient;
+        expect(await loadFirstUnreadEvent(loader, thread, null)).toBe(first);
+        expect(loader.paginateEventTimeline).toHaveBeenCalledWith(timeline, { backwards: true, limit: 50 });
+    });
+    it("should propagate a load failure so selecting the row can retry", async () => {
+        const { thread } = data("a", 1);
+        const loader = {
+            ...client,
+            getLatestTimeline: vi.fn().mockRejectedValue(new Error("offline")),
+        } as unknown as MatrixClient;
+        await expect(loadFirstUnreadEvent(loader, thread, null)).rejects.toThrow("offline");
+    });
+
     it("should send threaded private receipts and only clear thread counts", async () => {
         vi.spyOn(SettingsStore, "getValue").mockReturnValue(false);
         const a = data("a", 1),

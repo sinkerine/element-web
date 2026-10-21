@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ClientEvent,
+    EventTimeline,
     type MatrixClient,
     MatrixEventEvent,
     type MatrixEvent,
@@ -40,6 +41,40 @@ export function getFirstUnreadEvent(client: MatrixClient, thread: Thread): Matri
             (event) =>
                 event.getId() !== thread.id && !thread.room.hasUserReadEvent(client.getSafeUserId(), event.getId()!),
         );
+}
+
+/** Load enough thread history to locate the first reply after the receipt captured on selection. */
+export async function loadFirstUnreadEvent(
+    client: MatrixClient,
+    thread: Thread,
+    readId: string | null,
+): Promise<MatrixEvent | undefined> {
+    let timeline = await client.getLatestTimeline(thread.timelineSet);
+    if (readId && readId !== thread.id) {
+        const receiptTimeline = await client.getEventTimeline(thread.timelineSet, readId);
+        if (receiptTimeline) timeline = receiptTimeline;
+    }
+    if (!timeline) throw new Error("Thread timeline could not be loaded");
+    // With no receipt, walk to the beginning rather than jumping to the first reply of the newest page.
+    if (!readId || readId === thread.id) {
+        while (timeline.getPaginationToken(EventTimeline.BACKWARDS)) {
+            if (!(await client.paginateEventTimeline(timeline, { backwards: true, limit: 50 }))) break;
+        }
+    }
+    const events = timeline.getEvents();
+    const index = readId ? events.findIndex((event) => event.getId() === readId) : -1;
+    if (readId && readId !== thread.id && index === -1) {
+        throw new Error("Thread read receipt was not found in the loaded timeline");
+    }
+    const next = (): MatrixEvent | undefined =>
+        timeline
+            .getEvents()
+            .slice(index + 1)
+            .find((event) => event.getId() !== thread.id);
+    while (!next() && timeline.getPaginationToken(EventTimeline.FORWARDS)) {
+        if (!(await client.paginateEventTimeline(timeline, { backwards: false, limit: 50 }))) break;
+    }
+    return next();
 }
 
 /** List one tab, retaining threads read during this visit without changing their order. */

@@ -20,6 +20,7 @@ import { RightPanelPhases } from "../../stores/right-panel/RightPanelStorePhases
 import dis from "../../dispatcher/dispatcher";
 import { Action } from "../../dispatcher/actions";
 import { _t } from "../../languageHandler";
+import Spinner from "../views/elements/Spinner";
 
 /** Wide thread timeline sharing selection and queue with the left list. */
 export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: ThreadsListViewModel }): JSX.Element {
@@ -87,29 +88,44 @@ export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: Th
                       })
                     : _t("threads_view|caught_up")}
             </Text>
-            <ScopedRoomContextProvider
-                {...context}
-                room={room}
-                roomId={room.roomId}
-                roomViewStore={sdk.roomViewStore}
-                canSendMessages={room.currentState.maySendMessage(room.client.getSafeUserId())}
-                membersLoaded={true}
-                matrixClientIsReady={true}
-            >
-                <ThreadView
-                    key={`${room.roomId}:${thread.id}`}
+            {selection.loading ? (
+                <Spinner />
+            ) : snapshot.error ? (
+                <div className="mx_ThreadsPane_empty">
+                    <div>
+                        <Text as="p" size="md" role="alert">
+                            {snapshot.error}
+                        </Text>
+                        <Button kind="primary" size="md" onClick={() => vm.select(thread.id)}>
+                            {_t("action|retry")}
+                        </Button>
+                    </div>
+                </div>
+            ) : (
+                <ScopedRoomContextProvider
+                    {...context}
                     room={room}
-                    mxEvent={thread.rootEvent!}
-                    onClose={vm.exit}
-                    resizeNotifier={sdk.resizeNotifier}
-                    permalinkCreator={new RoomPermalinkCreator(room)}
-                    initialEvent={initialEvent}
-                    initialEventScrollIntoView={true}
-                    isInitialEventHighlighted={true}
-                    fullWindow={true}
-                    newDividerEventId={initialEvent?.getId()}
-                />
-            </ScopedRoomContextProvider>
+                    roomId={room.roomId}
+                    roomViewStore={sdk.roomViewStore}
+                    canSendMessages={room.currentState.maySendMessage(room.client.getSafeUserId())}
+                    membersLoaded={true}
+                    matrixClientIsReady={true}
+                >
+                    <ThreadView
+                        key={`${room.roomId}:${thread.id}`}
+                        room={room}
+                        mxEvent={thread.rootEvent!}
+                        onClose={vm.exit}
+                        resizeNotifier={sdk.resizeNotifier}
+                        permalinkCreator={new RoomPermalinkCreator(room)}
+                        initialEvent={initialEvent}
+                        initialEventScrollIntoView={true}
+                        isInitialEventHighlighted={true}
+                        fullWindow={true}
+                        newDividerEventId={initialEvent?.getId()}
+                    />
+                </ScopedRoomContextProvider>
+            )}
         </section>
     );
 }
