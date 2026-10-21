@@ -8,6 +8,7 @@ Please see LICENSE in the repository root for full details.
 import React from "react";
 import {
     BaseViewModel,
+    humanizeTime,
     NotificationDecoration,
     type ThreadsListViewSnapshot,
     type ThreadsListViewModel as Contract,
@@ -157,12 +158,8 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
                     roomName: data.room.name,
                     root: this.preview(data.thread.rootEvent),
                     latest: last ? `${getSenderName(last)}: ${this.preview(last)}` : "",
-                    time: last
-                        ? new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-                              Math.min(0, Math.round((last.getTs() - Date.now()) / 60000)),
-                              "minute",
-                          )
-                        : "",
+                    // Clamp to now so clock skew never shows a future time.
+                    time: last ? humanizeTime(Math.min(last.getTs(), Date.now())) : "",
                     avatar: <DecoratedRoomAvatar room={data.room} size="40px" />,
                     decoration: this.unread.has(data.thread.id) ? (
                         <NotificationDecoration

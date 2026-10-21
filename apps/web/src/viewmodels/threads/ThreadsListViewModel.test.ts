@@ -88,6 +88,20 @@ describe("ThreadsListViewModel", () => {
         vm.dispose();
         expect(client.listenerCount(ClientEvent.Sync)).toBe(0);
     });
+    it("should show the latest reply time in the largest fitting unit", () => {
+        vi.useFakeTimers({ now: 10 * 24 * 60 * 60000, toFake: ["Date"] });
+        const { vm } = setup();
+        vm.dispose();
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [item("a", Date.now() - 922 * 60000), item("b", Date.now() - 3397 * 60000)],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        const shown = new ThreadsListViewModel({ client: vm["props"].client });
+        expect(shown.getSnapshot().rows.map((row) => row.time)).toEqual(["16 hours ago", "3 days ago"]);
+        shown.dispose();
+    });
     it("should leave arrivals unselected in an already-synced caught-up visit", () => {
         const { vm, client, a } = setup();
         vm.dispose();
