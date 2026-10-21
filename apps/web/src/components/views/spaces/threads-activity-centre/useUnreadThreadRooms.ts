@@ -54,23 +54,30 @@ export function getFirstUnreadEvent(client: MatrixClient, thread: Thread): Matri
         );
 }
 
+/** Detect overlapping sync/history pages inserted out of chronological order by the SDK. */
+export function threadHistoryNeedsReload(thread: Thread): boolean {
+    return thread.events.some((event, index, events) => index > 0 && event.getTs() < events[index - 1].getTs());
+}
+
 /** Load enough thread history to locate the first reply after the receipt captured on selection. */
 export async function loadFirstUnreadEvent(
     client: MatrixClient,
     thread: Thread,
     readId: string | null,
 ): Promise<MatrixEvent | undefined> {
-    let timeline = await client.getLatestTimeline(thread.timelineSet);
-    if (readId && readId !== thread.id) {
-        const receiptTimeline = await client.getEventTimeline(thread.timelineSet, readId);
-        if (receiptTimeline) timeline = receiptTimeline;
+    // Sync can populate overlapping pages before initial metadata loading finishes. Re-fetch
+    // corrupted cached history as one contiguous sequence instead of rendering it out of order.
+    if (threadHistoryNeedsReload(thread)) {
+        await thread.resetLiveTimeline();
+        await client.paginateEventTimeline(thread.timelineSet.getLiveTimeline(), { backwards: true, limit: 50 });
     }
-    if (!timeline) throw new Error("Thread timeline could not be loaded");
-    // With no receipt, walk to the beginning rather than jumping to the first reply of the newest page.
-    if (!readId || readId === thread.id) {
-        while (timeline.getPaginationToken(EventTimeline.BACKWARDS)) {
-            if (!(await client.paginateEventTimeline(timeline, { backwards: true, limit: 50 }))) break;
-        }
+    const timeline = thread.timelineSet.getLiveTimeline();
+    // Extend the existing contiguous history. Loading overlapping /context timelines can insert
+    // the newest page ahead of older replies when the SDK joins the timelines.
+    const needsEarlierEvents = (): boolean =>
+        !readId || readId === thread.id || !timeline.getEvents().some((event) => event.getId() === readId);
+    while (needsEarlierEvents() && timeline.getPaginationToken(EventTimeline.BACKWARDS)) {
+        if (!(await client.paginateEventTimeline(timeline, { backwards: true, limit: 50 }))) break;
     }
     const events = timeline.getEvents();
     const index = readId ? events.findIndex((event) => event.getId() === readId) : -1;

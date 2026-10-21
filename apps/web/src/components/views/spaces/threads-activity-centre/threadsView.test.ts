@@ -92,25 +92,60 @@ describe("Threads view helpers", () => {
         const { thread } = data("a", 1);
         const read = new MatrixEvent({ event_id: "old-receipt" });
         const first = new MatrixEvent({ event_id: "first-unread" });
-        const timeline = { getEvents: () => [read, first], getPaginationToken: () => null } as unknown as EventTimeline;
-        const getEventTimeline = vi.fn().mockResolvedValue(timeline);
+        let events = [...thread.events];
+        let token: string | null = "older";
+        const timeline = { getEvents: () => events, getPaginationToken: () => token } as unknown as EventTimeline;
+        Object.assign(thread, { timelineSet: { getLiveTimeline: () => timeline } });
         const loader = {
             ...client,
-            getLatestTimeline: vi.fn().mockResolvedValue({ getEvents: () => thread.events }),
-            getEventTimeline,
+            getLatestTimeline: vi.fn(),
+            getEventTimeline: vi.fn(),
+            paginateEventTimeline: vi.fn().mockImplementation(async () => {
+                events = [read, first, ...events];
+                token = null;
+                return true;
+            }),
         } as unknown as MatrixClient;
         expect(await loadFirstUnreadEvent(loader, thread, "old-receipt")).toBe(first);
-        expect(getEventTimeline).toHaveBeenCalledWith(thread.timelineSet, "old-receipt");
+        expect(loader.getLatestTimeline).not.toHaveBeenCalled();
+        expect(loader.getEventTimeline).not.toHaveBeenCalled();
     });
+    it("should rebuild overlapping cached pages before choosing the unread boundary", async () => {
+        const { thread } = data("a", 1);
+        const reply = (id: string, ts: number): MatrixEvent => new MatrixEvent({ event_id: id, origin_server_ts: ts });
+        const read = reply("read", 1),
+            first = reply("first", 2),
+            latest = reply("latest", 3);
+        let events = [latest, read, first];
+        Object.defineProperty(thread, "events", { get: () => events });
+        const timeline = { getEvents: () => events, getPaginationToken: () => null } as unknown as EventTimeline;
+        Object.assign(thread, {
+            timelineSet: { getLiveTimeline: () => timeline },
+            resetLiveTimeline: vi.fn().mockImplementation(async () => {
+                events = [];
+            }),
+        });
+        const loader = {
+            ...client,
+            paginateEventTimeline: vi.fn().mockImplementation(async () => {
+                events = [read, first, latest];
+                return false;
+            }),
+        } as unknown as MatrixClient;
+        expect(await loadFirstUnreadEvent(loader, thread, "read")).toBe(first);
+        expect(thread.resetLiveTimeline).toHaveBeenCalledOnce();
+        expect(thread.events.map((event) => event.getId())).toEqual(["read", "first", "latest"]);
+    });
+
     it("should paginate to the start when a thread has no receipt", async () => {
         const { thread } = data("a", 1);
         const first = new MatrixEvent({ event_id: "first" });
         let events = [...thread.events];
         let token: string | null = "earlier";
         const timeline = { getEvents: () => events, getPaginationToken: () => token } as unknown as EventTimeline;
+        Object.assign(thread, { timelineSet: { getLiveTimeline: () => timeline } });
         const loader = {
             ...client,
-            getLatestTimeline: vi.fn().mockResolvedValue(timeline),
             paginateEventTimeline: vi.fn().mockImplementation(async () => {
                 events = [thread.events[0], first, thread.events[1]];
                 token = null;
@@ -122,9 +157,12 @@ describe("Threads view helpers", () => {
     });
     it("should propagate a load failure so selecting the row can retry", async () => {
         const { thread } = data("a", 1);
+        Object.assign(thread, {
+            timelineSet: { getLiveTimeline: () => ({ getEvents: () => [], getPaginationToken: () => "older" }) },
+        });
         const loader = {
             ...client,
-            getLatestTimeline: vi.fn().mockRejectedValue(new Error("offline")),
+            paginateEventTimeline: vi.fn().mockRejectedValue(new Error("offline")),
         } as unknown as MatrixClient;
         await expect(loadFirstUnreadEvent(loader, thread, null)).rejects.toThrow("offline");
     });

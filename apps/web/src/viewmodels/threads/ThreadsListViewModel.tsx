@@ -29,6 +29,7 @@ import {
     getFirstUnreadEvent,
     getThreadReadReceiptId,
     loadFirstUnreadEvent,
+    threadHistoryNeedsReload,
     getNextUnreadThread,
     getThreadsViewList,
     type ThreadData,
@@ -204,7 +205,9 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
                 ? data.thread.events.some((event) => event.getId() === readId)
                 : startsAtBeginning;
         const initialEvent =
-            this.unread.has(id) && receiptLoaded ? getFirstUnreadEvent(this.props.client, data.thread) : undefined;
+            this.unread.has(id) && receiptLoaded && !threadHistoryNeedsReload(data.thread)
+                ? getFirstUnreadEvent(this.props.client, data.thread)
+                : undefined;
         this.selection = { data, initialEvent, readId };
         if (!initialEvent && this.unread.has(id)) this.loadSelection(this.selection);
         this.visited.add(id);
