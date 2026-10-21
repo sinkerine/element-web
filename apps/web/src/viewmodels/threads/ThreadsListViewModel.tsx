@@ -14,6 +14,8 @@ import {
 } from "@element-hq/web-shared-components";
 import {
     ClientEvent,
+    SyncState,
+    ThreadEvent,
     RoomEvent,
     MatrixEventEvent,
     type MatrixClient,
@@ -24,6 +26,7 @@ import {
     computeUnreadThreadRooms,
     evaluateThreadUnread,
     getFirstUnreadEvent,
+    getThreadReadReceiptId,
     loadFirstUnreadEvent,
     getNextUnreadThread,
     getThreadsViewList,
@@ -63,6 +66,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     private visited = new Set<string>();
     private pending = new Set<string>();
     private undoTimer?: ReturnType<typeof setTimeout>;
+    private waitingForInitialThreads = true;
     public selection?: ThreadsSelection;
 
     public constructor(props: Props) {
@@ -70,12 +74,16 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         this.disposables.trackListener(props.client, ClientEvent.Sync, this.refresh);
         this.disposables.trackListener(props.client, MatrixEventEvent.Decrypted, this.refresh);
         this.disposables.trackListener(props.client, RoomEvent.Receipt, this.refresh);
+        this.disposables.trackListener(props.client, ThreadEvent.Update, this.refresh);
+        this.disposables.trackListener(props.client, ThreadEvent.New, this.refresh);
         this.disposables.track(() => {
             clearTimeout(this.undoTimer);
             this.commitPending();
         });
         this.refresh();
-        this.next();
+        if (props.client.getSyncState() === SyncState.Syncing && !this.upNext && !this.selection) {
+            this.waitingForInitialThreads = false;
+        }
     }
 
     private preview = (event?: MatrixEvent): string =>
@@ -125,6 +133,14 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         for (const id of this.pending) this.unread.delete(id);
         if (this.selection) this.unread.delete(this.selection.data.thread.id);
         this.publish();
+        // A bookmarked page can mount before the first sync has populated its thread summaries.
+        if (this.waitingForInitialThreads && !this.selection && this.upNext) {
+            if (this.props.client.getSyncState() === SyncState.Syncing) this.next();
+            else
+                queueMicrotask(() => {
+                    if (!this.isDisposed && this.waitingForInitialThreads && !this.selection) this.next();
+                });
+        }
     };
 
     private publish = (): void => {
@@ -170,6 +186,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     };
 
     public select = (id: string): void => {
+        this.waitingForInitialThreads = false;
         const data = [...this.my, ...this.other].find((item) => item.thread.id === id);
         if (!data) return;
         if (this.selection?.data.thread.id === id) {
@@ -177,7 +194,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
             return;
         }
         this.snapshot.merge({ error: undefined });
-        const readId = data.thread.getEventReadUpTo(this.props.client.getSafeUserId());
+        const readId = getThreadReadReceiptId(this.props.client, data.thread);
         const receiptLoaded =
             !readId || readId === data.thread.id || data.thread.events.some((event) => event.getId() === readId);
         const initialEvent =
@@ -222,6 +239,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     }
 
     public setTab = (tab: "my" | "other"): void => {
+        this.waitingForInitialThreads = false;
         this.snapshot.merge({ tab });
         this.publish();
     };
@@ -234,6 +252,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     };
 
     public markAll = (): void => {
+        this.waitingForInitialThreads = false;
         this.commitPending();
         const source = this.getSnapshot().tab === "my" ? this.my : this.other;
         this.pending = new Set(source.filter((data) => this.unread.has(data.thread.id)).map((data) => data.thread.id));

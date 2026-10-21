@@ -48,6 +48,7 @@ function item(id: string, ts: number): helpers.ThreadData {
         events: [root, reply],
         rootEvent: root,
         getEventReadUpTo: () => id,
+        getReadReceiptForUserId: () => null,
     } as unknown as Thread;
     return { room, thread, notificationLevel: NotificationLevel.Activity, notificationCount: 0, muted: false };
 }
@@ -63,6 +64,7 @@ describe("ThreadsListViewModel", () => {
         const client = Object.assign(new TypedEventEmitter(), {
             getSafeUserId: () => "@me:test",
             getVisibleRooms: () => [],
+            getSyncState: () => SyncState.Syncing,
         }) as unknown as MatrixClient;
         vi.spyOn(helpers, "computeUnreadThreadRooms").mockReturnValue({
             participatingThreads: [a],
@@ -86,6 +88,50 @@ describe("ThreadsListViewModel", () => {
         vm.dispose();
         expect(client.listenerCount(ClientEvent.Sync)).toBe(0);
     });
+    it("should leave arrivals unselected in an already-synced caught-up visit", () => {
+        const { vm, client, a } = setup();
+        vm.dispose();
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.None,
+        });
+        const ready = new ThreadsListViewModel({ client });
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [a],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        client.emit(ClientEvent.Sync, SyncState.Syncing, null);
+        expect(ready.selection).toBeUndefined();
+        expect(ready.getSnapshot().myCount).toBe(1);
+        ready.dispose();
+    });
+
+    it("should wait for startup summaries before opening the newest unread", async () => {
+        const { vm, client, a } = setup();
+        vm.dispose();
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.None,
+        });
+        vi.spyOn(client, "getSyncState").mockReturnValue(SyncState.Prepared);
+        const starting = new ThreadsListViewModel({ client });
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [a],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        client.emit(ClientEvent.Sync, SyncState.Syncing, null);
+        await vi.waitFor(() => expect(starting.selection?.data.thread.id).toBe("a"));
+        starting.dispose();
+    });
+
     it("should move a newly relevant thread between tabs without duplicating it", () => {
         const { vm, client, a, b } = setup();
         vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({

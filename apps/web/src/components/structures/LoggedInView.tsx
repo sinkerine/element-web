@@ -266,6 +266,7 @@ class LoggedInView extends React.Component<IProps, IState> {
         this.timezoneProfileUpdateRef?.forEach((s) => SettingsStore.unwatchSetting(s));
         this.disposeResizerViewModel();
         this.threadsViewModel?.dispose();
+        this.threadsViewModel = undefined;
     }
 
     private onThreadsSpaceChange = (): void => {

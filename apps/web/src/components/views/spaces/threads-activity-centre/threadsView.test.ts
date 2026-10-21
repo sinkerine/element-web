@@ -18,6 +18,7 @@ import {
 
 import {
     getFirstUnreadEvent,
+    getThreadReadReceiptId,
     loadFirstUnreadEvent,
     getNextUnreadThread,
     getThreadsViewList,
@@ -39,7 +40,14 @@ function data(id: string, ts: number): ThreadData {
     ];
     return {
         room,
-        thread: { id, room, roomId: "!room:test", events, getEventReadUpTo: () => id } as unknown as Thread,
+        thread: {
+            id,
+            room,
+            roomId: "!room:test",
+            events,
+            getEventReadUpTo: () => id,
+            getReadReceiptForUserId: () => null,
+        } as unknown as Thread,
         notificationLevel: NotificationLevel.Activity,
         notificationCount: 0,
         muted: false,
@@ -63,6 +71,19 @@ describe("Threads view helpers", () => {
         expect(getNextUnreadThread([a], [b], new Set(["b"]))).toBe(b);
         expect(getNextUnreadThread([a], [b], new Set())).toBeUndefined();
     });
+    it("should use explicit private receipts instead of the migration read position", () => {
+        const { thread } = data("a", 1);
+        thread.getReadReceiptForUserId = vi
+            .fn()
+            .mockImplementation((_user, _ignore, type) =>
+                type === ReceiptType.ReadPrivate
+                    ? { eventId: "private", data: { ts: 2 } }
+                    : { eventId: "public", data: { ts: 1 } },
+            );
+        expect(getThreadReadReceiptId(client, thread)).toBe("private");
+        expect(thread.getReadReceiptForUserId).toHaveBeenCalledWith("@me:test", true, ReceiptType.ReadPrivate);
+    });
+
     it("should find the first unread reply and skip the root", () => {
         const { thread } = data("a", 1);
         expect(getFirstUnreadEvent(client, thread)).toBe(thread.events[1]);

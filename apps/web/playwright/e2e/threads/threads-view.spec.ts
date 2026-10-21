@@ -33,6 +33,10 @@ test.describe("Threads view", () => {
         await threads.click();
         await expect(page).toHaveURL(/#\/threads$/);
         await expect(page.getByRole("heading", { name: "Second room › Thread" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Thread", exact: true })).toHaveCount(0);
+        const list = page.getByRole("region", { name: "Threads", exact: true });
+        expect((await list.boundingBox())?.width).toBe(400);
+        await expect(list.getByText("Alt+Shift+T", { exact: true })).toBeVisible();
         await expect(page.getByRole("separator", { name: "New" })).toBeVisible();
         expect(await threads.boundingBox()).toEqual(before);
         await page.getByRole("button", { name: "Next unread (1)" }).click();
@@ -49,5 +53,36 @@ test.describe("Threads view", () => {
         await threads.click();
         await page.getByRole("button", { name: "Home", exact: true }).click();
         await expect(page).not.toHaveURL(/#\/threads$/);
+    });
+
+    test("should offer new arrivals from an empty pane and undo only the current tab", async ({ page, app, bot }) => {
+        const original = await app.client.createRoom({ name: "Original room" });
+        const myRoom = await app.client.createRoom({ name: "My room" });
+        const otherRoom = await app.client.createRoom({ name: "Other room" });
+        for (const roomId of [myRoom, otherRoom]) {
+            await app.client.inviteUser(roomId, bot.credentials!.userId);
+            await bot.joinRoom(roomId);
+        }
+        const mine = await app.client.sendMessage(myRoom, "My root");
+        const other = await bot.sendMessage(otherRoom, "Other root");
+        await page.goto(`/#/room/${original}`);
+        await page
+            .getByRole("navigation", { name: "Spaces" })
+            .getByRole("button", { name: "Threads", exact: true })
+            .click();
+        await expect(page.getByRole("heading", { name: "You're all caught up" })).toBeVisible();
+        await bot.sendMessage(myRoom, "My new reply", mine.event_id);
+        await bot.sendMessage(otherRoom, "Other new reply", other.event_id);
+        await expect(page.getByRole("heading", { name: "Pick a thread" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "My threads (1)" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "Other threads (1)" })).toBeVisible();
+        await page.getByRole("button", { name: "Mark all as read" }).click();
+        await expect(page.getByText("Marked 1 thread as read", { exact: true })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "My threads (0)" })).toBeVisible();
+        await expect(page.getByRole("tab", { name: "Other threads (1)" })).toBeVisible();
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
+        await expect(page.getByRole("tab", { name: "My threads (1)" })).toBeVisible();
+        await page.getByRole("button", { name: "Open latest unread", exact: true }).last().click();
+        await expect(page.getByRole("heading", { name: "My room › Thread" })).toBeVisible();
     });
 });

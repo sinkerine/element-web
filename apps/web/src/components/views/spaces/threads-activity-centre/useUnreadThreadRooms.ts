@@ -13,6 +13,7 @@ import {
     type MatrixClient,
     MatrixEventEvent,
     type MatrixEvent,
+    ReceiptType,
     NotificationCountType,
     type Room,
     RoomEvent,
@@ -31,9 +32,19 @@ import { getRoomNotifsState, RoomNotifState } from "../../../../RoomNotifs";
 
 const MIN_UPDATE_INTERVAL_MS = 500;
 
+/** Read the explicit receipt without the SDK's pre-thread-receipt migration heuristic. */
+export function getThreadReadReceiptId(client: MatrixClient, thread: Thread): string | null {
+    const userId = client.getSafeUserId();
+    const receipts = [
+        thread.getReadReceiptForUserId(userId, true, ReceiptType.Read),
+        thread.getReadReceiptForUserId(userId, true, ReceiptType.ReadPrivate),
+    ].filter((receipt) => receipt !== null);
+    return receipts.sort((a, b) => b.data.ts - a.data.ts)[0]?.eventId ?? null;
+}
+
 /** Return the first loaded reply after the user's threaded receipt. */
 export function getFirstUnreadEvent(client: MatrixClient, thread: Thread): MatrixEvent | undefined {
-    const readId = thread.getEventReadUpTo(client.getSafeUserId());
+    const readId = getThreadReadReceiptId(client, thread);
     const index = thread.events.findIndex((event) => event.getId() === readId);
     return thread.events
         .slice(index + 1)
