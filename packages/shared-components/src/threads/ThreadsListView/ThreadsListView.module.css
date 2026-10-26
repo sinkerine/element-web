@@ -36,36 +36,6 @@ Please see LICENSE in the repository root for full details.
     flex: 1;
     margin: 0;
 }
-.list .jump {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--cpd-space-2x);
-    margin: var(--cpd-space-3x);
-    padding: var(--cpd-space-3x);
-    text-align: start;
-    background: var(--cpd-color-bg-action-primary-rest);
-    color: var(--cpd-color-text-on-solid-primary);
-}
-.jumpPreview {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-.jumpPreview > * {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-.jumpPreview > span:last-child {
-    font: var(--cpd-font-body-xs-regular);
-}
-.jump kbd {
-    border: 1px solid currentColor;
-    border-radius: var(--cpd-space-1x);
-    padding: var(--cpd-space-0-5x);
-    font: var(--cpd-font-body-xs-regular);
-}
 .rows {
     flex: 1;
     overflow: auto;

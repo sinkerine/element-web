@@ -31,7 +31,7 @@ function Example(): React.JSX.Element {
             hasMore: false,
             canUndo: false,
         },
-        { select: fn(), loadMore: fn(), next: fn(), markAll: fn(), undo: fn(), exit: fn() },
+        { select: fn(), loadMore: fn(), markAll: fn(), undo: fn(), exit: fn() },
     );
     return <ThreadsListView vm={vm} />;
 }

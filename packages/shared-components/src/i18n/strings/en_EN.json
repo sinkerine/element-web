@@ -293,7 +293,6 @@
         "caught_up": "You're all caught up",
         "escape_hint": "Esc to leave",
         "exit": "Exit",
-        "latest": "Open latest unread",
         "mark_all": "Mark all as read",
         "marked_read": {
             "one": "Marked %(count)s thread as read",

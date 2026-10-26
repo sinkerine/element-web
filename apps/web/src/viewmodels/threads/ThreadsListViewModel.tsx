@@ -175,9 +175,6 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
             selectedId: this.selection?.data.thread.id,
             canUndo: this.pending.size > 0,
             markedCount: this.pending.size,
-            latestUnreadPreview: this.upNext
-                ? `${this.upNext.room.name} · ${this.preview(this.upNext.thread.events.at(-1))}`
-                : undefined,
         });
     };
 

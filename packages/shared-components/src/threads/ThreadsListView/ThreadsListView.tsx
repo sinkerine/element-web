@@ -8,7 +8,6 @@ Please see LICENSE in the repository root for full details.
 import React, { type JSX, type ReactNode, type UIEvent } from "react";
 import { Text } from "@vector-im/compound-web";
 import CheckAllIcon from "@vector-im/compound-design-tokens/assets/web/icons/check";
-import ArrowRightIcon from "@vector-im/compound-design-tokens/assets/web/icons/arrow-right";
 
 import { type ViewModel, useViewModel } from "../../core/viewmodel";
 import { useI18n } from "../../core/i18n/i18nContext";
@@ -38,8 +37,6 @@ export interface ThreadsListViewSnapshot {
     canUndo: boolean;
     /** Number of receipts pending during the undo grace period. */
     markedCount?: number;
-    /** Destination of Open latest unread, in the queue order. */
-    latestUnreadPreview?: string;
     error?: string;
 }
 
@@ -47,7 +44,6 @@ export interface ThreadsListViewSnapshot {
 export interface ThreadsListViewActions {
     select: (id: string) => void;
     loadMore: () => void;
-    next: () => void;
     markAll: () => void;
     undo: () => void;
     exit: () => void;
@@ -79,18 +75,6 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                     {_t("threads_view|exit")}
                 </button>
             </Flex>
-            {s.unreadCount > 0 && (
-                <button type="button" className={styles.jump} onClick={vm.next} aria-label={_t("threads_view|latest")}>
-                    <ArrowRightIcon width={20} height={20} />
-                    <span className={styles.jumpPreview}>
-                        <Text as="span" size="sm" weight="semibold">
-                            {_t("threads_view|latest")}
-                        </Text>
-                        <span>{s.latestUnreadPreview}</span>
-                    </span>
-                    <kbd>Alt+Shift+T</kbd>
-                </button>
-            )}
             <div className={styles.rows} onScroll={onScroll}>
                 {s.rows.map((row) => (
                     <button

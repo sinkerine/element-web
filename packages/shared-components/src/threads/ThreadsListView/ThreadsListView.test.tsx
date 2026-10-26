@@ -16,7 +16,6 @@ import { MockViewModel } from "../../core/viewmodel/MockViewModel";
 class TestViewModel extends MockViewModel<ThreadsListViewSnapshot> {
     public select = vi.fn();
     public loadMore = vi.fn();
-    public next = vi.fn();
     public markAll = vi.fn();
     public undo = vi.fn();
     public exit = vi.fn();
@@ -41,7 +40,6 @@ describe("ThreadsListView", () => {
             hasMore: false,
             canUndo: true,
             markedCount: 2,
-            latestUnreadPreview: "Engineering · New reply",
             selectedId: "thread",
         });
         render(<ThreadsListView vm={vm} />);
@@ -52,10 +50,7 @@ describe("ThreadsListView", () => {
         expect(row).toHaveAttribute("aria-current", "true");
         await user.click(row);
         expect(vm.select).toHaveBeenCalledWith("thread");
-        expect(screen.getByText("Engineering · New reply")).toBeVisible();
-        expect(screen.getByText("Alt+Shift+T")).toBeVisible();
-        await user.click(screen.getByRole("button", { name: "Open latest unread" }));
-        expect(vm.next).toHaveBeenCalledOnce();
+        expect(screen.queryByRole("button", { name: "Open latest unread" })).toBeNull();
         await user.click(screen.getByRole("button", { name: "Mark all as read" }));
         expect(vm.markAll).toHaveBeenCalledOnce();
         expect(screen.getByText("Marked 2 threads as read")).toBeVisible();
@@ -64,7 +59,7 @@ describe("ThreadsListView", () => {
         await user.click(screen.getByRole("button", { name: "Exit" }));
         expect(vm.exit).toHaveBeenCalledOnce();
     });
-    it("should show the caught-up state without a latest unread action", () => {
+    it("should show the caught-up state", () => {
         const vm = new TestViewModel({
             rows: [],
             unreadCount: 0,
@@ -73,7 +68,6 @@ describe("ThreadsListView", () => {
         });
         render(<ThreadsListView vm={vm} />);
         expect(screen.getByText("You're all caught up")).toBeVisible();
-        expect(screen.queryByRole("button", { name: "Open latest unread" })).toBeNull();
     });
     it("should request the next page only when scrolled near the end of a list with more threads", () => {
         const row = (id: string) => ({

@@ -51,7 +51,6 @@ test.describe("Threads view", () => {
         await expect(page.getByRole("heading", { name: "Thread", exact: true })).toHaveCount(0);
         const list = page.getByRole("region", { name: "Threads", exact: true });
         expect((await list.boundingBox())?.width).toBe(400);
-        await expect(list.getByText("Alt+Shift+T", { exact: true })).toBeVisible();
         await expect(page.getByRole("separator", { name: "New" })).toBeVisible();
         expect(await threads.boundingBox()).toEqual(before);
         await page.getByRole("button", { name: "Next unread (1)" }).click();
@@ -100,7 +99,7 @@ test.describe("Threads view", () => {
         await expect(page.getByText("Marked 1 thread as read", { exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Undo", exact: true }).click();
         await expect(list.getByText("1 unread across all rooms", { exact: true })).toBeVisible();
-        await page.getByRole("button", { name: "Open latest unread", exact: true }).last().click();
+        await page.getByRole("button", { name: "Open latest unread", exact: true }).click();
         await expect(page.getByRole("heading", { name: "My room › Thread" })).toBeVisible();
     });
 });
