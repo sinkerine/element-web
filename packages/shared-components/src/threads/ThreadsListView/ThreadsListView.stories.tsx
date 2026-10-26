@@ -27,13 +27,11 @@ function Example(): React.JSX.Element {
                     decoration: null,
                 },
             ],
-            myCount: 1,
-            otherCount: 0,
-            tab: "my" as const,
-            filter: "unread" as const,
+            unreadCount: 1,
+            hasMore: false,
             canUndo: false,
         },
-        { select: fn(), setTab: fn(), setFilter: fn(), next: fn(), markAll: fn(), undo: fn(), exit: fn() },
+        { select: fn(), loadMore: fn(), next: fn(), markAll: fn(), undo: fn(), exit: fn() },
     );
     return <ThreadsListView vm={vm} />;
 }

@@ -95,28 +95,26 @@ export async function loadFirstUnreadEvent(
     return next();
 }
 
-/** List one tab, retaining threads read during this visit without changing their order. */
+/**
+ * Order the Threads view list: unread threads first, then read ones, each newest first.
+ * Threads read during this visit keep their unread position so rows do not jump when opened.
+ */
 export function getThreadsViewList(
     threads: ThreadData[],
     unreadIds: ReadonlySet<string>,
-    filter: "unread" | "all",
     visited: ReadonlySet<string> = new Set(),
 ): ThreadData[] {
-    return threads
-        .filter(({ thread }) => filter === "all" || unreadIds.has(thread.id) || visited.has(thread.id))
-        .sort((a, b) => (b.thread.events.at(-1)?.getTs() ?? 0) - (a.thread.events.at(-1)?.getTs() ?? 0));
+    const rank = ({ thread }: ThreadData): number => (unreadIds.has(thread.id) || visited.has(thread.id) ? 0 : 1);
+    const latest = ({ thread }: ThreadData): number => thread.events.at(-1)?.getTs() ?? 0;
+    return [...threads].sort((a, b) => rank(a) - rank(b) || latest(b) - latest(a));
 }
 
-/** Follow My threads newest first, then Other threads, across rooms. */
-export function getNextUnreadThread(
-    participating: ThreadData[],
-    other: ThreadData[],
-    unreadIds: ReadonlySet<string>,
-): ThreadData | undefined {
-    return [
-        ...getThreadsViewList(participating, unreadIds, "unread"),
-        ...getThreadsViewList(other, unreadIds, "unread"),
-    ][0];
+/** The newest unread thread. */
+export function getNextUnreadThread(threads: ThreadData[], unreadIds: ReadonlySet<string>): ThreadData | undefined {
+    return getThreadsViewList(
+        threads.filter(({ thread }) => unreadIds.has(thread.id)),
+        unreadIds,
+    )[0];
 }
 
 /**

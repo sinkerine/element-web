@@ -61,10 +61,13 @@ interface Props {
     client: MatrixClient;
 }
 
+/** Rows added to the list each time the user scrolls to its end. */
+export const THREADS_PAGE_SIZE = 30;
+
 /** Owns one visit to Threads, including its retained rows and undo grace period. */
 export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot, Props> implements Contract {
-    private my: ThreadData[] = [];
-    private other: ThreadData[] = [];
+    private threads: ThreadData[] = [];
+    private shownCount = THREADS_PAGE_SIZE;
     private unread = new Set<string>();
     private visited = new Set<string>();
     private pending = new Set<string>();
@@ -73,7 +76,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     public selection?: ThreadsSelection;
 
     public constructor(props: Props) {
-        super(props, { rows: [], tab: "my", filter: "unread", myCount: 0, otherCount: 0, canUndo: false });
+        super(props, { rows: [], unreadCount: 0, hasMore: false, canUndo: false });
         this.disposables.trackListener(props.client, ClientEvent.Sync, this.refresh);
         this.disposables.trackListener(props.client, MatrixEventEvent.Decrypted, this.refresh);
         this.disposables.trackListener(props.client, RoomEvent.Receipt, this.refresh);
@@ -99,40 +102,35 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
             SettingsStore.getValue("feature_dynamic_room_predecessors"),
             SettingsStore.getValue("Notifications.tac_only_notifications"),
         );
-        // Fresh relevance is authoritative; retain read rows only in their current tab.
-        const freshMy = new Set(result.participatingThreads.map((data) => data.thread.id));
-        const freshOther = new Set(result.otherThreads.map((data) => data.thread.id));
-        const merge = (old: ThreadData[], fresh: ThreadData[], moved: ReadonlySet<string>): ThreadData[] => [
+        // Fresh relevance is authoritative: a thread the user is no longer part of leaves the list.
+        const fresh = new Map(result.participatingThreads.map((data) => [data.thread.id, data]));
+        const dropped = new Set(result.otherThreads.map((data) => data.thread.id));
+        this.threads = [
             ...new Map(
-                [...old.filter((data) => !moved.has(data.thread.id)), ...fresh].map((data) => [data.thread.id, data]),
+                [...this.threads.filter((data) => !dropped.has(data.thread.id)), ...fresh.values()].map((data) => [
+                    data.thread.id,
+                    data,
+                ]),
             ).values(),
         ];
-        this.my = merge(this.my, result.participatingThreads, freshOther);
-        this.other = merge(this.other, result.otherThreads, freshMy);
-        // All includes loaded recent threads, even when already read before this visit.
+        // Also list loaded threads the user has replied to, even when already read before this visit.
         for (const room of this.props.client.getVisibleRooms(
             SettingsStore.getValue("feature_dynamic_room_predecessors"),
         )) {
             if (!isRoomVisible(room)) continue;
             for (const thread of room.getThreads()) {
-                if (
-                    this.my.some((data) => data.thread.id === thread.id) ||
-                    this.other.some((data) => data.thread.id === thread.id)
-                )
+                if (!thread.hasCurrentUserParticipated || this.threads.some((data) => data.thread.id === thread.id))
                     continue;
-                const data = {
+                this.threads.push({
                     thread,
                     room,
                     notificationLevel: NotificationLevel.None,
                     notificationCount: 0,
                     muted: getRoomNotifsState(room.client, room.roomId) === RoomNotifState.Mute,
-                };
-                if (thread.hasCurrentUserParticipated) this.my.push(data);
-                else if (!data.muted && !SettingsStore.getValue("Notifications.tac_only_notifications"))
-                    this.other.push(data);
+                });
             }
         }
-        this.unread = new Set([...result.participatingThreads, ...result.otherThreads].map((data) => data.thread.id));
+        this.unread = new Set(result.participatingThreads.map((data) => data.thread.id));
         for (const id of this.pending) this.unread.delete(id);
         if (this.selection) this.unread.delete(this.selection.data.thread.id);
         this.publish();
@@ -147,10 +145,9 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     };
 
     private publish = (): void => {
-        const { tab, filter } = this.getSnapshot();
-        const list = getThreadsViewList(tab === "my" ? this.my : this.other, this.unread, filter, this.visited);
+        const list = getThreadsViewList(this.threads, this.unread, this.visited);
         this.snapshot.merge({
-            rows: list.map((data) => {
+            rows: list.slice(0, this.shownCount).map((data) => {
                 const last = data.thread.events.at(-1);
                 const level = evaluateThreadUnread(this.props.client, data.room, data.thread);
                 return {
@@ -173,8 +170,8 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
                     unread: this.unread.has(data.thread.id),
                 };
             }),
-            myCount: this.my.filter((data) => this.unread.has(data.thread.id)).length,
-            otherCount: this.other.filter((data) => this.unread.has(data.thread.id)).length,
+            hasMore: list.length > this.shownCount,
+            unreadCount: this.threads.filter((data) => this.unread.has(data.thread.id)).length,
             selectedId: this.selection?.data.thread.id,
             canUndo: this.pending.size > 0,
             markedCount: this.pending.size,
@@ -186,7 +183,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
 
     public select = (id: string): void => {
         this.waitingForInitialThreads = false;
-        const data = [...this.my, ...this.other].find((item) => item.thread.id === id);
+        const data = this.threads.find((item) => item.thread.id === id);
         if (!data) return;
         if (this.selection?.data.thread.id === id) {
             if (this.getSnapshot().error && !this.selection.loading) this.loadSelection(this.selection);
@@ -233,24 +230,23 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     public next = (): void => {
         const next = this.upNext;
         if (!next) return;
-        this.snapshot.merge({ tab: this.my.includes(next) ? "my" : "other" });
+        // Keep the opened row rendered even when it sits beyond the loaded pages.
+        const index = getThreadsViewList(this.threads, this.unread, this.visited).indexOf(next);
+        while (this.shownCount <= index) this.shownCount += THREADS_PAGE_SIZE;
         this.select(next.thread.id);
     };
 
-    /** Next unread across both tabs, excluding the open pane. */
+    /** Newest unread thread, excluding the open pane. */
     public get upNext(): ThreadData | undefined {
         const ids = new Set(this.unread);
         if (this.selection) ids.delete(this.selection.data.thread.id);
-        return getNextUnreadThread(this.my, this.other, ids);
+        return getNextUnreadThread(this.threads, ids);
     }
 
-    public setTab = (tab: "my" | "other"): void => {
-        this.waitingForInitialThreads = false;
-        this.snapshot.merge({ tab });
-        this.publish();
-    };
-    public setFilter = (filter: "unread" | "all"): void => {
-        this.snapshot.merge({ filter });
+    /** Show the next page of threads. */
+    public loadMore = (): void => {
+        if (!this.getSnapshot().hasMore) return;
+        this.shownCount += THREADS_PAGE_SIZE;
         this.publish();
     };
     public exit = (): void => {
@@ -260,8 +256,9 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     public markAll = (): void => {
         this.waitingForInitialThreads = false;
         this.commitPending();
-        const source = this.getSnapshot().tab === "my" ? this.my : this.other;
-        this.pending = new Set(source.filter((data) => this.unread.has(data.thread.id)).map((data) => data.thread.id));
+        this.pending = new Set(
+            this.threads.filter((data) => this.unread.has(data.thread.id)).map((data) => data.thread.id),
+        );
         for (const id of this.pending) {
             this.visited.add(id);
             this.unread.delete(id);
@@ -280,9 +277,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     private commitPending = (): void => {
         clearTimeout(this.undoTimer);
         if (!this.pending.size) return;
-        const threads = [...this.my, ...this.other]
-            .filter((data) => this.pending.has(data.thread.id))
-            .map((data) => data.thread);
+        const threads = this.threads.filter((data) => this.pending.has(data.thread.id)).map((data) => data.thread);
         this.pending.clear();
         void clearThreadsNotifications(threads, this.props.client)
             .then(this.refresh)

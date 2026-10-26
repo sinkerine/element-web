@@ -55,21 +55,25 @@ function data(id: string, ts: number): ThreadData {
 }
 
 describe("Threads view helpers", () => {
-    it("should sort each tab newest first, retaining visited reads only for the visit", () => {
+    it("should list unread threads first, keep visited reads in place, then newest first", () => {
         const a = data("a", 1),
             b = data("b", 3),
-            c = data("c", 2);
-        expect(getThreadsViewList([a, b, c], new Set(["a"]), "unread", new Set(["c"])).map((t) => t.thread.id)).toEqual(
-            ["c", "a"],
-        );
-        expect(getThreadsViewList([a, b, c], new Set(["a"]), "all").map((t) => t.thread.id)).toEqual(["b", "c", "a"]);
+            c = data("c", 2),
+            d = data("d", 4);
+        expect(getThreadsViewList([a, b, c, d], new Set(["a"]), new Set(["c"])).map((t) => t.thread.id)).toEqual([
+            "c",
+            "a",
+            "d",
+            "b",
+        ]);
+        expect(getThreadsViewList([a, b, c], new Set()).map((t) => t.thread.id)).toEqual(["b", "c", "a"]);
     });
-    it("should exhaust My threads before Other threads", () => {
+    it("should pick the newest unread thread", () => {
         const a = data("a", 1),
             b = data("b", 3);
-        expect(getNextUnreadThread([a], [b], new Set(["a", "b"]))).toBe(a);
-        expect(getNextUnreadThread([a], [b], new Set(["b"]))).toBe(b);
-        expect(getNextUnreadThread([a], [b], new Set())).toBeUndefined();
+        expect(getNextUnreadThread([a, b], new Set(["a", "b"]))).toBe(b);
+        expect(getNextUnreadThread([a, b], new Set(["a"]))).toBe(a);
+        expect(getNextUnreadThread([a, b], new Set())).toBeUndefined();
     });
     it("should use explicit private receipts instead of the migration read position", () => {
         const { thread } = data("a", 1);

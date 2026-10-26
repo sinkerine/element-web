@@ -290,20 +290,15 @@
         "error_start_thread_existing_relation": "You can't start a thread from this message."
     },
     "threads_view": {
-        "all": "All",
         "caught_up": "You're all caught up",
         "escape_hint": "Esc to leave",
         "exit": "Exit",
-        "filter": "Filter",
         "latest": "Open latest unread",
         "mark_all": "Mark all as read",
         "marked_read": {
             "one": "Marked %(count)s thread as read",
             "other": "Marked %(count)s threads as read"
         },
-        "my": "My threads",
-        "other": "Other threads",
-        "unread": "Unread",
         "unread_count": {
             "one": "%(count)s unread across all rooms",
             "other": "%(count)s unread across all rooms"

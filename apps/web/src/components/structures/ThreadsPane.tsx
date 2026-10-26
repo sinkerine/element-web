@@ -28,7 +28,7 @@ export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: Th
     const context = useContext(RoomContext);
     const sdk = useContext(SDKContext);
     const selection = vm.selection;
-    const unreadCount = snapshot.myCount + snapshot.otherCount;
+    const unreadCount = snapshot.unreadCount;
     if (!selection?.data.thread.rootEvent)
         return (
             <div className="mx_ThreadsPane_empty">
@@ -75,9 +75,7 @@ export function ThreadsPane({ vm }: { /** Model owned by LoggedInView. */ vm: Th
                     {_t("threads_view|open_in_room")}
                 </Button>
                 <Button kind="secondary" size="md" onClick={vm.next} disabled={!next}>
-                    {next
-                        ? _t("threads_view|next", { count: snapshot.myCount + snapshot.otherCount })
-                        : _t("threads_view|all_read")}
+                    {next ? _t("threads_view|next", { count: snapshot.unreadCount }) : _t("threads_view|all_read")}
                 </Button>
             </div>
             <Text as="div" size="sm" className="mx_ThreadsPane_upNext">

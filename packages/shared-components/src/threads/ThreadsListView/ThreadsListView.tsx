@@ -5,7 +5,7 @@ SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
 Please see LICENSE in the repository root for full details.
 */
 
-import React, { type JSX, type ReactNode } from "react";
+import React, { type JSX, type ReactNode, type UIEvent } from "react";
 import { Text } from "@vector-im/compound-web";
 import CheckAllIcon from "@vector-im/compound-design-tokens/assets/web/icons/check";
 import ArrowRightIcon from "@vector-im/compound-design-tokens/assets/web/icons/arrow-right";
@@ -29,11 +29,11 @@ export interface ThreadsListRow {
 
 /** State for the full window thread list. */
 export interface ThreadsListViewSnapshot {
+    /** The loaded page of the user's threads, unread first and then newest first. */
     rows: ThreadsListRow[];
-    tab: "my" | "other";
-    filter: "unread" | "all";
-    myCount: number;
-    otherCount: number;
+    /** Whether more threads can be shown by scrolling to the end of the list. */
+    hasMore: boolean;
+    unreadCount: number;
     selectedId?: string;
     canUndo: boolean;
     /** Number of receipts pending during the undo grace period. */
@@ -46,8 +46,7 @@ export interface ThreadsListViewSnapshot {
 /** Commands exposed by the thread list. */
 export interface ThreadsListViewActions {
     select: (id: string) => void;
-    setTab: (tab: "my" | "other") => void;
-    setFilter: (filter: "unread" | "all") => void;
+    loadMore: () => void;
     next: () => void;
     markAll: () => void;
     undo: () => void;
@@ -57,10 +56,16 @@ export interface ThreadsListViewActions {
 /** Contract implemented by the application's thread list model. */
 export type ThreadsListViewModel = ViewModel<ThreadsListViewSnapshot, ThreadsListViewActions>;
 
+/** Distance from the end of the list, in pixels, at which the next page is requested. */
+const LOAD_MORE_THRESHOLD = 200;
+
 /** Cross-room list; all state and navigation belong to the supplied view model. */
 export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsListViewModel }): JSX.Element {
     const s = useViewModel(vm);
     const { translate: _t } = useI18n();
+    const onScroll = ({ currentTarget: el }: UIEvent<HTMLElement>): void => {
+        if (s.hasMore && el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_MORE_THRESHOLD) vm.loadMore();
+    };
     return (
         <Flex direction="column" align="stretch" className={styles.list} as="section" aria-label={_t("common|threads")}>
             <Flex align="center" className={styles.header}>
@@ -74,30 +79,7 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                     {_t("threads_view|exit")}
                 </button>
             </Flex>
-            <Flex className={styles.controls} align="center">
-                <Flex className={styles.tabs} role="tablist" aria-label={_t("common|threads")}>
-                    <button type="button" role="tab" aria-selected={s.tab === "my"} onClick={() => vm.setTab("my")}>
-                        {_t("threads_view|my")} ({s.myCount})
-                    </button>
-                    <button
-                        type="button"
-                        role="tab"
-                        aria-selected={s.tab === "other"}
-                        onClick={() => vm.setTab("other")}
-                    >
-                        {_t("threads_view|other")} ({s.otherCount})
-                    </button>
-                </Flex>
-                <Flex className={styles.filter} role="group" aria-label={_t("threads_view|filter")}>
-                    <button type="button" aria-pressed={s.filter === "unread"} onClick={() => vm.setFilter("unread")}>
-                        {_t("threads_view|unread")}
-                    </button>
-                    <button type="button" aria-pressed={s.filter === "all"} onClick={() => vm.setFilter("all")}>
-                        {_t("threads_view|all")}
-                    </button>
-                </Flex>
-            </Flex>
-            {s.myCount + s.otherCount > 0 && (
+            {s.unreadCount > 0 && (
                 <button type="button" className={styles.jump} onClick={vm.next} aria-label={_t("threads_view|latest")}>
                     <ArrowRightIcon width={20} height={20} />
                     <span className={styles.jumpPreview}>
@@ -109,7 +91,7 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                     <kbd>Alt+Shift+T</kbd>
                 </button>
             )}
-            <div role="tabpanel" className={styles.rows}>
+            <div className={styles.rows} onScroll={onScroll}>
                 {s.rows.map((row) => (
                     <button
                         type="button"
@@ -143,7 +125,7 @@ export function ThreadsListView({ vm }: { /** Owned by the host. */ vm: ThreadsL
                 <span>
                     {s.canUndo
                         ? _t("threads_view|marked_read", { count: s.markedCount ?? 0 })
-                        : _t("threads_view|unread_count", { count: s.myCount + s.otherCount })}
+                        : _t("threads_view|unread_count", { count: s.unreadCount })}
                 </span>
                 {s.canUndo ? (
                     <button type="button" onClick={vm.undo}>

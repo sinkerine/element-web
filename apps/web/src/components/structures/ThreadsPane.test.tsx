@@ -24,16 +24,14 @@ describe("ThreadsPane", () => {
     it("should replace caught-up feedback when replies arrive without selecting a thread", async () => {
         const model = new EmptyThreadsModel({
             rows: [],
-            tab: "my",
-            filter: "unread",
-            myCount: 0,
-            otherCount: 0,
+            unreadCount: 0,
+            hasMore: false,
             canUndo: false,
         });
         const vm = model as unknown as ThreadsListViewModel;
         const { rerender } = render(<ThreadsPane vm={vm} />);
         expect(screen.getByRole("heading", { name: "You're all caught up" })).toBeVisible();
-        const unread = new EmptyThreadsModel({ ...model.getSnapshot(), myCount: 1, otherCount: 1 });
+        const unread = new EmptyThreadsModel({ ...model.getSnapshot(), unreadCount: 2 });
         rerender(<ThreadsPane vm={unread as unknown as ThreadsListViewModel} />);
         expect(screen.queryByRole("heading", { name: "You're all caught up" })).toBeNull();
         expect(screen.getByRole("heading", { name: "Pick a thread" })).toBeVisible();

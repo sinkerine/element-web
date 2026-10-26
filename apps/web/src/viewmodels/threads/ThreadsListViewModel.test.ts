@@ -17,8 +17,10 @@ import {
     type Thread,
 } from "matrix-js-sdk/src/matrix";
 
-import { ThreadsListViewModel } from "./ThreadsListViewModel";
+import { THREADS_PAGE_SIZE, ThreadsListViewModel } from "./ThreadsListViewModel";
 import * as helpers from "../../components/views/spaces/threads-activity-centre/useUnreadThreadRooms";
+import * as roomVisibility from "../../stores/room-list-v3/isRoomVisible";
+import * as roomNotifs from "../../RoomNotifs";
 import { NotificationLevel } from "../../stores/notifications/NotificationLevel";
 import * as notifications from "../../utils/notifications";
 
@@ -59,16 +61,16 @@ describe("ThreadsListViewModel", () => {
         vi.useRealTimers();
     });
     function setup() {
-        const a = item("a", 1),
-            b = item("b", 2);
+        const a = item("a", 2),
+            b = item("b", 1);
         const client = Object.assign(new TypedEventEmitter(), {
             getSafeUserId: () => "@me:test",
             getVisibleRooms: () => [],
             getSyncState: () => SyncState.Syncing,
         }) as unknown as MatrixClient;
         vi.spyOn(helpers, "computeUnreadThreadRooms").mockReturnValue({
-            participatingThreads: [a],
-            otherThreads: [b],
+            participatingThreads: [a, b],
+            otherThreads: [],
             rooms: [],
             greatestNotificationLevel: NotificationLevel.Activity,
         });
@@ -76,14 +78,14 @@ describe("ThreadsListViewModel", () => {
         const clear = vi.spyOn(notifications, "clearThreadsNotifications").mockResolvedValue();
         return { vm: new ThreadsListViewModel({ client }), clear, client, a, b };
     }
-    it("should open My threads first and retain the read row when advancing across rooms", () => {
+    it("should open the newest unread first and retain the read row when advancing across rooms", () => {
         const { vm, client } = setup();
         expect(vm.selection?.data.thread.id).toBe("a");
         expect(vm.getSnapshot().rows[0].unread).toBe(false);
-        expect(vm.getSnapshot().otherCount).toBe(1);
+        expect(vm.getSnapshot().unreadCount).toBe(1);
         vm.next();
         expect(vm.selection?.data.thread.id).toBe("b");
-        expect(vm.getSnapshot().tab).toBe("other");
+        expect(vm.getSnapshot().rows.map((row) => row.id)).toEqual(["a", "b"]);
         expect(vm.upNext).toBeUndefined();
         vm.dispose();
         expect(client.listenerCount(ClientEvent.Sync)).toBe(0);
@@ -120,7 +122,7 @@ describe("ThreadsListViewModel", () => {
         });
         client.emit(ClientEvent.Sync, SyncState.Syncing, null);
         expect(ready.selection).toBeUndefined();
-        expect(ready.getSnapshot().myCount).toBe(1);
+        expect(ready.getSnapshot().unreadCount).toBe(1);
         ready.dispose();
     });
 
@@ -146,20 +148,61 @@ describe("ThreadsListViewModel", () => {
         starting.dispose();
     });
 
-    it("should move a newly relevant thread between tabs without duplicating it", () => {
+    it("should only list the user's threads and drop one that stops being relevant", () => {
         const { vm, client, a, b } = setup();
         vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
-            participatingThreads: [a, b],
-            otherThreads: [],
+            participatingThreads: [a],
+            otherThreads: [b],
             rooms: [],
             greatestNotificationLevel: NotificationLevel.Activity,
         });
         client.emit(ClientEvent.Sync, SyncState.Syncing, null);
-        expect(vm.getSnapshot().myCount).toBe(1);
-        expect(vm.getSnapshot().otherCount).toBe(0);
-        vm.setTab("other");
-        expect(vm.getSnapshot().rows).toHaveLength(0);
+        expect(vm.getSnapshot().rows.map((row) => row.id)).toEqual(["a"]);
+        expect(vm.getSnapshot().unreadCount).toBe(0);
         vm.dispose();
+    });
+
+    it("should list read threads the user joined after unread ones, newest first", () => {
+        const { vm, client, a } = setup();
+        vm.dispose();
+        const read = item("read", 5),
+            older = item("older", 3),
+            notMine = item("not-mine", 9);
+        Object.assign(read.thread, { hasCurrentUserParticipated: true });
+        Object.assign(older.thread, { hasCurrentUserParticipated: true });
+        const room = { roomId: "!test:test", client, getThreads: () => [older, notMine, read].map((d) => d.thread) };
+        vi.spyOn(client, "getVisibleRooms").mockReturnValue([room as unknown as Room]);
+        vi.spyOn(roomVisibility, "isRoomVisible").mockReturnValue(true);
+        vi.spyOn(roomNotifs, "getRoomNotifsState").mockReturnValue(roomNotifs.RoomNotifState.AllMessages);
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: [a],
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        vi.spyOn(client, "getSyncState").mockReturnValue(SyncState.Prepared);
+        const all = new ThreadsListViewModel({ client });
+        expect(all.getSnapshot().rows.map((row) => row.id)).toEqual(["a", "read", "older"]);
+        all.dispose();
+    });
+
+    it("should show threads a page at a time", () => {
+        const { vm, client } = setup();
+        vm.dispose();
+        const many = Array.from({ length: THREADS_PAGE_SIZE + 5 }, (_, i) => item(`t${i}`, 100 - i));
+        vi.mocked(helpers.computeUnreadThreadRooms).mockReturnValue({
+            participatingThreads: many,
+            otherThreads: [],
+            rooms: [],
+            greatestNotificationLevel: NotificationLevel.Activity,
+        });
+        const paged = new ThreadsListViewModel({ client });
+        expect(paged.getSnapshot().rows).toHaveLength(THREADS_PAGE_SIZE);
+        expect(paged.getSnapshot().hasMore).toBe(true);
+        paged.loadMore();
+        expect(paged.getSnapshot().rows).toHaveLength(THREADS_PAGE_SIZE + 5);
+        expect(paged.getSnapshot().hasMore).toBe(false);
+        paged.dispose();
     });
 
     it("should load the beginning when a receiptless thread only has recent replies cached", async () => {
@@ -196,14 +239,13 @@ describe("ThreadsListViewModel", () => {
     it("should allow undo before sending irreversible receipts", () => {
         vi.useFakeTimers();
         const { vm, clear } = setup();
-        vm.setTab("other");
         vm.markAll();
         expect(vm.getSnapshot().canUndo).toBe(true);
-        expect(vm.getSnapshot().otherCount).toBe(0);
+        expect(vm.getSnapshot().unreadCount).toBe(0);
         vm.undo();
         vi.advanceTimersByTime(5000);
         expect(clear).not.toHaveBeenCalled();
-        expect(vm.getSnapshot().otherCount).toBe(1);
+        expect(vm.getSnapshot().unreadCount).toBe(1);
         vm.markAll();
         vi.advanceTimersByTime(5000);
         expect(clear).toHaveBeenCalledOnce();
