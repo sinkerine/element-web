@@ -96,16 +96,24 @@ export async function loadFirstUnreadEvent(
 }
 
 /**
+ * The newest event of a thread. Prefers the server-bundled latest reply, since the thread's
+ * timeline may not have been loaded yet.
+ */
+export function getThreadLatestEvent(thread: Thread): MatrixEvent | undefined {
+    return thread.replyToEvent ?? thread.events.at(-1);
+}
+
+/**
  * Order the Threads view list: unread threads first, then read ones, each newest first.
- * Threads read during this visit keep their unread position so rows do not jump when opened.
+ * The open thread keeps its unread position so its row does not jump when opened.
  */
 export function getThreadsViewList(
     threads: ThreadData[],
     unreadIds: ReadonlySet<string>,
-    visited: ReadonlySet<string> = new Set(),
+    openId?: string,
 ): ThreadData[] {
-    const rank = ({ thread }: ThreadData): number => (unreadIds.has(thread.id) || visited.has(thread.id) ? 0 : 1);
-    const latest = ({ thread }: ThreadData): number => thread.events.at(-1)?.getTs() ?? 0;
+    const rank = ({ thread }: ThreadData): number => (unreadIds.has(thread.id) || thread.id === openId ? 0 : 1);
+    const latest = ({ thread }: ThreadData): number => getThreadLatestEvent(thread)?.getTs() ?? 0;
     return [...threads].sort((a, b) => rank(a) - rank(b) || latest(b) - latest(a));
 }
 

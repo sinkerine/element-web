@@ -33,6 +33,7 @@ import {
     threadHistoryNeedsReload,
     getNextUnreadThread,
     getThreadsViewList,
+    getThreadLatestEvent,
     type ThreadData,
 } from "../../components/views/spaces/threads-activity-centre/useUnreadThreadRooms";
 import { threadDecorationProps } from "../../components/views/spaces/threads-activity-centre/ThreadsActivityCentre";
@@ -69,7 +70,8 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     private threads: ThreadData[] = [];
     private shownCount = THREADS_PAGE_SIZE;
     private unread = new Set<string>();
-    private visited = new Set<string>();
+    /** The open thread, while it keeps the unread position it had when opened. */
+    private openedUnreadId?: string;
     private pending = new Set<string>();
     private undoTimer?: ReturnType<typeof setTimeout>;
     private waitingForInitialThreads = true;
@@ -145,10 +147,10 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
     };
 
     private publish = (): void => {
-        const list = getThreadsViewList(this.threads, this.unread, this.visited);
+        const list = getThreadsViewList(this.threads, this.unread, this.openedUnreadId);
         this.snapshot.merge({
             rows: list.slice(0, this.shownCount).map((data) => {
-                const last = data.thread.events.at(-1);
+                const last = getThreadLatestEvent(data.thread);
                 const level = evaluateThreadUnread(this.props.client, data.room, data.thread);
                 return {
                     id: data.thread.id,
@@ -201,7 +203,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
                 : undefined;
         this.selection = { data, initialEvent, readId };
         if (!initialEvent && this.unread.has(id)) this.loadSelection(this.selection);
-        this.visited.add(id);
+        this.openedUnreadId = this.unread.has(id) ? id : undefined;
         // The timeline sends receipts as replies are displayed. Keep the selected row out of the queue.
         this.unread.delete(id);
         this.publish();
@@ -228,7 +230,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         const next = this.upNext;
         if (!next) return;
         // Keep the opened row rendered even when it sits beyond the loaded pages.
-        const index = getThreadsViewList(this.threads, this.unread, this.visited).indexOf(next);
+        const index = getThreadsViewList(this.threads, this.unread, this.openedUnreadId).indexOf(next);
         while (this.shownCount <= index) this.shownCount += THREADS_PAGE_SIZE;
         this.select(next.thread.id);
     };
@@ -256,10 +258,7 @@ export class ThreadsListViewModel extends BaseViewModel<ThreadsListViewSnapshot,
         this.pending = new Set(
             this.threads.filter((data) => this.unread.has(data.thread.id)).map((data) => data.thread.id),
         );
-        for (const id of this.pending) {
-            this.visited.add(id);
-            this.unread.delete(id);
-        }
+        for (const id of this.pending) this.unread.delete(id);
         // Receipts cannot be rewound. Delay sending them until the undo grace period ends.
         this.undoTimer = setTimeout(this.commitPending, 5000);
         this.publish();

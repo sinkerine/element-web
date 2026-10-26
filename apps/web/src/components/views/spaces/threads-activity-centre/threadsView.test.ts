@@ -55,18 +55,30 @@ function data(id: string, ts: number): ThreadData {
 }
 
 describe("Threads view helpers", () => {
-    it("should list unread threads first, keep visited reads in place, then newest first", () => {
+    it("should list unread threads first, keep the open thread in place, then newest first", () => {
         const a = data("a", 1),
             b = data("b", 3),
             c = data("c", 2),
             d = data("d", 4);
-        expect(getThreadsViewList([a, b, c, d], new Set(["a"]), new Set(["c"])).map((t) => t.thread.id)).toEqual([
+        expect(getThreadsViewList([a, b, c, d], new Set(["a", "c"])).map((t) => t.thread.id)).toEqual([
+            "c",
+            "a",
+            "d",
+            "b",
+        ]);
+        expect(getThreadsViewList([a, b, c, d], new Set(["a"]), "c").map((t) => t.thread.id)).toEqual([
             "c",
             "a",
             "d",
             "b",
         ]);
         expect(getThreadsViewList([a, b, c], new Set()).map((t) => t.thread.id)).toEqual(["b", "c", "a"]);
+    });
+    it("should order by the bundled latest reply when the thread timeline is not loaded", () => {
+        const a = data("a", 1),
+            b = data("b", 2);
+        Object.assign(a.thread, { replyToEvent: new MatrixEvent({ event_id: "a-latest", origin_server_ts: 5 }) });
+        expect(getThreadsViewList([a, b], new Set()).map((t) => t.thread.id)).toEqual(["a", "b"]);
     });
     it("should pick the newest unread thread", () => {
         const a = data("a", 1),

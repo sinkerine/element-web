@@ -78,15 +78,18 @@ describe("ThreadsListViewModel", () => {
         const clear = vi.spyOn(notifications, "clearThreadsNotifications").mockResolvedValue();
         return { vm: new ThreadsListViewModel({ client }), clear, client, a, b };
     }
-    it("should open the newest unread first and retain the read row when advancing across rooms", () => {
+    it("should open the newest unread first and move read rows below unread ones when advancing", () => {
         const { vm, client } = setup();
         expect(vm.selection?.data.thread.id).toBe("a");
         expect(vm.getSnapshot().rows[0].unread).toBe(false);
         expect(vm.getSnapshot().unreadCount).toBe(1);
         vm.next();
         expect(vm.selection?.data.thread.id).toBe("b");
-        expect(vm.getSnapshot().rows.map((row) => row.id)).toEqual(["a", "b"]);
+        expect(vm.getSnapshot().rows.map((row) => row.id)).toEqual(["b", "a"]);
         expect(vm.upNext).toBeUndefined();
+        // Once left, the opened thread settles among the read rows by recency.
+        vm.select("a");
+        expect(vm.getSnapshot().rows.map((row) => row.id)).toEqual(["a", "b"]);
         vm.dispose();
         expect(client.listenerCount(ClientEvent.Sync)).toBe(0);
     });
