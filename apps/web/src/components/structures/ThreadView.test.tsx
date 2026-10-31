@@ -213,7 +213,7 @@ describe("ThreadView", () => {
     });
 
     it("clears highlight message in the room view store", async () => {
-        vi.spyOn(SDKContextClass.instance.roomViewStore, "getRoomId").mockReturnValue(room.roomId);
+        const getRoomId = vi.spyOn(SDKContextClass.instance.roomViewStore, "getRoomId").mockReturnValue(room.roomId);
         const mock = vi.spyOn(dispatcher, "dispatch");
         const { unmount } = await getComponent(rootEvent);
         mock.mockClear();
@@ -223,6 +223,24 @@ describe("ThreadView", () => {
             room_id: room.roomId,
             metricsTrigger: undefined,
         });
+        getRoomId.mockRestore();
+    });
+
+    it("should not navigate back to the room when opening Threads from a highlighted reply", async () => {
+        const store = SDKContextClass.instance.roomViewStore;
+        await store.viewRoom({ action: Action.ViewRoom, room_id: room.roomId, metricsTrigger: undefined });
+        expect(store.getRoomId()).toBe(room.roomId);
+        const { unmount } = await getComponent(rootEvent);
+        const dispatch = vi.spyOn(dispatcher, "dispatch");
+
+        act(() => {
+            dispatcher.dispatch({ action: Action.ViewThreads }, true);
+        });
+        expect(store.getRoomId()).toBeNull();
+        dispatch.mockClear();
+        unmount();
+
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ViewRoom }));
     });
 
     describe("handles Action.ComposerInsert", () => {

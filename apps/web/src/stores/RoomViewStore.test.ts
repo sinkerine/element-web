@@ -445,6 +445,18 @@ describe("RoomViewStore", function () {
         expect(roomViewStore.getRoomSummary()).toBeUndefined();
     });
 
+    it("should leave the room before the thread panel unmounts when opening Threads", async () => {
+        dis.dispatch({ action: Action.ViewRoom, room_id: roomId });
+        await untilDispatch(Action.ActiveRoomChanged, dis);
+        expect(roomViewStore.getRoomId()).toBe(roomId);
+
+        dis.dispatch({ action: Action.ViewThreads });
+        await untilDispatch(Action.ViewThreads, dis);
+        expect(roomViewStore.getRoomId()).toBeNull();
+        expect(roomViewStore.getRoomAlias()).toBeNull();
+        expect(roomViewStore.isViewingCall()).toBe(false);
+    });
+
     it("removes the roomId on ViewHomePage", async () => {
         dis.dispatch({ action: Action.ViewRoom, room_id: roomId });
         await untilDispatch(Action.ActiveRoomChanged, dis);
