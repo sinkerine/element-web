@@ -45,6 +45,8 @@ import {
     renderMBody,
 } from "./MBodyFactory";
 import { TextualBodyFactory } from "./TextualBodyFactory";
+import { InteractiveUiBody } from "./InteractiveUiBody";
+import { INTERACTIVE_UI_KEY } from "../../../interactive-ui/protocol";
 
 // onMessageAllowed is handled internally
 interface IProps extends Omit<IBodyProps, "onMessageAllowed" | "mediaEventHelper"> {
@@ -273,6 +275,17 @@ export default class MessageEvent extends React.Component<IProps> implements IMe
             // only resolve BodyType if event is not redacted
             if (this.props.mxEvent.isDecryptionFailure()) {
                 BodyType = DecryptionFailureBodyFactory;
+            } else if (
+                type === EventType.RoomMessage &&
+                msgtype === MsgType.Text &&
+                SettingsStore.getValue("feature_interactive_ui") &&
+                !this.props.forExport &&
+                !this.props.editState &&
+                !this.props.overrideBodyTypes &&
+                !this.props.inhibitInteraction &&
+                INTERACTIVE_UI_KEY in content
+            ) {
+                BodyType = InteractiveUiBody;
             } else if (type && this.evTypes.has(type)) {
                 BodyType = this.evTypes.get(type)!;
             } else if (msgtype && this.bodyTypes.has(msgtype)) {

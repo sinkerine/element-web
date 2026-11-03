@@ -1355,6 +1355,12 @@
         "impossible_dialog_description": "Your %(brand)s doesn't allow you to use an integration manager to do this. Please contact an admin.",
         "impossible_dialog_title": "Integrations not allowed"
     },
+    "interactive_ui": {
+        "invalid_content": "Couldn’t show interactive content.",
+        "open_link": "Open external link?",
+        "send_failed": "Could not send your response. Please try again.",
+        "waiting_for_sender": "No confirmation from %(sender)s yet. You can try again."
+    },
     "invite": {
         "confirm_unknown_users": {
             "invite_subtitle": "You don't have any chats with these contacts yet.",
@@ -1564,6 +1570,8 @@
         "group_voip": "Voice & Video",
         "group_widgets": "Widgets",
         "hidebold": "Hide notification dot (only display counters badges)",
+        "interactive_ui": "Interactive messages",
+        "interactive_ui_description": "Display interactive cards, forms, charts and knowledge maps in messages.",
         "join_beta": "Join the beta",
         "join_beta_reload": "Joining the beta will reload %(brand)s.",
         "jump_to_date": "Scroll to date (adds /jumptodate and date headers)",

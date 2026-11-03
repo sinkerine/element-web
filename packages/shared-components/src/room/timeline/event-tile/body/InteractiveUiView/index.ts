@@ -7,3 +7,4 @@ Please see LICENSE in the repository root for full details.
 
 export { InteractiveUiView } from "./InteractiveUiView";
 export type * from "./types";
+export { layoutLayeredGraph } from "./graph/GraphLayout";
