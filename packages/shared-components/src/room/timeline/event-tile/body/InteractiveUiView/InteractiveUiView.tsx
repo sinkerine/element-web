@@ -16,9 +16,9 @@ import parse, { domToReact, Element, type DOMNode, type HTMLReactParserOptions }
 import { useViewModel } from "../../../../../core/viewmodel";
 import { useI18n } from "../../../../../core/i18n/i18nContext";
 import { Flex } from "../../../../../core/utils/Flex";
-import { InteractiveUiGraphView } from "./graph/InteractiveUiGraphView";
-import { InteractiveUiChartView } from "./chart/InteractiveUiChartView";
-import { InteractiveUiTableView } from "./table/InteractiveUiTableView";
+import { InteractiveUiGraphView } from "./graph";
+import { InteractiveUiChartView } from "./chart";
+import { InteractiveUiTableView } from "./table";
 import type { InteractiveUiRenderNode, InteractiveUiViewModel } from "./types";
 import styles from "./InteractiveUiView.module.css";
 

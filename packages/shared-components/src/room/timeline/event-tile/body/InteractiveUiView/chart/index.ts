@@ -6,5 +6,3 @@ Please see LICENSE in the repository root for full details.
 */
 
 export { InteractiveUiChartView } from "./InteractiveUiChartView";
-export type { ChartModel } from "./ChartModel";
-export { niceTicks } from "./niceTicks";

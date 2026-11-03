@@ -6,5 +6,3 @@ Please see LICENSE in the repository root for full details.
 */
 
 export { InteractiveUiGraphView } from "./InteractiveUiGraphView";
-export { layoutLayeredGraph, type GraphLayout, type LayeredGraphInput } from "./GraphLayout";
-export type { BadgeTone } from "./BadgeTone";

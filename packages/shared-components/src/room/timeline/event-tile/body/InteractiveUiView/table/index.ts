@@ -6,4 +6,3 @@ Please see LICENSE in the repository root for full details.
 */
 
 export { InteractiveUiTableView } from "./InteractiveUiTableView";
-export type { TableColumn, TableCell } from "./types";

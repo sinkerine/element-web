@@ -9,7 +9,12 @@ import { type IEventRelation, type MatrixEvent, MsgType, THREAD_RELATION_TYPE } 
 import { type RoomMessageTextEventContent } from "matrix-js-sdk/src/types";
 
 import { addReplyToMessageContent } from "../utils/Reply";
-import { INTERACTIVE_UI_ACTION_KEY, type InteractiveUiPayload, type InteractiveUiStateValue } from "./protocol";
+import {
+    INTERACTIVE_UI_ACTION_KEY,
+    INTERACTIVE_UI_VERSION,
+    type InteractiveUiPayload,
+    type InteractiveUiStateValue,
+} from "./protocol";
 
 /** Text content with the extension and reply fields absent from the SDK's base text type. */
 export interface InteractiveUiActionContent extends RoomMessageTextEventContent {
@@ -67,7 +72,7 @@ export function buildActionContent(args: {
         body,
         "m.mentions": { user_ids: sender ? [sender] : [] },
         [INTERACTIVE_UI_ACTION_KEY]: {
-            version: 1,
+            version: INTERACTIVE_UI_VERSION,
             ui_event_id: uiEvent.getId(),
             ui_id: payload.ui_id,
             revision: payload.revision,

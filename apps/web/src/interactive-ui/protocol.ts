@@ -637,7 +637,7 @@ export function parseInteractiveUi(content: unknown): ParseResult | undefined {
         if (!descriptor || !("value" in descriptor)) fail("", "bad_type");
         const raw = copyJson(descriptor.value);
         if (!object(raw)) fail("", "not_object");
-        if (raw.version !== 1) fail("version", "bad_version");
+        if (raw.version !== INTERACTIVE_UI_VERSION) fail("version", "bad_version");
         const payload = read(raw, schema as Schema, "") as InteractiveUiPayload;
         const known = new Set(schema.$defs.node.anyOf.slice(0, -1).map((r) => r.$ref.split("/").at(-1)));
         payload.nodes = payload.nodes.map((node) =>
