@@ -170,7 +170,13 @@ export function InteractiveUiChartView({ chart, showData, onToggleData }: Props)
             {pieExplanation ? (
                 <Text as="p">{pieExplanation}</Text>
             ) : (
-                <Button kind="secondary" size="md" aria-pressed={showData} onClick={() => onToggleData(!showData)}>
+                <Button
+                    type="button"
+                    kind="secondary"
+                    size="md"
+                    aria-pressed={showData}
+                    onClick={() => onToggleData(!showData)}
+                >
                     {_t("interactive_ui|data_table")}
                 </Button>
             )}

@@ -76,7 +76,13 @@ export function InteractiveUiGraphView({ layout, selectedId, showAsList, onSelec
                 }
             }}
         >
-            <Button kind="secondary" size="md" aria-pressed={showAsList} onClick={() => onToggleList(!showAsList)}>
+            <Button
+                type="button"
+                kind="secondary"
+                size="md"
+                aria-pressed={showAsList}
+                onClick={() => onToggleList(!showAsList)}
+            >
                 {_t("interactive_ui|relationships_list")}
             </Button>
             {showAsList ? (

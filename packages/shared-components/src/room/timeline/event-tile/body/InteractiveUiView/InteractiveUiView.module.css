@@ -1,0 +1,226 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.root,
+.card,
+.control,
+.fieldset,
+.carouselCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cpd-space-3x);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    box-sizing: border-box;
+}
+
+.root {
+    color: var(--cpd-color-text-primary);
+    overflow-wrap: anywhere;
+}
+
+.root p,
+.keyValue,
+.keyValue dd {
+    margin: 0;
+}
+
+.root button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-inline-size: 100%;
+    block-size: auto;
+    min-block-size: var(--cpd-space-10x);
+}
+
+.stack {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+.stack > * {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+.root,
+.card,
+.carouselCard,
+.status {
+    padding: var(--cpd-space-3x);
+    border: var(--cpd-border-width-1) solid var(--cpd-color-border-interactive-secondary);
+    border-radius: var(--cpd-space-2x);
+    background: var(--cpd-color-bg-subtle-primary);
+}
+
+.card > * + * {
+    margin-block-start: var(--cpd-space-2x);
+}
+
+.fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.control {
+    border: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.control input,
+.control select,
+.control textarea {
+    font: inherit;
+    color: var(--cpd-color-text-primary);
+    background: var(--cpd-color-bg-canvas-default);
+    border: var(--cpd-border-width-1) solid var(--cpd-color-border-interactive-primary);
+    border-radius: var(--cpd-space-1x);
+    padding: var(--cpd-space-2x);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    box-sizing: border-box;
+}
+
+.control textarea {
+    resize: vertical;
+}
+
+.control [aria-invalid="true"] {
+    border-color: var(--cpd-color-border-critical-primary);
+}
+
+.error {
+    color: var(--cpd-color-text-critical-primary);
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+}
+
+.prose {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    min-inline-size: 0;
+}
+
+.prose pre {
+    white-space: pre-wrap;
+}
+
+.muted,
+.prose[data-tone="muted"] {
+    color: var(--cpd-color-text-secondary);
+}
+
+.badge {
+    display: inline-block;
+    align-self: flex-start;
+    border-radius: var(--cpd-space-1x);
+    padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    background: var(--cpd-color-bg-subtle-secondary);
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-semibold);
+}
+
+.badge[data-tone="info"] {
+    background: var(--cpd-color-bg-info-subtle);
+    color: var(--cpd-color-text-info-primary);
+}
+
+.badge[data-tone="success"] {
+    background: var(--cpd-color-bg-success-subtle);
+    color: var(--cpd-color-text-success-primary);
+}
+
+.badge[data-tone="warning"] {
+    background: var(--cpd-color-bg-decorative-6);
+    color: var(--cpd-color-text-warning-primary);
+}
+
+.badge[data-tone="critical"] {
+    background: var(--cpd-color-bg-critical-subtle);
+    color: var(--cpd-color-text-critical-primary);
+}
+
+.image {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+    object-fit: contain;
+}
+
+.carousel {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+.carouselTrack {
+    display: flex;
+    gap: var(--cpd-space-3x);
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x mandatory;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    position: relative;
+}
+
+.carouselCard {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+}
+
+.divider {
+    inline-size: 100%;
+}
+
+.control input:disabled,
+.control select:disabled,
+.control textarea:disabled {
+    color: var(--cpd-color-text-disabled);
+    background: var(--cpd-color-bg-canvas-disabled);
+    border-color: var(--cpd-color-border-disabled);
+}
+
+.root :focus-visible {
+    outline: var(--cpd-border-width-2) solid var(--cpd-color-border-focused);
+    outline-offset: var(--cpd-space-1x);
+}
+
+.tab {
+    font: var(--cpd-font-body-md-semibold);
+    color: var(--cpd-color-text-primary);
+    background: var(--cpd-color-bg-action-secondary-rest);
+    border: var(--cpd-border-width-1) solid var(--cpd-color-border-interactive-primary);
+    border-radius: var(--cpd-space-2x);
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+}
+
+.tab[aria-selected="true"] {
+    background: var(--cpd-color-bg-action-tertiary-selected);
+}
+
+.tab:disabled {
+    color: var(--cpd-color-text-disabled);
+}
+
+/* Sanitized thumbnails may carry an inline max-width of 800px. */
+.prose img {
+    max-width: 100% !important;
+    height: auto !important;
+}
+
+.prose table {
+    display: block;
+    max-inline-size: 100%;
+    overflow-x: auto;
+}

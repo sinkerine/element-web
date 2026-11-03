@@ -81,7 +81,7 @@ export function InteractiveUiTableView({ caption, columns, rows, sort, sortable,
                                 }
                             >
                                 {sortable && onSort ? (
-                                    <Button kind="tertiary" size="md" onClick={() => onSort(column.key)}>
+                                    <Button type="button" kind="tertiary" size="md" onClick={() => onSort(column.key)}>
                                         {column.label}
                                         {index === columnIndex ? (sort?.dir === "asc" ? " ↑" : " ↓") : ""}
                                     </Button>
