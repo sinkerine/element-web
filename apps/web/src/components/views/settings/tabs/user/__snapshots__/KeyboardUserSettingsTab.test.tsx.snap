@@ -537,6 +537,26 @@ exports[`KeyboardUserSettingsTab > renders list of keyboard shortcuts 1`] = `
                 <li
                   class="mx_KeyboardShortcut_shortcutRow"
                 >
+                  Jump to your previous message in a thread
+                  <div
+                    class="mx_KeyboardShortcut"
+                  >
+                    <kbd>
+                       
+                      Alt
+                       
+                    </kbd>
+                    +
+                    <kbd>
+                       
+                      Page Up
+                       
+                    </kbd>
+                  </div>
+                </li>
+                <li
+                  class="mx_KeyboardShortcut_shortcutRow"
+                >
                   Scroll up in the timeline
                   <div
                     class="mx_KeyboardShortcut"
@@ -1007,6 +1027,32 @@ exports[`KeyboardUserSettingsTab > renders list of keyboard shortcuts 1`] = `
                     <kbd>
                        
                       ↓
+                       
+                    </kbd>
+                  </div>
+                </li>
+                <li
+                  class="mx_KeyboardShortcut_shortcutRow"
+                >
+                  Open Threads or go to the next unread thread
+                  <div
+                    class="mx_KeyboardShortcut"
+                  >
+                    <kbd>
+                       
+                      Alt
+                       
+                    </kbd>
+                    +
+                    <kbd>
+                       
+                      Shift
+                       
+                    </kbd>
+                    +
+                    <kbd>
+                       
+                      t
                        
                     </kbd>
                   </div>

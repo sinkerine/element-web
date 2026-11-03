@@ -1,0 +1,305 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+/* The positioned timeline host supplies the width and height budget for surfaces plus fixed controls. */
+.container {
+    container-type: size;
+    position: absolute;
+    inset: var(--cpd-space-3x);
+    pointer-events: none;
+    /* Above timeline tiles, within the host's stacking context. */
+    z-index: 8;
+}
+
+.surfaces {
+    width: min(256px, 100%);
+    min-height: 0;
+    flex-shrink: 1;
+}
+
+/* Keep the list and its rows fixed while the preview appears, changes or disappears. */
+.surfaces[data-list-open="true"] {
+    display: grid;
+    flex-basis: calc(320px + 260px + var(--cpd-space-2x));
+    grid-template-columns: minmax(0, 1fr);
+    /* Reserve metadata, one body line and two context lines, even before a card exists. */
+    grid-template-rows: minmax(140px, 260fr) minmax(min-content, 320fr);
+}
+
+.controls {
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
+.ownButton,
+.latestButton {
+    display: grid;
+    place-items: center;
+    position: relative;
+    padding: 0;
+    border: 1px solid var(--cpd-color-border-accent-primary);
+    border-radius: var(--cpd-radius-pill-effect);
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-icon-primary);
+    box-shadow: 0 var(--cpd-space-1x) var(--cpd-space-6x)
+        color-mix(in srgb, var(--cpd-color-text-primary) 15%, transparent);
+    cursor: pointer;
+}
+
+/* The approved floating controls are 38px and 32px respectively. */
+.ownButton {
+    width: 38px;
+    height: 38px;
+}
+
+.latestButton {
+    width: var(--cpd-space-8x);
+    height: var(--cpd-space-8x);
+}
+
+.badge {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    border-radius: var(--cpd-radius-pill-effect);
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-icon-accent-primary);
+}
+
+.popover {
+    display: flex;
+    flex-direction: column;
+    min-height: min-content;
+    overflow: hidden;
+    grid-row: 2;
+    pointer-events: auto;
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: var(--cpd-space-3x);
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-text-primary);
+    box-shadow: 0 var(--cpd-space-1x) var(--cpd-space-6x)
+        color-mix(in srgb, var(--cpd-color-text-primary) 15%, transparent);
+    font: var(--cpd-font-body-sm-regular);
+}
+
+.header,
+.footer {
+    flex-shrink: 0;
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+}
+
+.header {
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.close {
+    display: grid;
+    place-items: center;
+    padding: var(--cpd-space-1x);
+    color: var(--cpd-color-icon-secondary);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+}
+
+.rows {
+    box-sizing: border-box;
+    min-height: var(--cpd-space-10x);
+    flex: 1 1 0;
+    /* Rows must not make the dialog's min-content height include the full history. */
+    contain: size;
+    max-height: 240px;
+    overflow: auto;
+    padding: var(--cpd-space-1x);
+}
+
+.row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) var(--cpd-space-2x);
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    width: 100%;
+    padding: var(--cpd-space-2x);
+    border: 0;
+    border-radius: var(--cpd-space-2x);
+    text-align: start;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    cursor: pointer;
+}
+
+.row:hover,
+.row:focus {
+    background: var(--cpd-color-bg-subtle-secondary);
+}
+
+.row[aria-current="true"] {
+    background: var(--cpd-color-bg-subtle-primary);
+    box-shadow: inset var(--cpd-space-1x) 0 var(--cpd-color-border-accent-primary);
+}
+
+.row:focus-visible,
+.ownButton:focus-visible,
+.latestButton:focus-visible,
+.close:focus-visible {
+    outline: 2px solid var(--cpd-color-border-focused);
+    outline-offset: -2px;
+}
+
+.time,
+.footer,
+.context {
+    color: var(--cpd-color-text-secondary);
+}
+
+.time {
+    font-variant-numeric: tabular-nums;
+}
+
+.snippet {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chip {
+    padding: 0 var(--cpd-space-1x);
+    margin-inline-end: var(--cpd-space-1x);
+    border-radius: var(--cpd-space-1x);
+    background: var(--cpd-color-bg-subtle-secondary);
+    font: var(--cpd-font-body-xs-semibold);
+}
+
+.onScreen {
+    width: var(--cpd-space-2x);
+    height: var(--cpd-space-2x);
+    border-radius: var(--cpd-radius-pill-effect);
+    background: var(--cpd-color-icon-success-primary);
+}
+
+.footer {
+    border-top: 1px solid var(--cpd-color-border-interactive-secondary);
+    font: var(--cpd-font-body-xs-regular);
+}
+
+.card {
+    display: grid;
+    grid-template-rows: auto minmax(1lh, 1fr) auto;
+    grid-row: 1;
+    min-height: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--cpd-space-3x);
+    border: 1px solid var(--cpd-color-border-accent-primary);
+    border-radius: var(--cpd-space-3x);
+    background: var(--cpd-color-bg-canvas-default);
+    box-shadow: 0 var(--cpd-space-1x) var(--cpd-space-6x)
+        color-mix(in srgb, var(--cpd-color-text-primary) 15%, transparent);
+    pointer-events: none;
+    font: var(--cpd-font-body-sm-regular);
+}
+
+.metadata {
+    flex-shrink: 0;
+    font: var(--cpd-font-body-xs-regular);
+}
+
+.body {
+    /* Reserve one line as the preview minimum; the available grid track supplies up to eight lines. */
+    contain: size;
+    min-height: 1lh;
+    max-height: 8lh;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 8;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    margin-top: var(--cpd-space-2x);
+}
+
+.context {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    margin-top: var(--cpd-space-2x);
+    padding-top: var(--cpd-space-2x);
+    border-top: 1px dashed var(--cpd-color-border-interactive-secondary);
+}
+
+.outline {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px dashed var(--cpd-color-border-accent-primary);
+    border-radius: var(--cpd-space-2x);
+    pointer-events: none;
+    /* The outline overlays the tile without intercepting timeline interaction. */
+    z-index: 7;
+}
+
+.notice {
+    flex-shrink: 0;
+    pointer-events: none;
+    overflow-wrap: anywhere;
+    padding: var(--cpd-space-2x) var(--cpd-space-3x);
+    background: var(--cpd-color-bg-canvas-default);
+    color: var(--cpd-color-text-primary);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: var(--cpd-space-2x);
+    box-shadow: 0 var(--cpd-space-1x) var(--cpd-space-6x)
+        color-mix(in srgb, var(--cpd-color-text-primary) 15%, transparent);
+    font: var(--cpd-font-body-sm-regular);
+}
+
+.live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* Short timelines reserve space for one full row, the footer and the notice before preview text. */
+@container (height < 400px) {
+    .surfaces[data-list-open="true"] {
+        /* Compact spacing and one context line reduce the preview's minimum height. */
+        grid-template-rows: minmax(84px, 260fr) minmax(min-content, 320fr);
+    }
+
+    .card {
+        padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    }
+
+    .body {
+        margin-top: var(--cpd-space-1x);
+    }
+
+    .metadata {
+        gap: var(--cpd-space-1x);
+    }
+
+    .context {
+        -webkit-line-clamp: 1;
+        margin-top: var(--cpd-space-1x);
+        padding-top: 0;
+    }
+
+    .header,
+    .footer,
+    .notice {
+        padding: var(--cpd-space-1x) var(--cpd-space-2x);
+    }
+}

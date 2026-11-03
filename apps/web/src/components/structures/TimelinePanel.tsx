@@ -25,7 +25,7 @@ import {
     type Relations,
     type MatrixError,
     SyncState,
-    TimelineWindow,
+    type TimelineWindow,
     Thread,
     ThreadEvent,
     ReceiptType,
@@ -47,6 +47,7 @@ import { Action } from "../../dispatcher/actions";
 import Timer from "../../utils/Timer";
 import shouldHideEvent from "../../shouldHideEvent";
 import MessagePanel from "./MessagePanel";
+import { PanelTimelineWindow } from "./PanelTimelineWindow";
 import { type IScrollState } from "./ScrollPanel";
 import { type ActionPayload } from "../../dispatcher/payloads";
 import { type RoomPermalinkCreator } from "../../utils/permalinks/Permalinks";
@@ -136,6 +137,9 @@ interface IProps {
     // callback which is called when the panel is scrolled.
     onScroll?(event: Event): void;
 
+    /** Loaded events changed, including replacement or trimming of the timeline window. */
+    onTimelineChanged?(): void;
+
     onEventScrolledIntoView?(eventId?: string): void;
 
     // callback which is called when the read-up-to mark is updated.
@@ -211,6 +215,7 @@ interface IState {
     readMarkerOutOfViewThresholdMs: number;
 
     editState?: EditorStateTransfer;
+    jumpedToEventId?: string;
 }
 
 interface IEventIndexOpts {
@@ -246,8 +251,12 @@ class TimelinePanel extends React.Component<IProps, IState> {
 
     private readonly messagePanel = createRef<MessagePanel>();
     private dispatcherRef?: string;
-    private timelineWindow?: TimelineWindow;
+    private timelineWindow?: PanelTimelineWindow;
+    private retainTimelineEvents = false;
+    private timelineWindowVersion = 0;
     private unmounted = false;
+    private olderEventsAbortController = new AbortController();
+    private readonly olderEventsPaginations = new Set<symbol>();
     private readReceiptActivityTimer: Timer | null = null;
     private readMarkerActivityTimer: Timer | null = null;
 
@@ -326,7 +335,8 @@ class TimelinePanel extends React.Component<IProps, IState> {
         this.initTimeline(this.props);
     }
 
-    public componentDidUpdate(prevProps: Readonly<IProps>): void {
+    public componentDidUpdate(prevProps: Readonly<IProps>, prevState: Readonly<IState>): void {
+        if (this.state.events !== prevState.events) this.props.onTimelineChanged?.();
         if (prevProps.timelineSet !== this.props.timelineSet) {
             // throw new Error("changing timelineSet on a TimelinePanel is not supported");
 
@@ -367,6 +377,8 @@ class TimelinePanel extends React.Component<IProps, IState> {
         //
         // (We could use isMounted, but facebook have deprecated that.)
         this.unmounted = true;
+        this.timelineWindow?.detachOwner();
+        this.olderEventsAbortController.abort();
         if (this.readReceiptActivityTimer) {
             this.readReceiptActivityTimer.abort();
             this.readReceiptActivityTimer = null;
@@ -500,6 +512,7 @@ class TimelinePanel extends React.Component<IProps, IState> {
     };
 
     private onMessageListUnfillRequest = (backwards: boolean, scrollToken: string): void => {
+        if (this.retainTimelineEvents) return;
         // If backwards, unpaginate from the back (i.e. the start of the timeline)
         const dir = backwards ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
         debuglog("unpaginating events in direction", dir);
@@ -553,7 +566,7 @@ class TimelinePanel extends React.Component<IProps, IState> {
     };
 
     // set off a pagination request.
-    private onMessageListFillRequest = (backwards: boolean): Promise<boolean> => {
+    private onMessageListFillRequest = (backwards: boolean, signal?: AbortSignal): Promise<boolean> => {
         if (!this.shouldPaginate()) return Promise.resolve(false);
 
         const dir = backwards ? EventTimeline.BACKWARDS : EventTimeline.FORWARDS;
@@ -562,7 +575,8 @@ class TimelinePanel extends React.Component<IProps, IState> {
         type CanPaginateKey = typeof canPaginateKey;
         type PaginatingKey = typeof paginatingKey;
 
-        if (!this.state[canPaginateKey]) {
+        // Explicit navigation rechecks the SDK: a new reply can arrive before the panel updates its flags.
+        if (!this.state[canPaginateKey] && !signal) {
             debuglog("have given up", dir, "paginating this timeline");
             return Promise.resolve(false);
         }
@@ -577,6 +591,8 @@ class TimelinePanel extends React.Component<IProps, IState> {
         this.setState({ [paginatingKey]: true } as Pick<IState, PaginatingKey>);
 
         return this.onPaginationRequest(this.timelineWindow, dir, PAGINATE_SIZE).then(async (r) => {
+            // Public pagination requests must not update a replacement timeline.
+            signal?.throwIfAborted();
             if (this.unmounted) {
                 return false;
             }
@@ -1237,6 +1253,115 @@ class TimelinePanel extends React.Component<IProps, IState> {
         void this.setReadMarker(ev.getId()!, ev.getTs());
     }
 
+    /** Events currently loaded in the panel, oldest first. */
+    public getLoadedEvents = (): MatrixEvent[] => this.state.events;
+
+    /**
+     * Back-paginate one page, waiting for loaded events to finish decrypting first.
+     * Resolves false when there is nothing older, after updating the panel state.
+     * @throws An AbortError if the panel unmounts or its timeline is replaced.
+     */
+    public loadOlderEvents = (): Promise<boolean> => this.loadTimelinePage(true);
+
+    /** Forward-paginate one page without changing the scroll anchor. */
+    public loadNewerEvents = (): Promise<boolean> => this.loadTimelinePage(false);
+
+    /** Retain rendered jump targets, including across SDK window-limit trimming, until released. */
+    public setTimelineRetention = (retain: boolean): void => {
+        this.retainTimelineEvents = retain;
+    };
+
+    /** Changes when the loaded window is replaced or events are trimmed from it. */
+    public getTimelineWindowVersion = (): number => this.timelineWindowVersion;
+
+    private loadTimelinePage = async (backwards: boolean): Promise<boolean> => {
+        const timelineWindow = this.timelineWindow;
+        const { signal } = this.olderEventsAbortController;
+        const checkTimeline = (): void => {
+            signal.throwIfAborted();
+            if (
+                this.unmounted ||
+                !timelineWindow ||
+                this.state.timelineLoading ||
+                this.timelineWindow !== timelineWindow
+            ) {
+                throw new DOMException("Timeline changed", "AbortError");
+            }
+        };
+
+        checkTimeline();
+        // New events can arrive while we wait, so recheck all loaded events before paginating.
+        while (!this.shouldPaginate()) {
+            const decryptions = this.state.events
+                .map((event) => event.getDecryptionPromise())
+                .filter((decryption): decryption is Promise<void> => decryption !== null);
+            await this.waitForTimelineOperation(Promise.all(decryptions), signal);
+            checkTimeline();
+        }
+
+        const request = Symbol();
+        this.olderEventsPaginations.add(request);
+        try {
+            await this.waitForTimelineOperation(this.onMessageListFillRequest(backwards, signal), signal);
+            checkTimeline();
+            // The SDK can return false after ten empty pages even with a pagination token remaining.
+            // Explicit navigation must keep going; ScrollPanel still uses the raw result to pause filling.
+            const canPaginate = timelineWindow!.canPaginate(backwards ? Direction.Backward : Direction.Forward);
+            await this.waitForTimelineOperation(
+                new Promise<void>((resolve) => {
+                    if (backwards) this.setState({ canBackPaginate: canPaginate }, resolve);
+                    else this.setState({ canForwardPaginate: canPaginate }, resolve);
+                }),
+                signal,
+            );
+            checkTimeline();
+            return canPaginate;
+        } finally {
+            this.olderEventsPaginations.delete(request);
+        }
+    };
+
+    private waitForTimelineOperation<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+        signal.throwIfAborted();
+        let onAbort: () => void;
+        return new Promise<T>((resolve, reject) => {
+            onAbort = (): void => reject(signal.reason);
+            signal.addEventListener("abort", onAbort, { once: true });
+            void operation.then(resolve, reject);
+        }).finally(() => signal.removeEventListener("abort", onAbort));
+    }
+
+    /** Oldest loaded event whose tile top is inside the scroll viewport. */
+    public getTopVisibleEventId = (): string | undefined => {
+        const viewport = this.messagePanel.current?.scrollPanel.current?.divScroll?.getBoundingClientRect();
+        if (!viewport) return undefined;
+
+        return this.state.events
+            .find((event) => {
+                const id = event.getId();
+                const rect = id ? this.getEventTileRect(id) : undefined;
+                return rect && rect.top >= viewport.top && rect.top < viewport.bottom;
+            })
+            ?.getId();
+    };
+
+    /** Whether any part of the event's tile is inside the scroll viewport. */
+    public isEventVisible = (eventId: string): boolean => {
+        const viewport = this.messagePanel.current?.scrollPanel.current?.divScroll?.getBoundingClientRect();
+        const rect = this.getEventTileRect(eventId);
+        return !!viewport && !!rect && rect.bottom > viewport.top && rect.top < viewport.bottom;
+    };
+
+    /** The event tile's client rect, if rendered. */
+    public getEventTileRect = (eventId: string): DOMRect | undefined =>
+        this.messagePanel.current?.getNodeForEventId(eventId)?.getBoundingClientRect();
+
+    /** Scroll a loaded event to a third of the way down and highlight it until the timeline is reloaded. */
+    public jumpToEvent = (eventId: string): void => {
+        this.messagePanel.current?.scrollToEvent(eventId, 0, 1 / 3);
+        this.setState({ jumpedToEventId: eventId });
+    };
+
     /* jump down to the bottom of this room, where new events are arriving
      */
     public jumpToLiveTimeline = (): void => {
@@ -1248,6 +1373,7 @@ class TimelinePanel extends React.Component<IProps, IState> {
         if (this.timelineWindow?.canPaginate(EventTimeline.FORWARDS)) {
             this.loadTimeline();
         } else {
+            this.setState({ jumpedToEventId: undefined });
             this.messagePanel.current?.scrollToBottom();
         }
     };
@@ -1462,11 +1588,26 @@ class TimelinePanel extends React.Component<IProps, IState> {
      * @param {boolean?} scrollIntoView whether to scroll the event into view.
      */
     private loadTimeline(eventId?: string, pixelOffset?: number, offsetBase?: number, scrollIntoView = true): void {
+        this.olderEventsAbortController.abort();
+        this.olderEventsAbortController = new AbortController();
+        if (this.olderEventsPaginations.size > 0) {
+            this.olderEventsPaginations.clear();
+            this.setState({ backPaginating: false, forwardPaginating: false });
+        }
+        this.setState({ jumpedToEventId: undefined });
         const cli = MatrixClientPeg.safeGet();
-        this.timelineWindow = new TimelineWindow(cli, this.props.timelineSet, { windowLimit: this.props.timelineCap });
+        this.timelineWindowVersion++;
+        this.timelineWindow?.detachOwner();
+        this.timelineWindow = new PanelTimelineWindow(cli, this.props.timelineSet, this.props.timelineCap, {
+            isRetained: () => this.retainTimelineEvents,
+            onTrimmed: () => {
+                this.timelineWindowVersion++;
+            },
+        });
 
         const onLoaded = (): void => {
             if (this.unmounted) return;
+            this.timelineWindowVersion++;
 
             // clear the timeline min-height when (re)loading the timeline
             this.messagePanel.current?.onTimelineReset();
@@ -1871,7 +2012,7 @@ class TimelinePanel extends React.Component<IProps, IState> {
                 backPaginating={this.state.backPaginating}
                 forwardPaginating={forwardPaginating}
                 events={events}
-                highlightedEventId={this.props.highlightedEventId}
+                highlightedEventId={this.state.jumpedToEventId ?? this.props.highlightedEventId}
                 newDividerEventId={this.props.newDividerEventId}
                 readMarkerEventId={this.state.readMarkerEventId}
                 readMarkerVisible={this.state.readMarkerVisible}

@@ -324,6 +324,25 @@
     "terms": {
         "tac_button": "Review terms and conditions"
     },
+    "thread_own_messages": {
+        "button": "Your messages in this thread",
+        "context": "After %(sender)s: %(snippet)s",
+        "count": "%(count)s",
+        "count_more": "%(count)s+",
+        "edited": "(edited)",
+        "heading": "Your messages",
+        "latest": "Jump to latest message",
+        "load_error": "Couldn't load older messages",
+        "loading": "Loading older messages…",
+        "root": "Root",
+        "row": "Your message from %(time)s: %(snippet)s",
+        "row_on_screen": "Your message from %(time)s, on screen: %(snippet)s",
+        "row_root": "Your message from %(time)s, thread root: %(snippet)s",
+        "row_root_on_screen": "Your message from %(time)s, thread root, on screen: %(snippet)s",
+        "start": "Start of thread",
+        "thread_root": "Thread root",
+        "you_time": "You · %(time)s"
+    },
     "threads": {
         "error_start_thread_existing_relation": "You can't start a thread from this message."
     },
