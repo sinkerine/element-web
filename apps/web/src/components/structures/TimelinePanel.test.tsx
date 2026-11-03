@@ -499,9 +499,11 @@ describe("TimelinePanel", () => {
             const encrypted = new MatrixEvent({ ...event.event, type: EventType.RoomMessageEncrypted, content: {} });
             type CryptoBackend = Parameters<MatrixEvent["attemptDecryption"]>[0];
             const deferred = Promise.withResolvers<Awaited<ReturnType<CryptoBackend["decryptEvent"]>>>();
-            const decryption = encrypted.attemptDecryption({
+            // This decryption path only uses decryptEvent from the crypto backend.
+            const crypto = {
                 decryptEvent: () => deferred.promise,
-            } as CryptoBackend);
+            } satisfies Pick<CryptoBackend, "decryptEvent">;
+            const decryption = encrypted.attemptDecryption(crypto as unknown as CryptoBackend);
             return {
                 encrypted,
                 finish: async (): Promise<void> => {
@@ -533,12 +535,16 @@ describe("TimelinePanel", () => {
 
             expect(scroll).toHaveBeenCalledWith(events[1].getId(), 0, 1 / 3);
             expect(load).not.toHaveBeenCalled();
-            expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[1].getId());
+            expect((messageRender.mock.contexts.at(-1) as MessagePanel | undefined)?.props.highlightedEventId).toBe(
+                events[1].getId(),
+            );
 
             rerender(<TimelinePanel {...props} eventId={events[0].getId()} ref={ref} />);
 
             await waitFor(() =>
-                expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[0].getId()),
+                expect((messageRender.mock.contexts.at(-1) as MessagePanel | undefined)?.props.highlightedEventId).toBe(
+                    events[0].getId(),
+                ),
             );
             expect(load).toHaveBeenCalled();
         });
@@ -548,13 +554,19 @@ describe("TimelinePanel", () => {
             const { panel } = await renderPanel(getProps(room, events));
             const messageRender = vi.spyOn(MessagePanel.prototype, "render");
             act(() => panel.jumpToEvent(events[0].getId()!));
-            expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[0].getId());
+            expect((messageRender.mock.contexts.at(-1) as MessagePanel | undefined)?.props.highlightedEventId).toBe(
+                events[0].getId(),
+            );
             const canPaginate = vi.spyOn(TimelineWindow.prototype, "canPaginate").mockReturnValue(reload);
             const scroll = vi.spyOn(MessagePanel.prototype, "scrollToBottom");
 
             act(() => panel.jumpToLiveTimeline());
 
-            await waitFor(() => expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBeUndefined());
+            await waitFor(() =>
+                expect(
+                    (messageRender.mock.contexts.at(-1) as MessagePanel | undefined)?.props.highlightedEventId,
+                ).toBeUndefined(),
+            );
             if (!reload) expect(scroll).toHaveBeenCalled();
             canPaginate.mockRestore();
         });
