@@ -58,7 +58,7 @@ export function InteractiveUiTableView({ caption, columns, rows, sort, sortable,
         <div
             className={styles.scroll}
             tabIndex={0}
-            role="region"
+            role="group"
             aria-label={caption ?? _t("interactive_ui|data_table")}
         >
             <table className={styles.table}>

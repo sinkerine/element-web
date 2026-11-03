@@ -65,6 +65,30 @@ describe("InteractiveUiChartView", () => {
         if (chart.kind === "scatter") expect(screen.getByRole("columnheader", { name: "Distance" })).toBeVisible();
         else expect(screen.getByRole("cell", { name: chart.categories[0] })).toBeVisible();
     });
+    it.each([false, true])(
+        "should keep repeated chart titles accessible without landmarks (data: %s)",
+        async (showData) => {
+            const user = userEvent.setup();
+            render(
+                <>
+                    <InteractiveUiChartView chart={models[0]} showData={showData} onToggleData={vi.fn()} />
+                    <InteractiveUiChartView chart={models[0]} showData={showData} onToggleData={vi.fn()} />
+                </>,
+            );
+            expect(screen.queryByRole("region")).not.toBeInTheDocument();
+            const scrollers = screen
+                .getAllByRole("group", { name: "Mass" })
+                .filter((element) => element.tabIndex === 0);
+            expect(scrollers).toHaveLength(2);
+            for (const scroller of scrollers) {
+                scroller.focus();
+                expect(scroller).toHaveFocus();
+                await user.tab({ shift: true });
+                expect(screen.getAllByRole("button", { name: "Data table" })).toContain(document.activeElement);
+            }
+            expect(screen.getAllByRole(showData ? "table" : "img")).toHaveLength(2);
+        },
+    );
     it("should use a full circle for a single-value pie and patterns for multiple categories", () => {
         const { container, rerender } = render(
             <InteractiveUiChartView chart={models[2]} showData={false} onToggleData={vi.fn()} />,
@@ -152,7 +176,7 @@ describe("InteractiveUiChartView", () => {
                 <InteractiveUiChartView chart={models[0]} showData={false} onToggleData={vi.fn()} />
             </div>,
         );
-        const region = screen.getAllByRole("region").find((element) => element.tabIndex === 0)!;
+        const region = screen.getAllByRole("group", { name: "Mass" }).find((element) => element.tabIndex === 0)!;
         expect(region.clientWidth).toBeLessThanOrEqual(360);
         expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
     });

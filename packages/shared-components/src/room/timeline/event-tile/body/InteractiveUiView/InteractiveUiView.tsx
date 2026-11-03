@@ -51,14 +51,26 @@ function Carousel({
 }: NodeProps & { node: Extract<InteractiveUiRenderNode, { kind: "carousel" }> }): JSX.Element {
     const _t = useI18n().translate;
     const track = useRef<HTMLDivElement>(null);
+    const trackWidth = useRef(0);
     useEffect(() => {
         const element = track.current;
-        const item = element?.children[node.index] as HTMLElement | undefined;
-        if (element && item) element.scrollTo({ left: item.offsetLeft, behavior: "instant" });
-    }, [node.index]);
+        if (!element) return;
+        const alignSelectedItem = (): void => {
+            trackWidth.current = element.clientWidth;
+            const item = element.children[node.index] as HTMLElement | undefined;
+            if (trackWidth.current > 0 && item) element.scrollTo({ left: item.offsetLeft, behavior: "instant" });
+        };
+        alignSelectedItem();
+        const observer = new ResizeObserver(() => {
+            if (element.clientWidth !== trackWidth.current) alignSelectedItem();
+        });
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [node.index, node.items.length]);
     const multiple = node.items.length > 1;
     return (
         <section
+            role="group"
             aria-label={node.label}
             aria-roledescription={_t("interactive_ui|carousel")}
             className={styles.carousel}
@@ -111,6 +123,8 @@ function Carousel({
                 onScroll={(event) => {
                     if (inactive) return;
                     const element = event.currentTarget;
+                    // Layout can clamp scrollLeft before ResizeObserver runs, including a briefly collapsed track.
+                    if (element.clientWidth === 0 || element.clientWidth !== trackWidth.current) return;
                     const positions = Array.from(element.children, (item) =>
                         Math.abs((item as HTMLElement).offsetLeft - element.scrollLeft),
                     );

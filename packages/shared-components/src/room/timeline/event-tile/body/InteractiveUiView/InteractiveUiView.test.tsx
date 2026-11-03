@@ -11,6 +11,7 @@ import React from "react";
 import { fireEvent, render, screen, within } from "@test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 
 import { MockViewModel } from "../../../../../core/viewmodel/MockViewModel";
 import { InteractiveUiView } from "./InteractiveUiView";
@@ -42,7 +43,7 @@ function setup(root: InteractiveUiRenderNode = catalog, snapshot: Partial<Intera
         }),
         actions,
     );
-    return { ...render(<InteractiveUiView vm={vm} fallback={<p>Complete fallback</p>} />), actions };
+    return { ...render(<InteractiveUiView vm={vm} fallback={<p>Complete fallback</p>} />), actions, vm };
 }
 
 function node(id: string): InteractiveUiRenderNode {
@@ -130,6 +131,28 @@ describe("InteractiveUiView", () => {
                 (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
                 (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
             expect(contrast).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it.each(["chart", "graph", "table", "products"])("keeps repeated %s data areas out of page landmarks", (kind) => {
+        const child =
+            kind === "graph"
+                ? (node("card") as Extract<InteractiveUiRenderNode, { kind: "card" }>).children[1]
+                : node(kind);
+        setup({
+            kind: "stack",
+            id: "repeated",
+            direction: "vertical",
+            gap: "md",
+            children: [child, { ...child, id: `${child.id}-copy` }],
+        });
+        expect(screen.getAllByRole("region")).toEqual([screen.getByRole("region", { name: "Interactive content" })]);
+        const scrollers = screen.getAllByRole("group").filter((element) => element.tabIndex === 0);
+        expect(scrollers).toHaveLength(2);
+        for (const scroller of scrollers) {
+            expect(scroller).toHaveAccessibleName();
+            scroller.focus();
+            expect(scroller).toHaveFocus();
         }
     });
 
@@ -239,8 +262,8 @@ describe("InteractiveUiView", () => {
                 expect(screen.getByRole("button", { name })).toBeDisabled();
             fireEvent.click(screen.getByRole("button", { name: "Data table" }));
             fireEvent.click(screen.getByRole("button", { name: "Name" }));
-            fireEvent.keyDown(screen.getByRole("region", { name: "Graph" }), { key: "Escape" });
-            const track = screen.getByRole("group", { name: "Suggested ingredients" });
+            fireEvent.keyDown(screen.getAllByRole("group", { name: "Graph" })[0], { key: "Escape" });
+            const track = screen.getAllByRole("group", { name: "Suggested ingredients" })[1];
             expect(track).toHaveAttribute("aria-disabled", "true");
             fireEvent.keyDown(track, { key: "ArrowRight" });
             track.scrollLeft = (track.children[1] as HTMLElement).offsetLeft;
@@ -645,12 +668,12 @@ describe("InteractiveUiView", () => {
     it("routes carousel buttons, arrow keys and exact item activation", async () => {
         const user = userEvent.setup();
         const { actions } = setup(node("products"));
-        const carousel = screen.getByRole("region", { name: "Suggested ingredients" });
+        const carousel = screen.getAllByRole("group", { name: "Suggested ingredients" })[0];
         expect(within(carousel).getByText("Item 1 of 3")).toHaveAttribute("aria-live", "polite");
         expect(screen.getByRole("button", { name: "Previous item" })).toBeDisabled();
         await user.click(screen.getByRole("button", { name: "Next item" }));
         expect(actions.setCarouselIndex).toHaveBeenLastCalledWith("products", 1);
-        screen.getByRole("group", { name: "Suggested ingredients" }).focus();
+        screen.getAllByRole("group", { name: "Suggested ingredients" })[1].focus();
         await user.keyboard("{ArrowRight}");
         expect(actions.setCarouselIndex).toHaveBeenLastCalledWith("products", 1);
         await user.click(screen.getByRole("button", { name: "Choose white sugar" }));
@@ -661,7 +684,7 @@ describe("InteractiveUiView", () => {
         const carousel = node("products");
         if (carousel.kind !== "carousel") throw new Error("Expected carousel");
         const { actions, unmount } = setup(carousel);
-        const track = screen.getByRole("group", { name: "Suggested ingredients" });
+        const track = screen.getAllByRole("group", { name: "Suggested ingredients" })[1];
         track.scrollLeft = (track.children[1] as HTMLElement).offsetLeft;
         fireEvent.scroll(track);
         expect(actions.setCarouselIndex).toHaveBeenLastCalledWith("products", 1);
@@ -669,13 +692,81 @@ describe("InteractiveUiView", () => {
         const last = setup({ ...carousel, index: 2 });
         expect(screen.getByText("Item 3 of 3")).toBeVisible();
         expect(screen.getByRole("button", { name: "Next item" })).toBeDisabled();
-        screen.getByRole("group", { name: "Suggested ingredients" }).focus();
+        screen.getAllByRole("group", { name: "Suggested ingredients" })[1].focus();
         await userEvent.keyboard("{ArrowRight}");
         expect(last.actions.setCarouselIndex).not.toHaveBeenCalled();
         await userEvent.keyboard("{ArrowLeft}");
         expect(last.actions.setCarouselIndex).toHaveBeenLastCalledWith("products", 1);
         await userEvent.click(screen.getByRole("button", { name: "Previous item" }));
         expect(last.actions.setCarouselIndex).toHaveBeenLastCalledWith("products", 1);
+    });
+
+    it("preserves the selected carousel item across resize before accepting user navigation", async () => {
+        const carousel = node("products");
+        if (carousel.kind !== "carousel") throw new Error("Expected carousel");
+        const selected = {
+            ...carousel,
+            index: 2,
+            items: Array.from({ length: 5 }, (_, index) => ({ ...carousel.items[0], id: `item-${index}` })),
+        };
+        const viewport = { width: innerWidth, height: innerHeight };
+        await page.viewport(1280, 1000);
+        const { actions, container, rerender, vm } = setup(selected);
+        container.style.width = "min(626px, calc(100vw - 118px))";
+        vi.mocked(actions.setCarouselIndex).mockImplementation((_id, index) => {
+            const updated = Object.assign(
+                new MockViewModel({ ...vm.getSnapshot(), root: { ...selected, index } }),
+                actions,
+            );
+            rerender(<InteractiveUiView vm={updated} fallback={<p>Complete fallback</p>} />);
+        });
+        const track = screen.getAllByRole("group", { name: "Suggested ingredients" })[1];
+        const third = track.children[2] as HTMLElement;
+        try {
+            await vi.waitFor(() => expect(track.scrollLeft).toBe(third.offsetLeft));
+            track.focus();
+            // The responsive app shell briefly collapses the timeline before laying it out at its new width.
+            container.style.width = "0px";
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            expect(track.clientWidth).toBe(0);
+            container.style.width = "min(626px, calc(100vw - 118px))";
+            await page.viewport(360, 1000);
+            await vi.waitFor(() => expect(container.clientWidth).toBe(242));
+            // Wait through browser scroll and ResizeObserver delivery after layout has changed.
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            expect(screen.getByText("Item 3 of 5")).toBeVisible();
+            expect(track.scrollLeft).toBe(third.offsetLeft);
+            expect(actions.setCarouselIndex).not.toHaveBeenCalled();
+            track.focus();
+            await userEvent.keyboard("{ArrowRight}");
+            await vi.waitFor(() => expect(screen.getByText("Item 4 of 5")).toBeVisible());
+            expect(actions.setCarouselIndex).toHaveBeenCalledExactlyOnceWith("products", 3);
+        } finally {
+            await page.viewport(viewport.width, viewport.height);
+        }
+    });
+
+    it("keeps inactive carousel selection on resize and disconnects its observer on unmount", async () => {
+        const carousel = node("products");
+        if (carousel.kind !== "carousel") throw new Error("Expected carousel");
+        const observe = vi.spyOn(ResizeObserver.prototype, "observe");
+        const disconnect = vi.spyOn(ResizeObserver.prototype, "disconnect");
+        try {
+            const { actions, container, unmount } = setup({ ...carousel, index: 1 }, { status: "submitted" });
+            const track = screen.getAllByRole("group", { name: "Suggested ingredients" })[1];
+            const observer = observe.mock.contexts[observe.mock.calls.findIndex(([element]) => element === track)];
+            expect(observer).toBeDefined();
+            container.style.width = "242px";
+            await vi.waitFor(() => expect(track.scrollLeft).toBe((track.children[1] as HTMLElement).offsetLeft));
+            track.scrollLeft = (track.children[2] as HTMLElement).offsetLeft;
+            fireEvent.scroll(track);
+            expect(actions.setCarouselIndex).not.toHaveBeenCalled();
+            unmount();
+            expect(disconnect.mock.contexts).toContain(observer);
+        } finally {
+            observe.mockRestore();
+            disconnect.mockRestore();
+        }
     });
 
     it("honors disabled flags on individual controls and carousel actions", async () => {
@@ -739,7 +830,7 @@ describe("InteractiveUiView", () => {
         container.style.width = "360px";
         const action = screen.getByRole("button", { name: "Explain this mechanism" });
         expect(getComputedStyle(action.parentElement!).flexWrap).toBe("wrap");
-        const track = screen.getByRole("group", { name: "Suggested ingredients" });
+        const track = screen.getAllByRole("group", { name: "Suggested ingredients" })[1];
         expect(getComputedStyle(track).overflowX).toBe("auto");
         expect(track.scrollWidth).toBeGreaterThan(track.clientWidth);
         expect(container.scrollWidth).toBeLessThanOrEqual(360);

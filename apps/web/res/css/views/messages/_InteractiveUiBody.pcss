@@ -1,0 +1,19 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+/* Interactive cards need the narrow timeline's full tile width. Keep metadata
+   above and receipts below the card instead of reserving both inline gutters. */
+.mx_RoomView_body[data-layout="group"] .mx_MessagePanel_narrow .mx_EventTile:has(.mx_InteractiveUiBody) {
+    --event-tile-content-inline-end: 0;
+
+    .mx_EventTile_line {
+        margin-inline-end: 0;
+        padding-inline-start: 0;
+        padding-block-start: var(--cpd-space-12x);
+        padding-block-end: var(--cpd-space-8x);
+    }
+}

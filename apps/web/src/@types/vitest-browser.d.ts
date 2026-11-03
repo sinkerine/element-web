@@ -19,10 +19,15 @@ declare module "vitest" {
     }
 }
 
+// The browser program excludes the unit test that declares this existing test-only setting.
+declare module "../settings/Settings.tsx" {
+    interface Settings {
+        test_setting: IBaseSetting<string>;
+    }
+}
+
 declare global {
-    // `favicon.ts` browser-sniffs these. Declared here rather than pulling in
-    // src/@types/global.d.ts, which would drag most of the app into this program —
-    // and with it the happy-dom tests, which would then see the browser matchers.
+    // `favicon.ts` browser-sniffs these.
     interface Window {
         InstallTrigger?: unknown;
         opera?: unknown;

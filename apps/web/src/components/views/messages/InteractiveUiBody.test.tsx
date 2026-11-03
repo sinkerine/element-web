@@ -52,6 +52,7 @@ describe("InteractiveUiBody", () => {
         const result = create({ ...knowledge, title: "Knowledge" });
         expect(result.getByText("Cooking knowledge map")).toBeVisible();
         expect(result.getByText("Knowledge")).toBeVisible();
+        expect(result.getByRole("region", { name: "Knowledge" }).parentElement).toHaveClass("mx_InteractiveUiBody");
         expect(result.queryByText("Normal fallback")).not.toBeInTheDocument();
         fireEvent.click(result.getByRole("button", { name: "Show as text" }));
         expect(result.getByText("Normal fallback")).toBeVisible();
@@ -60,6 +61,7 @@ describe("InteractiveUiBody", () => {
     it("should show one invalid-content caption but no caption for unknown versions or absent content", () => {
         const invalid = create({ ...knowledge, root: "missing" });
         expect(invalid.getByText("Normal fallback")).toBeVisible();
+        expect(invalid.container.querySelector(".mx_InteractiveUiBody")).toBeNull();
         expect(invalid.getAllByText("Couldn’t show interactive content.")).toHaveLength(1);
         invalid.unmount();
         const unknown = create({ ...knowledge, version: 2 });
@@ -149,5 +151,6 @@ describe("InteractiveUiBody", () => {
         expect(result.getByText("Normal fallback")).toBeVisible();
         expect(result.getAllByText("Couldn’t show interactive content.")).toHaveLength(1);
         expect(result.queryByRole("combobox")).not.toBeInTheDocument();
+        expect(result.container.querySelector(".mx_InteractiveUiBody")).toBeNull();
     });
 });

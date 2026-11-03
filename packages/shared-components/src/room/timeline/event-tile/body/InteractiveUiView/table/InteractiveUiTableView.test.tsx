@@ -69,7 +69,7 @@ describe("InteractiveUiTableView", () => {
                 <InteractiveUiTableView columns={wide} rows={[["<script>alert(1)</script>"]]} sortable={false} />
             </div>,
         );
-        const region = screen.getByRole("region");
+        const region = screen.getByRole("group", { name: "Data table" });
         expect(region.clientWidth).toBeLessThanOrEqual(360);
         expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
         expect(screen.getByText("<script>alert(1)</script>")).toBeVisible();

@@ -189,7 +189,7 @@ export function InteractiveUiChartView({ chart, showData, onToggleData }: Props)
                 />
             ) : (
                 <>
-                    <div className={styles.scroll} tabIndex={0} role="region" aria-label={title}>
+                    <div className={styles.scroll} tabIndex={0} role="group" aria-label={title}>
                         <svg
                             className={styles.chart}
                             width={width}

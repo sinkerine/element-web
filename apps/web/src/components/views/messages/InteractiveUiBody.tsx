@@ -22,7 +22,11 @@ function ParsedBody({ parsed, ...props }: IBodyProps & { parsed: Extract<ParseRe
     const vm = useCreateAutoDisposedViewModel(
         () => new InteractiveUiBodyViewModel({ mxEvent: props.mxEvent, client, parsed }),
     );
-    return <InteractiveUiView vm={vm} fallback={<TextualBodyFactory {...props} ref={undefined} />} />;
+    return (
+        <div className="mx_InteractiveUiBody">
+            <InteractiveUiView vm={vm} fallback={<TextualBodyFactory {...props} ref={undefined} />} />
+        </div>
+    );
 }
 
 /** Timeline adapter for interactive event content; props preserve the normal textual fallback. */

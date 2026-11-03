@@ -242,7 +242,9 @@ describe("InteractiveUiGraphView", () => {
                 expect(getComputedStyle(text).textOverflow).toBe("ellipsis");
                 expect(getComputedStyle(text).overflow).toBe("hidden");
             }
-            expect(screen.getByRole("group", { name: "Graph" }).getBoundingClientRect().width).toBeLessThanOrEqual(360);
+            expect(
+                screen.getAllByRole("group", { name: "Graph" })[0].getBoundingClientRect().width,
+            ).toBeLessThanOrEqual(360);
         }
     });
     it.each(["left_to_right", "top_to_bottom"] as const)(
@@ -323,7 +325,9 @@ describe("InteractiveUiGraphView", () => {
             }
             const reciprocalPaths = [...svg.querySelectorAll("g > path")].slice(0, 2);
             expect(reciprocalPaths[0].getAttribute("d")).not.toBe(reciprocalPaths[1].getAttribute("d"));
-            expect(screen.getByRole("group", { name: "Graph" }).getBoundingClientRect().width).toBeLessThanOrEqual(360);
+            expect(
+                screen.getAllByRole("group", { name: "Graph" })[0].getBoundingClientRect().width,
+            ).toBeLessThanOrEqual(360);
             expect(container.firstElementChild!.scrollWidth).toBeLessThanOrEqual(360);
         },
     );
@@ -366,7 +370,7 @@ describe("InteractiveUiGraphView", () => {
                 />
             </div>,
         );
-        const region = screen.getAllByRole("region", { name: "Graph" }).find((element) => element.tabIndex === 0)!;
+        const region = screen.getAllByRole("group", { name: "Graph" }).find((element) => element.tabIndex === 0)!;
         expect(region.clientWidth).toBeLessThanOrEqual(360);
         expect(region.scrollWidth).toBeGreaterThan(region.clientWidth);
         expect(region.parentElement!.getBoundingClientRect().width).toBeLessThanOrEqual(360);

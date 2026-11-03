@@ -102,7 +102,7 @@ export function InteractiveUiGraphView({ layout, selectedId, showAsList, onSelec
                     </ul>
                 </>
             ) : (
-                <div className={styles.scroll} tabIndex={0} role="region" aria-label={_t("interactive_ui|graph")}>
+                <div className={styles.scroll} tabIndex={0} role="group" aria-label={_t("interactive_ui|graph")}>
                     <div className={styles.diagram} style={{ width: geometry.width, height: geometry.height }}>
                         <svg width={geometry.width} height={geometry.height} aria-hidden="true" focusable="false">
                             <defs>
