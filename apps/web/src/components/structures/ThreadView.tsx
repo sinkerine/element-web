@@ -18,6 +18,7 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 import classNames from "classnames";
+import { ThreadOwnMessagesView } from "@element-hq/web-shared-components";
 
 import BaseCard from "../views/right_panel/BaseCard";
 import { RightPanelPhases } from "../../stores/right-panel/RightPanelStorePhases";
@@ -52,6 +53,9 @@ import { type ThreadPayload } from "../../dispatcher/payloads/ThreadPayload";
 import { ScopedRoomContextProvider } from "../../contexts/ScopedRoomContext.tsx";
 import { RoomUploadContextProvider } from "../../viewmodels/room/RoomUploadViewModel.tsx";
 import { EventPresentationContextProvider } from "../../utils/EventPresentationContextProvider";
+import { ThreadOwnMessagesViewModel } from "../../viewmodels/threads/ThreadOwnMessagesViewModel";
+import { type ThreadTimelineNavigator } from "../../viewmodels/threads/ThreadTimelineNavigator";
+import { MatrixClientPeg } from "../../MatrixClientPeg";
 
 interface IProps {
     room: Room;
@@ -76,6 +80,7 @@ interface IState {
     editState?: EditorStateTransfer;
     replyToEvent?: MatrixEvent;
     narrow: boolean;
+    ownMessagesVm?: ThreadOwnMessagesViewModel;
 }
 
 export default class ThreadView extends React.Component<IProps, IState> {
@@ -86,6 +91,34 @@ export default class ThreadView extends React.Component<IProps, IState> {
     private layoutWatcherRef?: string;
     private timelinePanel = createRef<TimelinePanel>();
     private card = createRef<HTMLDivElement>();
+    private timelineWrapper = createRef<HTMLDivElement>();
+    private timelineNavigator: ThreadTimelineNavigator = {
+        getLoadedEvents: () => this.timelinePanel.current?.getLoadedEvents() ?? [],
+        loadOlderEvents: () =>
+            this.timelinePanel.current?.loadOlderEvents() ??
+            Promise.reject(new DOMException("Timeline unavailable", "AbortError")),
+        loadNewerEvents: () =>
+            this.timelinePanel.current?.loadNewerEvents() ??
+            Promise.reject(new DOMException("Timeline unavailable", "AbortError")),
+        setTimelineRetention: (retain) => this.timelinePanel.current?.setTimelineRetention(retain),
+        getTimelineWindowVersion: () => this.timelinePanel.current?.getTimelineWindowVersion() ?? 0,
+        getTopVisibleEventId: () => this.timelinePanel.current?.getTopVisibleEventId(),
+        isEventVisible: (id) => this.timelinePanel.current?.isEventVisible(id) ?? false,
+        getEventBox: (id) => {
+            const rect = this.timelinePanel.current?.getEventTileRect(id);
+            const wrapper = this.timelineWrapper.current?.getBoundingClientRect();
+            if (!rect || !wrapper) return undefined;
+            return {
+                top: rect.top - wrapper.top,
+                left: rect.left - wrapper.left,
+                width: rect.width,
+                height: rect.height,
+            };
+        },
+        jumpToEvent: (id) => this.timelinePanel.current?.jumpToEvent(id),
+        isAtEndOfLiveTimeline: () => this.timelinePanel.current?.isAtEndOfLiveTimeline(),
+        jumpToLatest: () => this.timelinePanel.current?.jumpToLiveTimeline(),
+    };
 
     // Set by setEventId in ctor.
     private eventId!: string;
@@ -108,6 +141,9 @@ export default class ThreadView extends React.Component<IProps, IState> {
 
     public componentDidMount(): void {
         this.setupThreadListeners(this.state.thread);
+        if (this.state.thread) {
+            this.setState({ ownMessagesVm: this.createOwnMessagesViewModel(this.state.thread) });
+        }
 
         this.layoutWatcherRef = SettingsStore.watchSetting("layout", null, (...[, , , value]) =>
             this.setState({ layout: value! }),
@@ -124,6 +160,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
     }
 
     public componentWillUnmount(): void {
+        this.state.ownMessagesVm?.dispose();
         dis.unregister(this.dispatcherRef);
         const roomId = this.props.mxEvent.getRoomId();
         SettingsStore.unwatchSetting(this.layoutWatcherRef);
@@ -251,14 +288,35 @@ export default class ThreadView extends React.Component<IProps, IState> {
         );
     }
 
+    private createOwnMessagesViewModel(thread: Thread): ThreadOwnMessagesViewModel {
+        return new ThreadOwnMessagesViewModel({
+            client: MatrixClientPeg.safeGet(),
+            thread,
+            timeline: {
+                ...this.timelineNavigator,
+                // State changes before React replaces the old panel ref. Never seed a new list with its events.
+                getLoadedEvents: () =>
+                    this.timelinePanel.current?.props.timelineSet === thread.timelineSet
+                        ? this.timelineNavigator.getLoadedEvents()
+                        : [],
+            },
+        });
+    }
+
+    private onTimelineScroll = (): void => {
+        this.state.ownMessagesVm?.onTimelineScrolled();
+    };
+
     private updateThread = (thread?: Thread): void => {
         if (this.state.thread === thread) return;
 
+        this.state.ownMessagesVm?.dispose();
         this.setupThreadListeners(thread, this.state.thread);
         if (thread) {
             this.setState(
                 {
                     thread,
+                    ownMessagesVm: this.createOwnMessagesViewModel(thread),
                     lastReply: this.threadLastReply,
                 },
                 async () => this.postThreadUpdate(thread),
@@ -315,6 +373,12 @@ export default class ThreadView extends React.Component<IProps, IState> {
 
         const action = getKeyBindingsManager().getRoomAction(ev);
         switch (action) {
+            case KeyBindingAction.JumpToPreviousOwnMessage:
+                if (this.state.ownMessagesVm?.getSnapshot().visible) {
+                    this.state.ownMessagesVm.jumpToPrevious();
+                    handled = true;
+                }
+                break;
             case KeyBindingAction.UploadFile: {
                 dis.dispatch(
                     {
@@ -407,6 +471,8 @@ export default class ThreadView extends React.Component<IProps, IState> {
                             newDividerEventId={this.props.newDividerEventId}
                             eventScrollIntoView={this.props.initialEventScrollIntoView}
                             onEventScrolledIntoView={this.resetJumpToEvent}
+                            onScroll={this.onTimelineScroll}
+                            onTimelineChanged={this.onTimelineScroll}
                         />
                     </EventPresentationContextProvider>
                 </>
@@ -443,7 +509,10 @@ export default class ThreadView extends React.Component<IProps, IState> {
                         }}
                     >
                         <Measured breakpoint={400} sensor={this.card} onMeasurement={this.onMeasurement} />
-                        <div className="mx_ThreadView_timelinePanelWrapper">{timeline}</div>
+                        <div className="mx_ThreadView_timelinePanelWrapper" ref={this.timelineWrapper}>
+                            {timeline}
+                            {this.state.ownMessagesVm && <ThreadOwnMessagesView vm={this.state.ownMessagesVm} />}
+                        </div>
 
                         {ContentMessages.sharedInstance().getCurrentUploads(threadRelation).length > 0 && (
                             <UploadBar room={this.props.room} relation={threadRelation} />

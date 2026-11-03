@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 // @vitest-environment happy-dom
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { act, getByTestId, render, type RenderResult, waitFor } from "test-utils-rtl";
+import { act, fireEvent, getByTestId, render, type RenderResult, waitFor } from "test-utils-rtl";
 import userEvent from "@testing-library/user-event";
 import {
     MsgType,
@@ -21,11 +21,15 @@ import {
     PendingEventOrdering,
     THREAD_RELATION_TYPE,
 } from "matrix-js-sdk/src/matrix";
-import React, { useState } from "react";
+import React, { createRef, useState } from "react";
 import { mockPlatformPeg, getRoomContext, mkMessage, stubClient, untilDispatch } from "test-utils";
 import { mkThread } from "test-utils/threads";
 
 import ThreadView from "./ThreadView";
+import TimelinePanel from "./TimelinePanel";
+import { ThreadOwnMessagesViewModel } from "../../viewmodels/threads/ThreadOwnMessagesViewModel";
+import { getKeyBindingsManager } from "../../KeyBindingsManager";
+import { KeyBindingAction } from "../../accessibility/KeyboardShortcuts";
 import MatrixClientContext from "../../contexts/MatrixClientContext";
 import { SDKContextClass } from "../../contexts/SDKContextClass";
 import { Action } from "../../dispatcher/actions";
@@ -46,6 +50,8 @@ describe("ThreadView", () => {
     let room: Room;
     let rootEvent: MatrixEvent;
 
+    const viewRef = createRef<ThreadView>();
+
     let changeEvent: (event: MatrixEvent) => void;
 
     function TestThreadView({ initialEvent, fullWindow }: { initialEvent?: MatrixEvent; fullWindow?: boolean }) {
@@ -60,6 +66,7 @@ describe("ThreadView", () => {
                     })}
                 >
                     <ThreadView
+                        ref={viewRef}
                         room={room}
                         onClose={vi.fn()}
                         mxEvent={event}
@@ -139,6 +146,92 @@ describe("ThreadView", () => {
 
         DMRoomMap.makeShared(mockClient);
         vi.spyOn(DMRoomMap.shared(), "getUserIdForRoomId").mockReturnValue(SENDER);
+    });
+
+    it.each([false, true])(
+        "should render own-message controls and handle the shortcut from the composer (fullWindow: %s)",
+        async (fullWindow) => {
+            const { container, getByRole, unmount } = await getComponent(undefined, fullWindow);
+            expect(getByRole("button", { name: "Your messages in this thread" })).toBeVisible();
+            const vm = viewRef.current!.state.ownMessagesVm!;
+            const jump = vi.spyOn(vm, "jumpToPrevious");
+            const composer = getByTestId(container, "basicmessagecomposer");
+            act(() => {
+                fireEvent.keyDown(composer, { key: "PageUp", altKey: true });
+            });
+            expect(jump).toHaveBeenCalledOnce();
+            expect(getByRole("dialog", { name: /Your messages/ })).toBeVisible();
+            for (const modifiers of [{}, { shiftKey: true }, { ctrlKey: true, altKey: true }]) {
+                act(() => {
+                    fireEvent.keyDown(composer, { key: "PageUp", ...modifiers });
+                });
+            }
+            expect(jump).toHaveBeenCalledOnce();
+            unmount();
+        },
+    );
+
+    it("should register an exact room shortcut and leave existing shortcuts intact", () => {
+        const manager = getKeyBindingsManager();
+        expect(manager.getRoomAction(new KeyboardEvent("keydown", { key: "PageUp", altKey: true }))).toBe(
+            KeyBindingAction.JumpToPreviousOwnMessage,
+        );
+        expect(manager.getRoomAction(new KeyboardEvent("keydown", { key: "PageUp" }))).toBe(KeyBindingAction.ScrollUp);
+        expect(manager.getRoomAction(new KeyboardEvent("keydown", { key: "PageUp", shiftKey: true }))).toBe(
+            KeyBindingAction.JumpToOldestUnread,
+        );
+        expect(
+            manager.getRoomAction(new KeyboardEvent("keydown", { key: "ArrowUp", ctrlKey: true, altKey: true })),
+        ).not.toBe(KeyBindingAction.JumpToPreviousOwnMessage);
+    });
+
+    it("should forward scrolling and convert tile rectangles to wrapper coordinates", async () => {
+        const panelRender = vi.spyOn(TimelinePanel.prototype, "render");
+        const { container, unmount } = await getComponent();
+        const panel = panelRender.mock.contexts.at(-1) as TimelinePanel;
+        const vm = viewRef.current!.state.ownMessagesVm!;
+        const scrolled = vi.spyOn(vm, "onTimelineScrolled");
+        const wrapper = container.querySelector<HTMLDivElement>(".mx_ThreadView_timelinePanelWrapper")!;
+        vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 100, 400, 600));
+        vi.spyOn(panel, "getLoadedEvents").mockReturnValue([rootEvent]);
+        vi.spyOn(panel, "isEventVisible").mockReturnValue(true);
+        vi.spyOn(panel, "getEventTileRect").mockReturnValue(new DOMRect(70, 140, 300, 80));
+        act(() => {
+            panel.props.onScroll!(new Event("scroll"));
+            vm.peek(rootEvent.getId());
+        });
+        expect(scrolled).toHaveBeenCalledOnce();
+        expect(vm.getSnapshot().peek).toEqual({
+            itemId: rootEvent.getId(),
+            box: { left: 20, top: 40, width: 300, height: 80 },
+        });
+        unmount();
+        panelRender.mockRestore();
+    });
+
+    it("should dispose each view model on a thread change and unmount", async () => {
+        const dispose = vi.spyOn(ThreadOwnMessagesViewModel.prototype, "dispose");
+        const { unmount } = await getComponent();
+        const first = viewRef.current!.state.ownMessagesVm!;
+        const next = mkThread({
+            room,
+            client: mockClient,
+            authorId: mockClient.getUserId()!,
+            participantUserIds: [mockClient.getUserId()!],
+        });
+        act(() => {
+            changeEvent(next.rootEvent);
+        });
+        await waitFor(() => expect(viewRef.current!.state.ownMessagesVm).not.toBe(first));
+        expect(first.isDisposed).toBe(true);
+        expect(viewRef.current!.state.ownMessagesVm!.getSnapshot().items.map((item) => item.id)).not.toContain(
+            rootEvent.getId(),
+        );
+        const second = viewRef.current!.state.ownMessagesVm!;
+        unmount();
+        expect(second.isDisposed).toBe(true);
+        expect(dispose).toHaveBeenCalledTimes(2);
+        dispose.mockRestore();
     });
 
     it("does not include pending root event in the timeline twice", async () => {

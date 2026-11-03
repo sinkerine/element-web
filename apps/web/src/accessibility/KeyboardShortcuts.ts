@@ -98,6 +98,8 @@ export enum KeyBindingAction {
     DismissReadMarker = "KeyBinding.dismissReadMarkerAndJumpToBottom",
     /** Jump to oldest unread message */
     JumpToOldestUnread = "KeyBinding.jumpToOldestUnreadMessage",
+    /** Jump to the previous own message in a thread */
+    JumpToPreviousOwnMessage = "KeyBinding.jumpToPreviousOwnMessage",
     /** Upload a file */
     UploadFile = "KeyBinding.uploadFileToRoom",
     /** Focus search message in a room (must be enabled) */
@@ -253,6 +255,7 @@ export const CATEGORIES: Record<CategoryName, ICategory> = {
             KeyBindingAction.UploadFile,
             KeyBindingAction.DismissReadMarker,
             KeyBindingAction.JumpToOldestUnread,
+            KeyBindingAction.JumpToPreviousOwnMessage,
             KeyBindingAction.ScrollUp,
             KeyBindingAction.ScrollDown,
             KeyBindingAction.JumpToFirstMessage,
@@ -463,6 +466,10 @@ export const KEYBOARD_SHORTCUTS: IKeyboardShortcuts = {
             key: Key.PAGE_UP,
         },
         displayName: _td("keyboard|jump_to_read_marker"),
+    },
+    [KeyBindingAction.JumpToPreviousOwnMessage]: {
+        default: { altKey: true, key: Key.PAGE_UP },
+        displayName: _td("keyboard|jump_previous_own_message"),
     },
     [KeyBindingAction.UploadFile]: {
         default: {

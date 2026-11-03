@@ -163,7 +163,7 @@ export interface ThreadOwnMessagesViewSnapshot {
     listOpen: boolean;
     /** Newest first. */
     items: OwnMessageItem[];
-    /** True once the start of the thread is loaded, so the count is exact. */
+    /** True once both the start and live end are loaded, so the count is exact. */
     complete: boolean;
     loading: boolean;
     loadError: boolean;
@@ -238,6 +238,12 @@ export interface ThreadTimelineNavigator {
     getLoadedEvents(): MatrixEvent[];
     /** Load one page of older events. Resolves false once the start of the thread is loaded. */
     loadOlderEvents(): Promise<boolean>;
+    /** Load one newer page without moving the viewport anchor. False means the live end was reached. */
+    loadNewerEvents(): Promise<boolean>;
+    /** Retain rendered targets while open; release on close/disposal. */
+    setTimelineRetention(retain: boolean): void;
+    /** Changes on window replacement or trimming; invalidates completion and page budget. */
+    getTimelineWindowVersion(): number;
     /** Id of the oldest loaded event whose top edge is inside the viewport, or undefined if none is rendered. */
     getTopVisibleEventId(): string | undefined;
     /** Whether any part of the event's tile is inside the viewport. */
@@ -297,7 +303,20 @@ View model behaviour:
 - **Loading.**
     - `loadAll()` is private and async. While the list is open, not complete, and under 50 pages, it calls
       `await loadOlderEvents()`, then `refreshItems()`.
-    - `false` sets `complete: true`. A throw sets `loadError: true` and logs a warning.
+    - After backward exhaustion, load forward through the live end using `loadNewerEvents()`. Only exhaustion in both
+      directions sets `complete: true`. The 50-page budget covers both directions. Pagination preserves the viewport
+      anchor. Explicit pagination reports continuation from the captured window's `canPaginate(direction)` after
+      state settlement and restores the panel's direction flag; the SDK's ten-empty-page request limit is not
+      exhaustion. ScrollPanel retains its raw SDK result semantics. A throw sets `loadError: true` and logs a warning.
+    - Retain the panel's rendered events while the list is open, suppressing both ScrollPanel unfill and SDK
+      `TimelineWindow.unpaginate` window-limit trimming. Release on close/disposal. Rows always refer to reachable
+      panel events, rather than a separate cache. A standalone `PanelTimelineWindow` owns detachable retention and
+      trim callbacks, cleared before window replacement and on panel unmount because SDK room listeners outlive it.
+    - `getTimelineWindowVersion()` invalidates completion, direction exhaustion and the page budget after trimming or
+      replacement. `TimelinePanel.onTimelineChanged` refreshes the VM after loaded-event changes, including reloads.
+    - Track loaded events' `MatrixEventEvent.Decrypted`, `Replaced` and deferred `BeforeRedaction` notifications, plus
+      scoped room `Redaction`/`RedactionCancelled` and thread `Delete`, so content refreshes after mutation. Remove all
+      listeners on disposal and remove per-event listeners when events leave the window.
     - It returns early if the view model is disposed or the list was closed.
     - Only one loop runs at a time (`private loading?: Promise<void>`).
 - **Anchor and previous.**
@@ -333,7 +352,13 @@ existing callers:
 /** Events currently loaded in the panel, oldest first. */
 public getLoadedEvents = (): MatrixEvent[] => this.state.events;
 /** Back-paginate one page. Resolves false when there is nothing older. */
-public loadOlderEvents = (): Promise<boolean> => this.onMessageListFillRequest(true);
+public loadOlderEvents = (): Promise<boolean> => this.loadTimelinePage(true);
+/** Forward-paginate one page without moving the viewport anchor. */
+public loadNewerEvents = (): Promise<boolean> => this.loadTimelinePage(false);
+/** Retain rendered targets through scroll and SDK trimming; release on close/disposal. */
+public setTimelineRetention = (retain: boolean): void => {};
+/** Version of the loaded window, changed by replacement or trimming. */
+public getTimelineWindowVersion = (): number => {};
 /** Oldest loaded event whose tile top is inside the scroll viewport. */
 public getTopVisibleEventId = (): string | undefined => {};
 /** Whether any part of the event's tile is inside the scroll viewport. */
@@ -454,7 +479,9 @@ Scrolling, new replies and page loads never close the list. They only refresh `i
 
 - Goal: list, loading, previous, jump and preview logic, integrated into `ThreadView` for both layouts, plus the
   keyboard shortcut, strings and Playwright journey.
-- Files owned:
+- Files owned (including narrow T2 integration repairs):
+    - `apps/web/src/components/structures/TimelinePanel.tsx` and `.test.tsx`
+    - `apps/web/src/components/structures/PanelTimelineWindow.ts`
     - `apps/web/src/viewmodels/threads/ThreadTimelineNavigator.ts`
     - `apps/web/src/viewmodels/threads/ThreadOwnMessagesViewModel.ts`
     - `apps/web/src/viewmodels/threads/ThreadOwnMessagesViewModel.test.ts`
@@ -482,6 +509,11 @@ Scrolling, new replies and page loads never close the list. They only refresh `i
     - `jumpToLatest` clears the target
     - visibility updates on `ThreadEvent.Update`
     - dispose cancels the timers and the loop
+    - real-panel long thread opened midway enumerates both ends, keeps root and latest targets rendered through
+      attempted unfill and SDK window limits, and reloads after trimming/replacement
+    - real SDK ten-empty-page request limits retain continuation in both directions; a later own message is loaded
+    - replaced/unmounted windows release owner callbacks and cannot read retention or update the owner's version
+    - real SDK late decryption, replacement, local-redaction cancellation and final-reply redaction refresh the list
 - ThreadView tests:
     - the view renders when I've participated
     - Alt+PageUp in the card calls `jumpToPrevious`
