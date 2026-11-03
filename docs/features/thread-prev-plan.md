@@ -37,9 +37,10 @@ full-window Threads view (`ThreadsPane`, which renders `ThreadView` with `fullWi
     - `!ev.isRelation(RelationType.Replace)`
     - `!shouldHideEvent(ev)`
 
-   So deleted messages, unsent or failed local echoes, edit events, reactions, state events and undecryptable events
-   are never listed. An edited message is listed and shows its latest text. The thread root is listed, with a "Root"
-   chip, if I sent it.
+    So deleted messages, unsent or failed local echoes, edit events, reactions, state events and undecryptable events
+    are never listed. An edited message is listed and shows its latest text. The thread root is listed, with a "Root"
+    chip, if I sent it.
+
 3. **Opening the list.** Clicking the button, or <kbd>Alt</kbd>+<kbd>PageUp</kbd> while focus is anywhere in the
    `ThreadView` card (including the composer), opens a non-modal popover above the button.
     - The popover header reads "Your messages · N", or "N+" while older history may still exist.
@@ -74,7 +75,8 @@ full-window Threads view (`ThreadsPane`, which renders `ThreadView` with `fullWi
     - the button toggling it
     - a thread change or unmount
 
-   Scrolling the timeline does **not** close it; on-screen dots update as you scroll.
+    Scrolling the timeline does **not** close it; on-screen dots update as you scroll.
+
 9. **Keyboard inside the list.** <kbd>↑</kbd>/<kbd>↓</kbd> move between rows and <kbd>Home</kbd>/<kbd>End</kbd> go to
    the first or last row, using shared-components' `RovingTabIndexProvider` (`handleUpDown`, `handleHomeEnd`).
    <kbd>Tab</kbd> leaves the popover in normal tab order.
@@ -297,8 +299,9 @@ View model behaviour:
     - `isOnScreen` from `isEventVisible`
     - `context` from the loaded event just before it: the sender's room-member name and a snippet
 
-  It merges `items`, `showJumpToLatest` and `peek.box`. It runs on open, `onTimelineScrolled`, after each page, after
-  jumps, and on `ThreadEvent.NewReply` and `ThreadEvent.Update` (via `this.disposables.trackListener`).
+    It merges `items`, `showJumpToLatest` and `peek.box`. It runs on open, `onTimelineScrolled`, after each page, after
+    jumps, and on `ThreadEvent.NewReply` and `ThreadEvent.Update` (via `this.disposables.trackListener`).
+
 - **Visibility.** Computed with the criterion 1 rule; updated by the same events.
 - **Loading.**
     - `loadAll()` is private and async. While the list is open, not complete, and under 50 pages, it calls
@@ -399,17 +402,17 @@ public jumpToEvent = (eventId: string): void => {};
 
 ### List state machine
 
-| From | To | Trigger | Owner |
-| --- | --- | --- | --- |
-| Closed | Open, focus on previous row (or newest; deferred until loaded) | Button click, or Alt+PageUp in the thread card | VM `toggleList` / `jumpToPrevious` |
-| Open | Open · loading | Opened and not `complete` | VM `loadAll` |
-| Open · loading | Open · complete / error | No older page / load threw | VM |
-| Open · error | Open · loading | Retry | VM `retryLoad` |
-| Open (row focused/hovered) | Card or outline preview | `peek(id)`: off screen → card, on screen → outline | View → VM |
-| Open | Open, row current, timeline jumped | Row click / Enter / Space | VM `jumpTo` |
-| Open | Open, next older row current | Alt+PageUp while open | VM `jumpToPrevious` |
-| Open | Open + notice | Alt+PageUp with nothing older, list complete | VM |
-| Open | Closed | Esc, pointer-down outside, button, thread change or unmount | View → VM `closeList` / dispose |
+| From                       | To                                                             | Trigger                                                     | Owner                              |
+| -------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------- |
+| Closed                     | Open, focus on previous row (or newest; deferred until loaded) | Button click, or Alt+PageUp in the thread card              | VM `toggleList` / `jumpToPrevious` |
+| Open                       | Open · loading                                                 | Opened and not `complete`                                   | VM `loadAll`                       |
+| Open · loading             | Open · complete / error                                        | No older page / load threw                                  | VM                                 |
+| Open · error               | Open · loading                                                 | Retry                                                       | VM `retryLoad`                     |
+| Open (row focused/hovered) | Card or outline preview                                        | `peek(id)`: off screen → card, on screen → outline          | View → VM                          |
+| Open                       | Open, row current, timeline jumped                             | Row click / Enter / Space                                   | VM `jumpTo`                        |
+| Open                       | Open, next older row current                                   | Alt+PageUp while open                                       | VM `jumpToPrevious`                |
+| Open                       | Open + notice                                                  | Alt+PageUp with nothing older, list complete                | VM                                 |
+| Open                       | Closed                                                         | Esc, pointer-down outside, button, thread change or unmount | View → VM `closeList` / dispose    |
 
 Scrolling, new replies and page loads never close the list. They only refresh `items`.
 
@@ -558,31 +561,31 @@ tag.
    Tom's replies are "Tom 1"…"Tom 5", spread out so the early ones are beyond the first loaded page. Tom redacts
    "Tom 3" with `app.client.redactEvent`. The bot's last reply is newest.
 2. Open the thread in the right panel.
-   - Expected: the button "Your messages in this thread" is visible.
-   - Expected: there is no "Jump to latest message" button.
+    - Expected: the button "Your messages in this thread" is visible.
+    - Expected: there is no "Jump to latest message" button.
 3. Click the button.
-   - Expected: a dialog "Your messages" opens.
-   - Expected: after loading, its rows are, in order, "Tom 5", "Tom 4", "Tom 2", "Tom 1", and "Root from Tom" with a
-     Root chip. "Tom 3" is absent.
-   - Expected: the footer shows "Start of thread".
-   - Expected: focus is on the "Tom 5" row.
+    - Expected: a dialog "Your messages" opens.
+    - Expected: after loading, its rows are, in order, "Tom 5", "Tom 4", "Tom 2", "Tom 1", and "Root from Tom" with a
+      Root chip. "Tom 3" is absent.
+    - Expected: the footer shows "Start of thread".
+    - Expected: focus is on the "Tom 5" row.
 4. Hover the "Tom 1" row.
-   - Expected: a preview card shows "Tom 1" and an "After Alice:" context line.
+    - Expected: a preview card shows "Tom 1" and an "After Alice:" context line.
 5. Press Enter on the focused "Tom 5" row.
-   - Expected: the "Tom 5" tile is in the viewport and highlighted.
-   - Expected: the status says "Your message from".
-   - Expected: the dialog is still open, with "Tom 5" marked current.
-   - Expected: "Jump to latest message" is visible.
+    - Expected: the "Tom 5" tile is in the viewport and highlighted.
+    - Expected: the status says "Your message from".
+    - Expected: the dialog is still open, with "Tom 5" marked current.
+    - Expected: "Jump to latest message" is visible.
 6. Move focus to the composer with `locator.focus()`, which leaves the dialog open because there's no pointer-down,
    then press Alt+PageUp.
-   - Expected: "Tom 4" is highlighted and its row is focused and current.
+    - Expected: "Tom 4" is highlighted and its row is focused and current.
 7. Press Alt+PageUp three more times.
-   - Expected: "Tom 2", then "Tom 1", then the root is highlighted.
-   - Expected: the status for the root says "thread root".
+    - Expected: "Tom 2", then "Tom 1", then the root is highlighted.
+    - Expected: the status for the root says "thread root".
 8. Press Alt+PageUp again.
-   - Expected: the notice and status say "No earlier messages from you in this thread".
+    - Expected: the notice and status say "No earlier messages from you in this thread".
 9. Press Escape.
-   - Expected: the dialog closes and focus returns to the button.
+    - Expected: the dialog closes and focus returns to the button.
 10. Click "Jump to latest message".
     - Expected: the bot's newest reply is visible, the button is gone, and no tile is highlighted.
 11. Scroll to the top, then press Alt+PageUp with focus in the composer.
