@@ -54,7 +54,8 @@ Please see LICENSE in the repository root for full details.
     padding: var(--cpd-space-3x);
     border: var(--cpd-border-width-1) solid var(--cpd-color-border-interactive-secondary);
     border-radius: var(--cpd-space-2x);
-    background: var(--cpd-color-bg-subtle-primary);
+    /* Secondary and critical text need the canvas surface to retain sufficient contrast. */
+    background: var(--cpd-color-bg-canvas-default);
 }
 
 .card > * + * {

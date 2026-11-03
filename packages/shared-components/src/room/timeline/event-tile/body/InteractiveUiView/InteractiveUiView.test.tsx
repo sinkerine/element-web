@@ -86,6 +86,53 @@ const button: Extract<InteractiveUiRenderNode, { kind: "button" }> = {
 };
 
 describe("InteractiveUiView", () => {
+    it.each(["light", "dark"])("keeps muted and validation text readable on %s surfaces", (theme) => {
+        const { container } = setup(
+            {
+                kind: "stack",
+                id: "contrast",
+                direction: "vertical",
+                gap: "md",
+                children: [
+                    node("text"),
+                    input,
+                    { kind: "card", id: "card", title: "Contrast card", children: [node("unknown")] },
+                    node("products"),
+                ],
+            },
+            { status: "awaiting_confirmation" },
+        );
+        container.classList.add(`cpd-theme-${theme}`);
+        const canvas = document.createElement("div");
+        canvas.style.backgroundColor = "var(--cpd-color-bg-canvas-default)";
+        container.append(canvas);
+        const canvasColor = getComputedStyle(canvas).backgroundColor;
+        const luminance = (color: string): number => {
+            const [red, green, blue] = color.match(/\d+/g)!.map((value) => {
+                const channel = Number(value) / 255;
+                return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        };
+        const samples = [
+            [screen.getByRole("region", { name: "Interactive content" }), screen.getByText(/Choose a branch/)],
+            [screen.getByRole("region", { name: "Interactive content" }), screen.getByText("Check this value.")],
+            [screen.getByRole("region", { name: "Contrast card" }), screen.getByText(/More content is available/)],
+            [screen.getByRole("article", { name: "Brown sugar" }), screen.getByText("For rich flavour")],
+            [screen.getByRole("status"), screen.getByRole("status").querySelector("p")!],
+        ];
+        for (const [surface, text] of samples) {
+            const background = getComputedStyle(surface).backgroundColor;
+            expect(background).toBe(canvasColor);
+            const foregroundLuminance = luminance(getComputedStyle(text).color);
+            const backgroundLuminance = luminance(background);
+            const contrast =
+                (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+                (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+            expect(contrast).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
     it.each(["chart", "graph", "table"])("keeps %s local controls from submitting forms", async (kind) => {
         const child =
             kind === "graph"
