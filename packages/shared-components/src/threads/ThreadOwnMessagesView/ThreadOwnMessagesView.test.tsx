@@ -220,6 +220,25 @@ describe("ThreadOwnMessagesView", () => {
         fireEvent.keyDown(document, { key: "Escape" });
         expect(ownButton()).not.toHaveFocus();
     });
+    it("should consume Escape before the host's room shortcuts and remove the listener on close", () => {
+        const vm = new TestViewModel();
+        const onHostKeyDown = vi.fn((event: React.KeyboardEvent) => event.stopPropagation());
+        render(
+            <div onKeyDown={onHostKeyDown}>
+                <ThreadOwnMessagesView vm={vm} />
+                <button>Host target</button>
+            </div>,
+        );
+        act(() => rows()[0].focus());
+        expect(fireEvent.keyDown(rows()[0], { key: "Escape" })).toBe(false);
+        expect(vm.closeList).toHaveBeenCalledOnce();
+        expect(ownButton()).toHaveFocus();
+        expect(onHostKeyDown).not.toHaveBeenCalled();
+        act(() => vm.update({ listOpen: false }));
+        fireEvent.keyDown(screen.getByRole("button", { name: "Host target" }), { key: "Escape" });
+        expect(vm.closeList).toHaveBeenCalledOnce();
+        expect(onHostKeyDown).toHaveBeenCalledOnce();
+    });
     it("should close on outside pointer-down, exclude the popover and button and remove listeners on close", () => {
         const vm = new TestViewModel();
         render(<ThreadOwnMessagesView vm={vm} />);

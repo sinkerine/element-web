@@ -10,6 +10,7 @@ import { test, expect } from "../../element-web-test";
 test.describe("Thread own messages", () => {
     test.use({
         displayName: "Tom",
+        config: { force_verification: false },
         botCreateOpts: { displayName: "Alice", autoAcceptInvites: true },
     });
 
@@ -71,7 +72,8 @@ test.describe("Thread own messages", () => {
         await bot.joinRoom(roomId);
         const root = await app.client.sendMessage(roomId, "Root from Tom");
         const ownIds: string[] = [];
-        for (let index = 0; index < 40; index++) {
+        // Leave enough replies after Tom 5 for it to be above the initial viewport.
+        for (let index = 0; index < 50; index++) {
             if ([3, 9, 15, 21, 27].includes(index)) {
                 const reply = await app.client.sendMessage(roomId, `Tom ${ownIds.length + 1}`, root.event_id);
                 ownIds.push(reply.event_id);
@@ -80,8 +82,8 @@ test.describe("Thread own messages", () => {
             }
         }
         await app.client.redactEvent(roomId, ownIds[2]);
-        await page.goto(`/#/room/${roomId}`);
-        await page.getByTestId("thread-summary").click();
+        await app.viewRoomByName("Own message journey");
+        await page.getByRole("button", { name: "Open thread", exact: true }).click();
         const thread = page.locator(".mx_ThreadView");
         const button = thread.getByRole("button", { name: "Your messages in this thread" });
         const latest = thread.getByRole("button", { name: "Jump to latest message" });
@@ -115,7 +117,7 @@ test.describe("Thread own messages", () => {
         ).toBeVisible();
         await row("Tom 5").press("Enter");
         await expect(tile("Tom 5")).toBeInViewport();
-        await expect(tile("Tom 5")).toHaveClass(/stateHighlighted/);
+        await expect(tile("Tom 5")).toHaveClass(/stateSelected/);
         await expect(status).toContainText("Your message from");
         await expect(row("Tom 5")).toHaveAttribute("aria-current", "true");
         await expect(dialog).toBeVisible();
@@ -127,7 +129,7 @@ test.describe("Thread own messages", () => {
             await expect(row(body)).toBeFocused();
             await expect(row(body)).toHaveAttribute("aria-current", "true");
             await expect(tile(body)).toBeInViewport();
-            await expect(tile(body)).toHaveClass(/stateHighlighted/);
+            await expect(tile(body)).toHaveClass(/stateSelected/);
         }
         await expect(status).toContainText("thread root");
         await page.keyboard.press("Alt+PageUp");
@@ -137,13 +139,13 @@ test.describe("Thread own messages", () => {
         await expect(dialog).toHaveCount(0);
         await expect(button).toBeFocused();
         await latest.click();
-        await expect(tile("Alice 39")).toBeInViewport();
+        await expect(tile("Alice 49")).toBeInViewport();
         await expect(latest).toHaveCount(0);
         await expect
             .poll(() =>
                 thread
                     .getByTestId("event-tile")
-                    .evaluateAll((tiles) => tiles.every((tile) => !tile.className.includes("stateHighlighted"))),
+                    .evaluateAll((tiles) => tiles.every((tile) => !tile.className.includes("stateSelected"))),
             )
             .toBe(true);
 
@@ -161,7 +163,7 @@ test.describe("Thread own messages", () => {
         await page
             .getByTestId("event-tile")
             .filter({ hasText: "Alice only root" })
-            .getByTestId("thread-summary")
+            .getByRole("button", { name: "Open thread", exact: true })
             .click();
         await expect(thread.getByRole("button", { name: "Your messages in this thread" })).toHaveCount(0);
 

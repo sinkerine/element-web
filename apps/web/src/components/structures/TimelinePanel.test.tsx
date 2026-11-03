@@ -584,8 +584,9 @@ describe("TimelinePanel", () => {
             onTimelineChanged = vm.onTimelineScrolled;
             scroll.mockClear();
             const anchor = panel.getScrollState()?.trackedScrollToken;
-            act(() => vm!.toggleList());
-            await waitFor(() => expect(vm!.getSnapshot().complete).toBe(true));
+            // Each page waits for a React state callback before requesting the next page.
+            await act(async () => vm.toggleList());
+            await waitFor(() => expect(vm.getSnapshot().complete).toBe(true));
             expect(panel.getLoadedEvents()).toEqual(events);
             expect(scroll).not.toHaveBeenCalled();
             expect(panel.getScrollState()?.trackedScrollToken).toBe(anchor);
@@ -604,11 +605,11 @@ describe("TimelinePanel", () => {
             act(() => scrollPanel.props.onUnfillRequest!(true, events[50].getId()!));
             expect(vm.getSnapshot().complete).toBe(false);
             expect(panel.getLoadedEvents()).toHaveLength(89);
-            act(() => vm!.toggleList());
-            await waitFor(() => expect(vm!.getSnapshot().complete).toBe(true));
+            await act(async () => vm.toggleList());
+            await waitFor(() => expect(vm.getSnapshot().complete).toBe(true));
             expect(panel.getLoadedEvents()).toEqual(events);
             expect(vm.getSnapshot().items.at(-1)?.isRoot).toBe(true);
-            act(() => panel.refreshTimeline(events[70].getId()));
+            await act(async () => panel.refreshTimeline(events[70].getId()));
             await waitFor(() => expect(vm!.getSnapshot().complete).toBe(true));
             expect(panel.getLoadedEvents()).toEqual(events);
             vm.dispose();

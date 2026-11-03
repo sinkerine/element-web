@@ -176,10 +176,11 @@ export function ThreadOwnMessagesView({
             if (restoreFocus) buttonRef.current?.focus();
         };
         document.addEventListener("pointerdown", onPointerDown);
-        document.addEventListener("keydown", onKeyDown);
+        // Handle Escape before the host's room shortcuts consume it or navigate away from the thread.
+        document.addEventListener("keydown", onKeyDown, true);
         return () => {
             document.removeEventListener("pointerdown", onPointerDown);
-            document.removeEventListener("keydown", onKeyDown);
+            document.removeEventListener("keydown", onKeyDown, true);
         };
     }, [s.listOpen, vm]);
     useEffect(() => {
