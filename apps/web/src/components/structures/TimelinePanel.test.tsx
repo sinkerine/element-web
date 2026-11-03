@@ -47,6 +47,7 @@ import { mkThread } from "test-utils/threads";
 import { createMessageEventContent } from "test-utils/events";
 
 import TimelinePanel from "./TimelinePanel";
+import MessagePanel from "./MessagePanel";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import SettingsStore from "../../settings/SettingsStore";
 import ScrollPanel from "./ScrollPanel";
@@ -490,6 +491,227 @@ describe("TimelinePanel", () => {
             await scrollPanel.props.onFillRequest!(true);
 
             await waitFor(() => expectEvents(container, [events[0], events[1]]));
+        });
+    });
+
+    describe("navigation primitives", () => {
+        const startDecryption = (event: MatrixEvent) => {
+            const encrypted = new MatrixEvent({ ...event.event, type: EventType.RoomMessageEncrypted, content: {} });
+            type CryptoBackend = Parameters<MatrixEvent["attemptDecryption"]>[0];
+            const deferred = Promise.withResolvers<Awaited<ReturnType<CryptoBackend["decryptEvent"]>>>();
+            const decryption = encrypted.attemptDecryption({
+                decryptEvent: () => deferred.promise,
+            } as CryptoBackend);
+            return {
+                encrypted,
+                finish: async (): Promise<void> => {
+                    deferred.resolve({ clearEvent: { type: EventType.RoomMessage, content: event.getContent() } });
+                    await decryption;
+                },
+            };
+        };
+
+        const renderPanel = async (props: TimelinePanel["props"]) => {
+            const ref = React.createRef<TimelinePanel>();
+            const result = render(
+                <TimelinePanel {...props} ref={ref} />,
+                clientAndSDKContextRenderOptions(client, sdkContext),
+            );
+            await waitFor(() => expect(ref.current?.getLoadedEvents()).toHaveLength(2));
+            return { ...result, panel: ref.current!, ref };
+        };
+
+        it("should highlight a jump without reloading and restore the prop highlight on an event change", async () => {
+            const [, room, events] = setupTestData();
+            const props = { ...getProps(room, events), highlightedEventId: events[0].getId() };
+            const { panel, rerender, ref } = await renderPanel(props);
+            const messageRender = vi.spyOn(MessagePanel.prototype, "render");
+            const load = vi.spyOn(TimelineWindow.prototype, "load");
+            const scroll = vi.spyOn(MessagePanel.prototype, "scrollToEvent");
+
+            act(() => panel.jumpToEvent(events[1].getId()!));
+
+            expect(scroll).toHaveBeenCalledWith(events[1].getId(), 0, 1 / 3);
+            expect(load).not.toHaveBeenCalled();
+            expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[1].getId());
+
+            rerender(<TimelinePanel {...props} eventId={events[0].getId()} ref={ref} />);
+
+            await waitFor(() =>
+                expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[0].getId()),
+            );
+            expect(load).toHaveBeenCalled();
+        });
+
+        it.each([false, true])("should clear the jump highlight when jumping to live (reload: %s)", async (reload) => {
+            const [, room, events] = setupTestData();
+            const { panel } = await renderPanel(getProps(room, events));
+            const messageRender = vi.spyOn(MessagePanel.prototype, "render");
+            act(() => panel.jumpToEvent(events[0].getId()!));
+            expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBe(events[0].getId());
+            const canPaginate = vi.spyOn(TimelineWindow.prototype, "canPaginate").mockReturnValue(reload);
+            const scroll = vi.spyOn(MessagePanel.prototype, "scrollToBottom");
+
+            act(() => panel.jumpToLiveTimeline());
+
+            await waitFor(() => expect(messageRender.mock.contexts.at(-1)?.props.highlightedEventId).toBeUndefined());
+            if (!reload) expect(scroll).toHaveBeenCalled();
+            canPaginate.mockRestore();
+        });
+
+        it("should resolve pagination with the loaded events already in panel state", async () => {
+            const [, room, events] = setupTestData();
+            const [timeline, timelineSet] = mkTimeline(room, events.slice(1));
+            setupPagination(client, timeline, events.slice(0, 1), null);
+            const ref = React.createRef<TimelinePanel>();
+            render(
+                <TimelinePanel timelineSet={timelineSet} ref={ref} />,
+                clientAndSDKContextRenderOptions(client, sdkContext),
+            );
+            await waitFor(() => expect(ref.current?.getLoadedEvents()).toEqual(events.slice(1)));
+
+            expect(await ref.current!.loadOlderEvents()).toBe(true);
+            expect(ref.current!.getLoadedEvents()).toEqual(events);
+            expect(await ref.current!.loadOlderEvents()).toBe(false);
+        });
+
+        it("should wait for pending decryption before loading older history and updating panel state", async () => {
+            const [, room, events] = setupTestData();
+            const { encrypted, finish } = startDecryption(events[1]);
+            const [timeline, timelineSet] = mkTimeline(room, [encrypted]);
+            setupPagination(client, timeline, events.slice(0, 1), null);
+            const ref = React.createRef<TimelinePanel>();
+            const mount = vi.spyOn(ScrollPanel.prototype, "componentDidMount");
+            render(
+                <TimelinePanel timelineSet={timelineSet} ref={ref} />,
+                clientAndSDKContextRenderOptions(client, sdkContext),
+            );
+            await waitFor(() => expect(ref.current?.getLoadedEvents()).toEqual([encrypted]));
+            expect(encrypted.isBeingDecrypted()).toBe(true);
+
+            // ScrollPanel should still pause immediately while its tiles have no height.
+            const scrollPanel = mount.mock.contexts.at(-1) as ScrollPanel;
+            expect(await scrollPanel.props.onFillRequest!(true)).toBe(false);
+            const settled = vi.fn();
+            const pagination = ref.current!.loadOlderEvents().then((result) => {
+                settled();
+                expect(ref.current!.getLoadedEvents()).toEqual([events[0], encrypted]);
+                return result;
+            });
+            await flushPromises();
+            expect(settled).not.toHaveBeenCalled();
+            expect(client.paginateEventTimeline).not.toHaveBeenCalled();
+
+            await finish();
+            expect(await pagination).toBe(true);
+            expect(client.paginateEventTimeline).toHaveBeenCalledTimes(1);
+            expect(await ref.current!.loadOlderEvents()).toBe(false);
+        });
+
+        it.each([
+            ["decryption", "unmount"],
+            ["decryption", "timeline replacement"],
+            ["pagination", "unmount"],
+            ["pagination", "timeline replacement"],
+        ])("should abort pending %s on %s without applying a late result", async (phase, cancellation) => {
+            const [, room, events] = setupTestData();
+            const { encrypted, finish } = startDecryption(events[1]);
+            const loaded = phase === "decryption" ? encrypted : events[1];
+            const [timeline, timelineSet] = mkTimeline(room, [loaded]);
+            setupPagination(client, timeline, events.slice(0, 1), null);
+            const deferred = Promise.withResolvers<boolean>();
+            const onPaginationRequest = vi.fn(() => deferred.promise);
+            const ref = React.createRef<TimelinePanel>();
+            const { unmount } = render(
+                <TimelinePanel timelineSet={timelineSet} onPaginationRequest={onPaginationRequest} ref={ref} />,
+                clientAndSDKContextRenderOptions(client, sdkContext),
+            );
+            await waitFor(() => expect(ref.current?.getLoadedEvents()).toEqual([loaded]));
+            const panel = ref.current!;
+            const pagination = panel.loadOlderEvents();
+            const aborted = async (): Promise<void> => {
+                await expect(pagination).rejects.toMatchObject({ name: "AbortError" });
+            };
+            const assertion = aborted();
+            await flushPromises();
+            expect(onPaginationRequest).toHaveBeenCalledTimes(phase === "pagination" ? 1 : 0);
+
+            if (cancellation === "unmount") {
+                unmount();
+            } else {
+                act(() => panel.refreshTimeline());
+            }
+            // Cancellation must settle even if decryption/the request never completes.
+            await assertion;
+            await flushPromises();
+            const setState = vi.spyOn(panel, "setState");
+            const callsBeforeCompletion = onPaginationRequest.mock.calls.length;
+            await finish();
+            deferred.resolve(true);
+            await flushPromises();
+            expect(setState).not.toHaveBeenCalled();
+            expect(onPaginationRequest).toHaveBeenCalledTimes(callsBeforeCompletion);
+            expect(panel.getLoadedEvents()).toEqual([loaded]);
+            if (cancellation === "unmount") {
+                await expect(panel.loadOlderEvents()).rejects.toMatchObject({ name: "AbortError" });
+            }
+        });
+
+        it("should clear cancelled pagination state without letting an old result clear a newer request", async () => {
+            const [, room, events] = setupTestData();
+            const [timeline, timelineSet] = mkTimeline(room, events);
+            setupPagination(client, timeline, [], null);
+            const previous = Promise.withResolvers<boolean>();
+            const current = Promise.withResolvers<boolean>();
+            const onPaginationRequest = vi
+                .fn()
+                .mockReturnValueOnce(previous.promise)
+                .mockReturnValueOnce(current.promise);
+            const { panel } = await renderPanel({ timelineSet, onPaginationRequest });
+            const oldRequest = panel.loadOlderEvents().catch((error: unknown) => error);
+            await waitFor(() => expect(panel.state.backPaginating).toBe(true));
+
+            act(() => panel.refreshTimeline());
+            expect(await oldRequest).toMatchObject({ name: "AbortError" });
+            expect(panel.state.backPaginating).toBe(false);
+
+            const newRequest = panel.loadOlderEvents();
+            await waitFor(() => expect(panel.state.backPaginating).toBe(true));
+            previous.resolve(true);
+            await flushPromises();
+            expect(panel.state.backPaginating).toBe(true);
+            current.resolve(true);
+            expect(await newRequest).toBe(true);
+            expect(panel.state.backPaginating).toBe(false);
+        });
+
+        it("should use tile and viewport rects for visibility and the oldest visible top edge", async () => {
+            const [, room, events] = setupTestData();
+            const { panel, container } = await renderPanel(getProps(room, events));
+            const viewport = container.querySelector(".mx_ScrollPanel")!;
+            vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 300, 200));
+            const tiles = container.querySelectorAll<HTMLElement>(".mx_EventTile");
+            const olderRect = new DOMRect(0, 50, 300, 100);
+            const newerRect = new DOMRect(0, 200, 300, 100);
+            const older = vi.spyOn(tiles[0], "getBoundingClientRect").mockReturnValue(olderRect);
+            const newer = vi.spyOn(tiles[1], "getBoundingClientRect").mockReturnValue(newerRect);
+
+            expect(panel.getEventTileRect(events[0].getId()!)).toBe(olderRect);
+            expect(panel.isEventVisible(events[0].getId()!)).toBe(true);
+            expect(panel.isEventVisible(events[1].getId()!)).toBe(true);
+            expect(panel.getTopVisibleEventId()).toBe(events[1].getId());
+            expect(panel.getEventTileRect("missing")).toBeUndefined();
+            expect(panel.isEventVisible("missing")).toBe(false);
+
+            older.mockReturnValue(new DOMRect(0, 0, 300, 100));
+            newer.mockReturnValue(new DOMRect(0, 300, 300, 100));
+            expect(panel.isEventVisible(events[0].getId()!)).toBe(false);
+            expect(panel.isEventVisible(events[1].getId()!)).toBe(false);
+            expect(panel.getTopVisibleEventId()).toBeUndefined();
+
+            older.mockReturnValue(new DOMRect(0, 100, 300, 100));
+            newer.mockReturnValue(new DOMRect(0, 200, 300, 100));
+            expect(panel.getTopVisibleEventId()).toBe(events[0].getId());
         });
     });
 
