@@ -68,4 +68,4 @@ Detailed local logs and LCOV reports are under ignored `node_modules/.cache/inte
 
 Deferred Minor finding: saved/submitted string values use raw length while parsed strings trim before length validation. A whitespace-at-limit value may therefore behave differently between initial payload and user state. No Critical or Important feature findings remain from review.
 
-The global suite remains red, Hermes/Android remain follow-ups, and live-model behavior is unverified. This branch has not been merged or pushed; no PR was opened.
+The global suite remains red, Hermes/Android remain follow-ups, and live-model behavior is unverified. The user authorized merging into local `develop` after verification. Local `develop` contained newer thread-navigation work than `origin/develop`; it was merged into this branch without conflicts. Lint, production build, 146 app tests and 94 shared feature tests passed on the combined branch; the encrypted journey was rerun before merging back. No push or PR was authorized.
