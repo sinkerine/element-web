@@ -1,0 +1,72 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.container {
+    min-width: 0;
+    max-width: 100%;
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-regular);
+    overflow-wrap: anywhere;
+}
+.scroll {
+    max-width: 100%;
+    overflow: auto;
+}
+.chart {
+    display: block;
+    color: var(--cpd-color-text-primary);
+}
+.chart text {
+    fill: currentColor;
+    font: var(--cpd-font-body-xs-regular);
+}
+.grid {
+    stroke: var(--cpd-color-border-interactive-secondary);
+}
+.axis {
+    fill: none;
+    stroke: var(--cpd-color-text-secondary);
+}
+.patternBackground {
+    fill: var(--cpd-color-bg-subtle-primary);
+}
+.patternBackground[data-series="1"],
+.patternBackground[data-series="5"] {
+    fill: var(--cpd-color-bg-info-subtle);
+}
+.patternBackground[data-series="2"],
+.patternBackground[data-series="6"] {
+    fill: var(--cpd-color-bg-success-subtle);
+}
+.patternBackground[data-series="3"],
+.patternBackground[data-series="7"] {
+    fill: var(--cpd-color-bg-critical-subtle);
+}
+.chart .patternMark {
+    fill: var(--cpd-color-text-primary);
+}
+.series {
+    color: var(--cpd-color-text-primary);
+}
+.series[data-series="1"],
+.series[data-series="5"] {
+    color: var(--cpd-color-text-info-primary);
+}
+.series[data-series="2"],
+.series[data-series="6"] {
+    color: var(--cpd-color-text-success-primary);
+}
+.series[data-series="3"],
+.series[data-series="7"] {
+    color: var(--cpd-color-text-warning-primary);
+}
+.chart .marker {
+    font: var(--cpd-font-body-md-regular);
+}
+.legend {
+    padding-inline-start: var(--cpd-space-6x);
+}

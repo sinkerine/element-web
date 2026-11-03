@@ -104,6 +104,24 @@
             "title": "This device cannot be used"
         }
     },
+    "interactive_ui": {
+        "category": "Category",
+        "chart_bar": "Bar chart",
+        "chart_line": "Line chart",
+        "chart_pie": "Pie chart",
+        "chart_scatter": "Scatter chart",
+        "chart_summary": "%(title)s · %(kind)s · %(count)s data rows. Use Data table to read all values.",
+        "data_table": "Data table",
+        "graph": "Graph",
+        "legend": "Legend",
+        "pie_negative_values": "Pie charts cannot represent negative values. All values are shown in the data table.",
+        "pie_zero_total": "This pie chart has a zero total. All values are shown in the data table.",
+        "relationships_list": "Relationships as list",
+        "series": "Series",
+        "value": "Value",
+        "x_axis": "X",
+        "y_axis": "Y"
+    },
     "keyboard": {
         "shift": "Shift"
     },

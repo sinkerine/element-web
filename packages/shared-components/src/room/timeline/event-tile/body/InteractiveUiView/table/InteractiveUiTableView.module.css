@@ -1,0 +1,37 @@
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+
+.scroll {
+    min-width: 0;
+    max-width: 100%;
+    overflow: auto;
+}
+.table {
+    border-collapse: collapse;
+    width: 100%;
+    color: var(--cpd-color-text-primary);
+    font: var(--cpd-font-body-sm-regular);
+}
+.table caption {
+    text-align: start;
+    font: var(--cpd-font-body-md-semibold);
+    padding-block: var(--cpd-space-2x);
+}
+.table th,
+.table td {
+    padding: var(--cpd-space-2x);
+    border-bottom: 1px solid var(--cpd-color-border-interactive-secondary);
+    text-align: start;
+    min-width: var(--cpd-space-12x);
+    overflow-wrap: anywhere;
+}
+.table [data-align="end"] {
+    text-align: end;
+}
+.table th {
+    font-weight: 600;
+}
