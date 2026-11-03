@@ -7,6 +7,7 @@ Please see LICENSE in the repository root for full details.
 
 import { type Locator } from "@playwright/test";
 import encrypt from "matrix-encrypt-attachment";
+import { assertNoToasts, closeReleaseAnnouncementIfExists, getToast } from "@element-hq/element-web-playwright-common";
 
 import { test as base, expect } from "../../element-web-test";
 import { Bot } from "../../pages/bot";
@@ -44,6 +45,9 @@ const test = base.extend({
         await senderPage.close();
     },
 });
+
+// Responsive coverage must allow the room list to collapse instead of pinning it to 368px.
+const responsiveTest = test.extend({ lockLeftPanelWidth: false, viewport: { width: 1280, height: 1000 } });
 
 const fallback = (name: string): string => `Complete text fallback: ${name}`;
 const message = (payload: unknown, name: string) => ({
@@ -91,6 +95,81 @@ async function expectNoPageOverflow(card: Locator): Promise<void> {
     await expect
         .poll(() => card.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))
         .toBe(true);
+}
+
+async function expectFullyInViewport(card: Locator, name: string): Promise<void> {
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toBeVisible();
+    const geometry = await card.evaluate(async (element) => {
+        const measure = async () => {
+            const entry = await new Promise<IntersectionObserverEntry>((resolve) => {
+                const observer = new IntersectionObserver(([entry]) => {
+                    observer.disconnect();
+                    resolve(entry);
+                });
+                observer.observe(element);
+            });
+            const rect = (bounds: DOMRectReadOnly) => ({
+                left: bounds.left,
+                top: bounds.top,
+                right: bounds.right,
+                bottom: bounds.bottom,
+                width: bounds.width,
+                height: bounds.height,
+            });
+            const ancestors = [];
+            for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                const style = getComputedStyle(ancestor);
+                ancestors.push({
+                    tag: ancestor.tagName,
+                    className: ancestor.className,
+                    bounds: rect(ancestor.getBoundingClientRect()),
+                    overflowX: style.overflowX,
+                    overflowY: style.overflowY,
+                    clientWidth: ancestor.clientWidth,
+                    clientHeight: ancestor.clientHeight,
+                    scrollLeft: ancestor.scrollLeft,
+                    scrollTop: ancestor.scrollTop,
+                });
+            }
+            return {
+                bounds: rect(entry.boundingClientRect),
+                intersection: rect(entry.intersectionRect),
+                ratio: entry.intersectionRatio,
+                viewport: { width: innerWidth, height: innerHeight },
+                ancestors,
+            };
+        };
+        const before = await measure();
+        // Timeline scroll offsets round to CSS pixels; centering avoids clipping at its fractional top edge.
+        element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+        return { before, after: await measure() };
+    });
+    console.info(`Viewport geometry ${name}: ${JSON.stringify(geometry)}`);
+    await expect(card).toBeInViewport({ ratio: 1 });
+}
+
+async function expectVisibleScreenshot(card: Locator, name: `${string}.png`): Promise<void> {
+    await expectFullyInViewport(card, name);
+    await assertNoToasts(card.page());
+    const heading = card.getByRole("heading").first();
+    await expect(heading).toBeInViewport({ ratio: 1 });
+    await expect
+        .poll(() =>
+            heading.evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                return [bounds.left + 1, (bounds.left + bounds.right) / 2, bounds.right - 1].every((x) =>
+                    [bounds.top + 1, (bounds.top + bounds.bottom) / 2, bounds.bottom - 1].every((y) =>
+                        element.contains(document.elementFromPoint(x, y)),
+                    ),
+                );
+            }),
+        )
+        .toBe(true);
+    await expect(card).toMatchScreenshot(name, {
+        // ScrollPanel measures the final read-marker LI to size its list. Keep its layout box while hiding it.
+        css: ".mx_MessagePanel_myReadMarker { display: list-item !important; visibility: hidden !important; }",
+    });
 }
 
 test.describe("Interactive messages (fixture-backed sender, not real Hermes)", () => {
@@ -257,7 +336,7 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
         await bot.awaitRoomMembership(roomId);
         const root = await bot.sendMessage(roomId, "Thread question");
         const eventId = await sendFixture(bot, roomId, { ...form, title: "Thread form" }, "form", root.event_id);
-        await page.getByTestId("thread-summary").click();
+        await page.getByRole("button", { name: "Open thread", exact: true }).click();
         const card = page.getByRole("region", { name: "Thread form", exact: true });
         await expect(card.getByRole("textbox", { name: "Name" })).toBeVisible();
         await card.getByRole("button", { name: "Submit", exact: true }).click();
@@ -277,7 +356,7 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
         });
     });
 
-    test(
+    responsiveTest(
         "should render tables, all chart kinds and encrypted-image carousels at light, dark and 360px",
         { tag: "@screenshot" },
         async ({ page, app, bot, axe, browserName }) => {
@@ -299,9 +378,18 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
                 await expect(axe.include(`section[aria-label="Chart ${kind}"]`)).toHaveNoViolations();
                 await chart.getByRole("button", { name: "Data table" }).click();
             }
+            // Repeated chart titles must stay accessible in both diagram and data-table modes.
+            const charts = page.getByRole("region", { name: /^Chart (bar|line|pie|scatter)$/ });
+            await expect(charts).toHaveCount(4);
+            await expect(axe.include('section[aria-label^="Chart "]')).toHaveNoViolations();
+            for (const chart of await charts.all()) await chart.getByRole("button", { name: "Data table" }).click();
+            await expect(charts.getByRole("table")).toHaveCount(4);
+            await expect(axe.include('section[aria-label^="Chart "]')).toHaveNoViolations();
+            for (const chart of await charts.all()) await chart.getByRole("button", { name: "Data table" }).click();
             // Replace fixture placeholder media with real uploaded bytes while retaining its catalog structure.
+            // A short thumbnail keeps the full card, including its controls, visible in the timeline.
             const png = Buffer.from(
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aI1sAAAAASUVORK5CYII=",
+                "iVBORw0KGgoAAAANSUhEUgAAABAAAAACCAIAAADej8umAAAAEUlEQVR4nGOwrDxDEmIgVQMAEkkvwWbMxS0AAAAASUVORK5CYII=",
                 "base64",
             );
             const encrypted = await encrypt.encryptAttachment(Uint8Array.from(png).buffer);
@@ -340,7 +428,9 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
                 .toBe(true);
             await products.getByRole("button", { name: "Next item" }).click();
             await expect(products.getByText("Item 2 of 5")).toBeVisible();
-            const track = products.getByRole("group", { name: "Results", exact: true });
+            const track = products
+                .getByRole("group", { name: "Results", exact: true })
+                .getByRole("group", { name: "Results", exact: true });
             await track.focus();
             await page.keyboard.press("ArrowRight");
             await expect(products.getByText("Item 3 of 5")).toBeVisible();
@@ -371,18 +461,65 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
             const contentCard = page.getByRole("region", { name: "Content", exact: true });
             await expect(contentCard.getByRole("img")).toBeVisible();
             await expect(axe.include('section[aria-label="Content"]')).toHaveNoViolations();
+            const verificationToast = await getToast(page, "Verify this device");
+            await verificationToast.getByRole("button", { name: "Later", exact: true }).click();
+            await expect(verificationToast).not.toBeVisible();
+            const notificationsToast = await getToast(page, "Notifications");
+            await notificationsToast.getByRole("button", { name: "Dismiss", exact: true }).click();
+            await assertNoToasts(page);
+            await closeReleaseAnnouncementIfExists(page, "Introducing Sections");
             for (const theme of ["light", "dark"] as const) {
                 await app.settings.setValue("theme", null, SettingLevel.DEVICE, theme);
-                await expect(products).toMatchScreenshot(`interactive-products-${theme}.png`);
-                await expect(prices).toMatchScreenshot(`interactive-table-${theme}.png`);
-                await expect(contentCard).toMatchScreenshot(`interactive-content-${theme}.png`);
+                await expectVisibleScreenshot(products, `interactive-products-${theme}.png`);
+                await expectVisibleScreenshot(prices, `interactive-table-${theme}.png`);
+                await expectVisibleScreenshot(contentCard, `interactive-content-${theme}.png`);
                 for (const kind of ["bar", "line", "pie", "scatter"])
-                    await expect(page.getByRole("region", { name: `Chart ${kind}`, exact: true })).toMatchScreenshot(
+                    await expectVisibleScreenshot(
+                        page.getByRole("region", { name: `Chart ${kind}`, exact: true }),
                         `interactive-chart-${kind}-${theme}.png`,
                     );
             }
-            await page.setViewportSize({ width: 360, height: 800 });
-            await products.scrollIntoViewIfNeeded();
+            await page.setViewportSize({ width: 360, height: 1000 });
+            // Interactive content uses the narrow tile width, with metadata above and receipts below it.
+            await expect
+                .poll(() =>
+                    products.evaluate((element) => {
+                        const tile = element.closest('[data-testid="event-tile"]')!;
+                        return element.getBoundingClientRect().width / tile.getBoundingClientRect().width;
+                    }),
+                )
+                .toBe(1);
+            await expectFullyInViewport(products, "products-before-swipe");
+            await expect(track).toBeInViewport({ ratio: 1 });
+            await expect(products.getByText("Item 3 of 5")).toBeVisible();
+            await expect(products.getByText("Item 3 of 5")).toBeInViewport({ ratio: 1 });
+            const pageScroll = () =>
+                track.evaluate((element) => {
+                    const positions = [];
+                    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement)
+                        positions.push({ left: ancestor.scrollLeft, top: ancestor.scrollTop });
+                    return positions;
+                });
+            const beforeSwipe = await pageScroll();
+            await expect
+                .poll(() =>
+                    track.evaluate((element) =>
+                        Math.abs(element.scrollLeft - (element.children[2] as HTMLElement).offsetLeft),
+                    ),
+                )
+                .toBeLessThan(1);
+            const trackScrollBeforeSwipe = await track.evaluate((element) => element.scrollLeft);
+            const scrollState = await track.evaluateHandle((element) => {
+                const state = { ended: false, lastScroll: performance.now() };
+                element.addEventListener("scroll", () => {
+                    state.ended = false;
+                    state.lastScroll = performance.now();
+                });
+                element.addEventListener("scrollend", () => {
+                    state.ended = true;
+                });
+                return state;
+            });
             // A scroll gesture across the carousel changes only its internal scroll position.
             if (browserName === "chromium") {
                 const session = await page.context().newCDPSession(page);
@@ -390,10 +527,12 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
                 const startX = bounds.x + bounds.width * 0.85;
                 const y = bounds.y + Math.min(bounds.height / 2, 80);
                 await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: startX, y }] });
-                for (let step = 1; step <= 8; step++) {
+                // Ease out over real frames so release velocity does not fling past the next item.
+                for (let step = 1; step <= 16; step++) {
+                    await page.evaluate(() => new Promise(requestAnimationFrame));
                     await session.send("Input.dispatchTouchEvent", {
                         type: "touchMove",
-                        touchPoints: [{ x: startX - (bounds.width * 0.7 * step) / 8, y }],
+                        touchPoints: [{ x: startX - bounds.width * 0.6 * (1 - (1 - step / 16) ** 3), y }],
                     });
                 }
                 await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -402,16 +541,33 @@ test.describe("Interactive messages (fixture-backed sender, not real Hermes)", (
                 await track.hover();
                 await page.mouse.wheel(280, 0);
             }
+            await expect
+                .poll(() => scrollState.evaluate((state) => state.ended && performance.now() - state.lastScroll >= 200))
+                .toBe(true);
+            await scrollState.dispose();
+            await expect
+                .poll(() =>
+                    track.evaluate((element) =>
+                        Math.abs(element.scrollLeft - (element.children[3] as HTMLElement).offsetLeft),
+                    ),
+                )
+                .toBeLessThan(1);
             await expect(products.getByText("Item 4 of 5")).toBeVisible();
+            await expect(products.getByText("Item 4 of 5")).toBeInViewport({ ratio: 1 });
+            await expect
+                .poll(() => track.evaluate((element) => element.scrollLeft))
+                .toBeGreaterThan(trackScrollBeforeSwipe);
+            await expect.poll(pageScroll).toEqual(beforeSwipe);
             await expectNoPageOverflow(products);
-            await expect(products).toMatchScreenshot("interactive-products-360.png");
-            await expect(prices).toMatchScreenshot("interactive-table-360.png");
+            await expectVisibleScreenshot(products, "interactive-products-360.png");
+            await expect(products.getByText("Item 4 of 5")).toBeVisible();
+            await expectVisibleScreenshot(prices, "interactive-table-360.png");
             await expectNoPageOverflow(contentCard);
-            await expect(contentCard).toMatchScreenshot("interactive-content-360.png");
+            await expectVisibleScreenshot(contentCard, "interactive-content-360.png");
             for (const kind of ["bar", "line", "pie", "scatter"]) {
                 const chart = page.getByRole("region", { name: `Chart ${kind}`, exact: true });
                 await expectNoPageOverflow(chart);
-                await expect(chart).toMatchScreenshot(`interactive-chart-${kind}-360.png`);
+                await expectVisibleScreenshot(chart, `interactive-chart-${kind}-360.png`);
             }
         },
     );
