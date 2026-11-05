@@ -616,6 +616,11 @@ The following are undocumented or intended for developer use only.
 2. `sync_timeline_limit`
 3. `dangerously_allow_unsafe_and_insecure_passwords`
 4. `latex_maths_delims`: An optional setting to override the default delimiters used for maths parsing. See https://github.com/matrix-org/matrix-react-sdk/pull/5939 for details. Only used when `feature_latex_maths` is enabled.
+   Maths rendering is enabled by default; set `features.feature_latex_maths` to `false` to disable it.
+   By default, inline `$…$` may start at the beginning of a line or after whitespace or one of
+   `. , ! ? : ; ( [ { " '`. The opening `$` cannot be followed by whitespace, and the closing `$` cannot follow
+   whitespace or a backslash, or be followed by a digit. This keeps currency such as `$5/$10` as text.
+   Overrides of `latex_maths_delims.inline.pattern.tex` replace these default rules.
 
 ## Additional config options for Element Desktop
 

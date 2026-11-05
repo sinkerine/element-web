@@ -491,9 +491,10 @@ export const SETTINGS: Settings = {
         isFeature: true,
         labsGroup: LabGroup.Messaging,
         displayName: _td("labs|latex_maths"),
+        description: _td("labs|latex_maths_description"),
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG_PRIORITISED,
         supportedLevelsAreOrdered: true,
-        default: false,
+        default: true,
     },
     "feature_wysiwyg_composer": {
         isFeature: true,

@@ -14,6 +14,8 @@ import { render } from "test-utils-rtl";
 import type { IContent } from "matrix-js-sdk/src/matrix";
 import type React from "react";
 import { editBodyDiffToHtml } from "./MessageDiffUtils";
+import SettingsStore from "../settings/SettingsStore";
+import { SettingLevel } from "../settings/SettingLevel";
 
 describe("editBodyDiffToHtml", () => {
     function buildContent(message: string): IContent {
@@ -76,11 +78,18 @@ describe("editBodyDiffToHtml", () => {
     });
 
     // see https://github.com/vector-im/element-web/issues/23665
-    it("handles complex transformations", () => {
-        const { container } = renderDiff(
-            '<span data-mx-maths="{☃️}^\\infty"><code>{☃️}^\\infty</code></span>',
-            '<span data-mx-maths="{😃}^\\infty"><code>{😃}^\\infty</code></span>',
-        );
-        expect(container).toMatchSnapshot();
+    it("handles complex transformations", async () => {
+        // This snapshot exercises the code fallback rather than KaTeX's rendered output.
+        await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, false);
+        try {
+            const { container } = renderDiff(
+                '<span data-mx-maths="{☃️}^\\infty"><code>{☃️}^\\infty</code></span>',
+                '<span data-mx-maths="{😃}^\\infty"><code>{😃}^\\infty</code></span>',
+            );
+            expect(container).toMatchSnapshot();
+        } finally {
+            localStorage.removeItem("mx_labs_feature_feature_latex_maths");
+            SettingsStore.reset();
+        }
     });
 });
