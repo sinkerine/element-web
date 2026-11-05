@@ -20,7 +20,7 @@ test.describe("LaTeX maths in the regular composer", () => {
         },
     });
 
-    test("should render, edit and disable maths with the default settings", async ({ page, app, room }) => {
+    test("should render, edit and disable maths with the default settings", async ({ page, app, room, bot }) => {
         await rejectToastIfExists(page, "Notifications");
         const composer = page.getByRole("textbox", { name: "Send an unencrypted message…" });
         const bodies = page.getByTestId("event-tile-slot-body");
@@ -102,6 +102,50 @@ test.describe("LaTeX maths in the regular composer", () => {
         await expect(received.getByRole("math")).toHaveCount(1);
         await expect(received.getByRole("math")).toHaveAttribute("display", "block");
         await expect(received.locator('annotation[encoding="application/x-tex"]')).toHaveText("a^2");
+
+        // Bots commonly run Markdown before sending, which removes the backslashes around display maths.
+        await app.client.inviteUser(room.roomId, bot.credentials!.userId);
+        await bot.joinRoom(room.roomId);
+        await bot.sendMessage(room.roomId, {
+            msgtype: "m.text",
+            body: "**Bot answer**\n\n\\[\n\\frac{1}{n}\n\\]\n\nSee the explanation.",
+            format: "org.matrix.custom.html",
+            formatted_body:
+                "<p><strong>Bot answer</strong></p><p>[<br>\\frac{1}{n}<br>]</p><p>See the explanation.</p>",
+        });
+        const botAnswer = bodies.filter({ hasText: "Bot answer" });
+        await expect(botAnswer.getByRole("math")).toHaveCount(1);
+        await expect(botAnswer.getByRole("math")).toHaveAttribute("display", "block");
+        await expect(botAnswer.locator('annotation[encoding="application/x-tex"]')).toHaveText("\\frac{1}{n}");
+        await expect(botAnswer.getByText("Bot answer", { exact: true })).toHaveJSProperty("tagName", "STRONG");
+        await expect(botAnswer).toContainText("See the explanation.");
+
+        await bot.sendMessage(room.roomId, {
+            msgtype: "m.text",
+            body: "Plain before  maths\n\\(x\\)\nPlain after  maths",
+        });
+        const plainMaths = bodies.filter({ hasText: "Plain before" });
+        await expect(plainMaths.getByRole("math")).toBeVisible();
+        // Read rendered text and geometry so collapsed newlines or repeated spaces fail in the browser.
+        expect(await plainMaths.innerText()).toMatch(/^Plain before {2}maths\n[\s\S]*\nPlain after {2}maths$/);
+        const plainLines = await plainMaths.evaluate((body) => {
+            const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+            const positions: number[] = [];
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                for (const text of ["Plain before  maths", "Plain after  maths"]) {
+                    const start = node.textContent!.indexOf(text);
+                    if (start === -1) continue;
+                    const range = document.createRange();
+                    range.setStart(node, start);
+                    range.setEnd(node, start + text.length);
+                    positions.push(range.getBoundingClientRect().top);
+                }
+            }
+            return positions;
+        });
+        expect(plainLines).toHaveLength(2);
+        expect(plainLines[1]).toBeGreaterThan(plainLines[0]);
 
         await send("/topic Budget $5/$10");
         await page.getByRole("button", { name: "Room info", exact: true }).last().click();
