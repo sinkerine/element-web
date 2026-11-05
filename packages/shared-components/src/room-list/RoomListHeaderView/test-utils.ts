@@ -14,6 +14,7 @@ import { type RoomListHeaderViewActions, type RoomListHeaderViewSnapshot } from 
  * A mocked ViewModel for the RoomListHeaderView, for use in tests.
  */
 export class MockedViewModel extends MockViewModel<RoomListHeaderViewSnapshot> implements RoomListHeaderViewActions {
+    public markAllAsRead = vi.fn<() => void>();
     public createChatRoom = vi.fn<() => void>();
     public createRoom = vi.fn<() => void>();
     public createVideoRoom = vi.fn<() => void>();

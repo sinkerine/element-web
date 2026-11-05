@@ -9,6 +9,8 @@ import { type RoomListHeaderViewSnapshot } from "./RoomListHeaderView";
 
 export const defaultSnapshot: RoomListHeaderViewSnapshot = {
     title: "Rooms",
+    canMarkAllAsRead: true,
+    isMarkingAllAsRead: false,
     displaySpaceMenu: true,
     canCreateRoom: true,
     canCreateVideoRoom: true,
