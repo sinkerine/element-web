@@ -11,6 +11,7 @@ Please see LICENSE files in the repository root for full details.
 import { vi, describe, it, expect, beforeEach, afterEach, type Mock, type MockedObject } from "vitest";
 import React, { createRef, type RefObject } from "react";
 import {
+    ClientEvent,
     EventTimeline,
     EventType,
     type IEvent,
@@ -288,6 +289,34 @@ describe("RoomView", () => {
             expect(screen.getByTestId("timeline")).toBeVisible();
             toggle.mockRestore();
         });
+
+        it.each(["loaded", "unloaded"])(
+            "should restore an expanded URL when the room arrives after mount with its root %s",
+            async (rootState) => {
+                rooms.delete(room.roomId);
+                cli.getRoomSummary.mockReturnValue(new Promise(() => {}));
+                await expand();
+                const fetch = vi.spyOn(EventUtils, "fetchInitialEvent").mockResolvedValue(root);
+                const find = vi.spyOn(room, "findEventById");
+                if (rootState === "unloaded") find.mockReturnValue(undefined);
+                const { container } = await mountRoomView();
+                expect(fetch).not.toHaveBeenCalled();
+                expect(container.querySelector(".mx_ThreadView")).toBeNull();
+
+                await act(async () => {
+                    rooms.set(room.roomId, room);
+                    cli.emit(ClientEvent.Room, room);
+                });
+
+                expect(screen.getByRole("button", { name: "Collapse thread" })).toBeVisible();
+                expect(container.querySelector(".mx_MainSplit_thread .mx_ThreadView")).not.toBeNull();
+                expect(screen.queryByTestId("right-panel")).toBeNull();
+                expect(screen.queryByTestId("timeline")).toBeNull();
+                expect(stores.roomViewStore.getFullPageThreadId()).toBe(root.getId());
+                expect(fetch).toHaveBeenCalledTimes(rootState === "unloaded" ? 1 : 0);
+                find.mockRestore();
+            },
+        );
 
         it("should use a loaded root without a server fetch", async () => {
             await mountRoomView();

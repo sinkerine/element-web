@@ -1759,6 +1759,8 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             },
             () => {
                 this.onRoomLoaded(room);
+                // An expanded URL can be restored before sync supplies the room needed to resolve its thread.
+                if (this.roomViewStore.getFullPageThreadId()) void this.onRoomViewStoreUpdate();
             },
         );
     };
