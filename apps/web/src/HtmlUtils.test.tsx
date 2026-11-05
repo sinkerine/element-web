@@ -13,6 +13,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "test-utils-rtl";
 import parse from "html-react-parser";
 import { getMockClientWithEventEmitter } from "test-utils";
+import katex from "katex";
+import { logger } from "matrix-js-sdk/src/logger";
 
 import { bodyToHtml, bodyToNode, formatEmojis, sanitizedHtmlNode, topicToHtml } from "./HtmlUtils";
 import SettingsStore from "./settings/SettingsStore";
@@ -174,11 +176,25 @@ describe("bodyToHtml", () => {
     });
 
     describe("feature_latex_maths", () => {
+        function renderMaths(formattedBody: string): HTMLElement {
+            const html = bodyToHtml(
+                {
+                    body: "maths fallback",
+                    msgtype: "m.text",
+                    formatted_body: formattedBody,
+                    format: "org.matrix.custom.html",
+                },
+                [],
+            );
+            return new DOMParser().parseFromString(html, "text/html").body;
+        }
+
         beforeEach(async () => {
             await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, true);
         });
 
         afterEach(() => {
+            vi.restoreAllMocks();
             SettingsStore.reset();
             SdkConfig.reset();
         });
@@ -207,6 +223,69 @@ describe("bodyToHtml", () => {
                 [],
             );
             expect(html).toMatchSnapshot();
+        });
+
+        it.each([String.raw`\href{javascript:alert(1)}{x}`, String.raw`\url{https://example.org}`])(
+            "should not trust links in %s",
+            (tex) => {
+                const body = renderMaths(`<span data-mx-maths="${tex}"><code>fallback</code></span>`);
+
+                expect(body.querySelector(".katex")).not.toBeNull();
+                expect(body.querySelector("a[href]")).toBeNull();
+            },
+        );
+
+        it("should clamp sizes to 20em", () => {
+            const body = renderMaths(String.raw`<span data-mx-maths="\rule{1000em}{1em}"><code>rule</code></span>`);
+            const rule = body.querySelector<HTMLElement>(".katex-html .katex-rule");
+
+            expect(rule).not.toBeNull();
+            expect(rule!.style.borderRightWidth).toBe("20em");
+        });
+
+        it("should show invalid TeX with an error title and colour", () => {
+            const tex = String.raw`\frac{1}{2`;
+            const body = renderMaths(`<span data-mx-maths="${tex}"><code>fallback</code></span>`);
+            const error = body.querySelector<HTMLElement>(".katex-error");
+
+            expect(error?.textContent).toBe(tex);
+            expect(error?.title).toContain("KaTeX parse error");
+            expect(error?.style.color).toBe("#cc0000");
+        });
+
+        it("should stop excessive macro expansion", () => {
+            const tex = String.raw`\def\a{\a}\a`;
+            const body = renderMaths(`<span data-mx-maths="${tex}"><code>fallback</code></span>`);
+
+            expect(body.querySelector(".katex-error")?.getAttribute("title")).toContain("Too many expansions");
+        });
+
+        it("should keep the sanitized fallback on unexpected failure and render later elements", () => {
+            const error = new Error("Unexpected KaTeX failure");
+            vi.spyOn(katex, "renderToString").mockImplementationOnce(() => {
+                throw error;
+            });
+            const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+            const body = renderMaths(
+                '<span data-mx-maths="tex"><code onclick="alert(1)">tex</code><script>alert(1)</script></span>' +
+                    '<div data-mx-maths="x"><code>x</code></div>',
+            );
+
+            expect(body.querySelector("[data-mx-maths]")?.outerHTML).toBe(
+                '<span data-mx-maths="tex"><code>tex</code></span>',
+            );
+            expect(body.querySelector(".katex-display math")?.getAttribute("display")).toBe("block");
+            expect(body.querySelector("annotation")?.textContent).toBe("x");
+            expect(warn).toHaveBeenCalledExactlyOnceWith("Failed to render maths", error);
+        });
+
+        it("should keep inline and block code fallbacks when the flag is off", async () => {
+            await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, false);
+            const renderToString = vi.spyOn(katex, "renderToString");
+            const fallback = '<span data-mx-maths="x"><code>x</code></span><div data-mx-maths="y"><code>y</code></div>';
+
+            expect(renderMaths(fallback).innerHTML).toBe(fallback);
+            expect(renderToString).not.toHaveBeenCalled();
         });
 
         it("should not mangle code blocks", () => {
