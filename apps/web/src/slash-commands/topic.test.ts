@@ -12,6 +12,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import Modal from "../Modal";
+import SettingsStore from "../settings/SettingsStore";
 import { setUpCommandTest } from "./__mocks__";
 
 describe("/topic", () => {
@@ -25,6 +26,20 @@ describe("/topic", () => {
 
         expect(client.setRoomTopic).toHaveBeenCalledWith("room-id", "pizza", undefined);
     });
+
+    it.each(["Budget $x$", "Budget $5/$10", "**Budget** $x$"])(
+        "should keep dollar signs in topic %s with maths enabled",
+        async (topic) => {
+            vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");
+            const { client, command, args } = setUpCommandTest(roomId, `/topic ${topic}`);
+            await command.run(client, roomId, null, args).promise;
+            expect(client.setRoomTopic).toHaveBeenCalledWith(
+                roomId,
+                topic,
+                topic.startsWith("**") ? "<strong>Budget</strong> $x$" : undefined,
+            );
+        },
+    );
 
     it("should show topic modal if no args passed", async () => {
         const spy = vi.spyOn(Modal, "createDialog");

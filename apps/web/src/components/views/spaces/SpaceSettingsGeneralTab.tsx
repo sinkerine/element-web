@@ -73,7 +73,7 @@ const SpaceSettingsGeneralTab: React.FC<IProps> = ({ matrixClient: cli, space })
         }
 
         if (topicChanged) {
-            const htmlTopic = htmlSerializeFromMdIfNeeded(topic, { forceHTML: false });
+            const htmlTopic = htmlSerializeFromMdIfNeeded(topic, { forceHTML: false, allowMaths: false });
             promises.push(cli.setRoomTopic(space.roomId, topic, htmlTopic));
         }
 

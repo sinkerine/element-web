@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 
 // @vitest-environment happy-dom
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
 import { parseEvent } from "./deserialize";
@@ -16,6 +16,8 @@ import EditorModel from "./model";
 import DocumentOffset from "./offset";
 import { htmlSerializeIfNeeded, textSerialize } from "./serialize";
 import { createPartCreator } from "./__mocks__";
+import SettingsStore from "../settings/SettingsStore";
+import SdkConfig from "../SdkConfig";
 
 function htmlMessage(formattedBody: string, msgtype = "m.text") {
     return {
@@ -52,6 +54,129 @@ async function roundTripHtml(html: string): Promise<string> {
 }
 
 describe("editor/roundtrip", function () {
+    describe("maths", () => {
+        beforeEach(() => {
+            vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");
+        });
+
+        it.each([
+            String.raw`Euler $e^{i\pi}+1=0$`,
+            "Identity ($a+b$) holds",
+            "$a$ and $x$",
+            "Tickets are $5/$10",
+            "Range $5-$10",
+            "$3,$4",
+            "I paid $5 and $10",
+            "Use `$x$`",
+            String.raw`\$x\$`,
+            String.raw`$$\int_0^1 x\,dx$$`,
+            String.raw`\(\alpha\)`,
+            "$$a$$\n$$b$$",
+            "$$a\nb$$",
+            "before\n$$a$$\nafter",
+            "```\n$$x$$\n```\n\n$a$ and `b`",
+            "`$a$` $b$ `c`",
+            String.raw`$a+\$b$`,
+            "**$x$**",
+            String.raw`**\(x\)**`,
+        ])("should keep HTML stable for %s", async (source) => {
+            const html = await md2html(source);
+            expect(await roundTripHtml(html)).toBe(html);
+        });
+
+        it("should retain maths elements with unsafe dollar contexts", async () => {
+            const html = 'a<span data-mx-maths="x"><code>x</code></span>2';
+            expect(html2md(html)).toBe(String.raw`a\(x\)2`);
+            expect(await roundTripHtml(html)).toBe(html);
+        });
+
+        it.each([
+            String.raw`Cost \$5 (\(x\))`,
+            String.raw`Cost \$5 **today** (\(x\))`,
+            String.raw`**Cost \$5** (\(x\))`,
+        ])("should retain exactly one formula across repeated edits of %s", async (source) => {
+            const original = await md2html(source);
+            let html = original;
+            for (let edit = 0; edit < 2; edit++) {
+                html = await roundTripHtml(html);
+                const parsed = new DOMParser().parseFromString(html, "text/html");
+                expect(
+                    [...parsed.querySelectorAll("[data-mx-maths]")].map((node) => node.getAttribute("data-mx-maths")),
+                ).toEqual(["x"]);
+                expect(parsed.body.textContent).toContain("$5");
+                expect(html).toBe(original);
+            }
+        });
+
+        it("should preserve earlier formulas and currency across repeated edits", async () => {
+            const original = await md2html(String.raw`$a$ Cost \$5 (\(x\))`);
+            let html = original;
+            for (let edit = 0; edit < 2; edit++) {
+                html = await roundTripHtml(html);
+                const parsed = new DOMParser().parseFromString(html, "text/html");
+                expect(
+                    [...parsed.querySelectorAll("[data-mx-maths]")].map((node) => node.getAttribute("data-mx-maths")),
+                ).toEqual(["a", "x"]);
+                expect(html).toBe(original);
+            }
+        });
+
+        it("should retain maths after an ignored newline following inline markup", async () => {
+            const html = '<em>a</em>\n<span data-mx-maths="x"><code>x</code></span>';
+            expect(html2md(html)).toBe(String.raw`_a_\(x\)`);
+            const resent = await roundTripHtml(html);
+            expect(resent).toBe(html.replace("\n", ""));
+            expect(await roundTripHtml(resent)).toBe(resent);
+        });
+
+        it("should preserve the set of adjacent display values", async () => {
+            const html = await md2html("$$a$$\n$$b$$");
+            expect(html2md(html)).toBe("$$a$$\n\n$$b$$");
+            expect(await roundTripHtml(html)).toBe(html);
+        });
+
+        it("should keep multiline display text literal when editing a plain-text message", async () => {
+            const body = "$$\na\n$$";
+            const pc = createPartCreator();
+            const event = { getContent: () => ({ msgtype: "m.text", body }) } as unknown as MatrixEvent;
+            const model = new EditorModel(parseEvent(event, pc), pc);
+            const html = await md2html(textSerialize(model));
+            expect(html).toBe("$$<br>a<br>$$");
+            expect(html).not.toContain("data-mx-maths");
+            expect(await roundTripHtml(html)).toBe(html);
+        });
+
+        it.each([
+            '$$<br>a<br>$$ and <span data-mx-maths="x"><code>x</code></span>',
+            '<strong>$$<br>a<br>$$</strong> and <span data-mx-maths="x"><code>x</code></span>',
+            '$$<br>a<br>$$ @room <div data-mx-maths="b"><code>b</code></div>',
+        ])("should preserve literal text and real maths across repeated edits of %s", async (html) => {
+            const first = await roundTripHtml(html);
+            const parsed = new DOMParser().parseFromString(first, "text/html");
+            expect(
+                [...parsed.querySelectorAll("[data-mx-maths]")].map((node) => node.getAttribute("data-mx-maths")),
+            ).toEqual(html.includes('data-mx-maths="x"') ? ["x"] : ["b"]);
+            expect(parsed.body.textContent).toContain("$$a$$");
+            expect(await roundTripHtml(first)).toBe(first);
+        });
+
+        it("should round-trip configured delimiters", async () => {
+            const original = SdkConfig.get();
+            SdkConfig.put({
+                latex_maths_delims: {
+                    inline: { left: "@", right: "@", pattern: { tex: "(^| )@([^@]+)@" } },
+                },
+            });
+            try {
+                const html = await md2html("@x@");
+                expect(html2md(html)).toBe("@x@");
+                expect(await roundTripHtml(html)).toBe(html);
+            } finally {
+                SdkConfig.put(original);
+            }
+        });
+    });
+
     describe("markdown messages should round-trip if they contain", function () {
         it.each([
             ["newlines", "hello\nworld"],

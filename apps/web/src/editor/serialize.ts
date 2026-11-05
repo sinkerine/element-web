@@ -7,14 +7,13 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { encode } from "html-entities";
 import escapeHtml from "escape-html";
 
 import Markdown from "../Markdown";
 import { makeGenericPermalink } from "../utils/permalinks/Permalinks";
 import type EditorModel from "./model";
 import SettingsStore from "../settings/SettingsStore";
-import SdkConfig from "../SdkConfig";
+import { replaceMathsDelimiters } from "./maths";
 import { Type } from "./parts";
 
 export function mdSerialize(model: EditorModel): string {
@@ -63,71 +62,17 @@ export function htmlSerializeIfNeeded(
     return htmlSerializeFromMdIfNeeded(md, { forceHTML });
 }
 
-export function htmlSerializeFromMdIfNeeded(md: string, { forceHTML = false } = {}): string | undefined {
+/** Converts Markdown to HTML when needed, optionally excluding maths (for topics). */
+export function htmlSerializeFromMdIfNeeded(
+    md: string,
+    { forceHTML = false, allowMaths = true }: { forceHTML?: boolean; allowMaths?: boolean } = {},
+): string | undefined {
     // copy of raw input to remove unwanted math later
     const orig = md;
 
-    if (SettingsStore.getValue("feature_latex_maths")) {
-        const patternNames = ["tex", "latex"] as const;
-        const patternTypes = ["display", "inline"] as const;
-        const patternDefaults = {
-            tex: {
-                // detect math with tex delimiters, inline: $...$, display $$...$$
-                // preferably use negative lookbehinds, not supported in all major browsers:
-                // const displayPattern = "^(?<!\\\\)\\$\\$(?![ \\t])(([^$]|\\\\\\$)+?)\\$\\$$";
-                // const inlinePattern = "(?:^|\\s)(?<!\\\\)\\$(?!\\s)(([^$]|\\\\\\$)+?)(?<!\\\\|\\s)\\$";
-
-                // conditions for display math detection $$...$$:
-                // - pattern starts and ends on a new line
-                // - left delimiter ($$) is not escaped by backslash
-                display: "(^)\\$\\$(([^$]|\\\\\\$)+?)\\$\\$$",
-
-                // conditions for inline math detection $...$:
-                // - pattern starts at beginning of line, follows whitespace character or punctuation
-                // - pattern is on a single line
-                // - left and right delimiters ($) are not escaped by backslashes
-                // - left delimiter is not followed by whitespace character
-                // - right delimiter is not prefixed with whitespace character
-                inline: "(^|\\s|[.,!?:;])(?!\\\\)\\$(?!\\s)(([^$\\n]|\\\\\\$)*([^\\\\\\s\\$]|\\\\\\$)(?:\\\\\\$)?)\\$",
-            },
-            latex: {
-                // detect math with latex delimiters, inline: \(...\), display \[...\]
-
-                // conditions for display math detection \[...\]:
-                // - pattern starts and ends on a new line
-                // - pattern is not empty
-                display: "(^)\\\\\\[(?!\\\\\\])(.*?)\\\\\\]$",
-
-                // conditions for inline math detection \(...\):
-                // - pattern starts at beginning of line or is not prefixed with backslash
-                // - pattern is not empty
-                inline: "(^|[^\\\\])\\\\\\((?!\\\\\\))(.*?)\\\\\\)",
-            },
-        };
-
-        patternNames.forEach(function (patternName) {
-            patternTypes.forEach(function (patternType) {
-                // get the regex replace pattern from config or use the default
-                const pattern =
-                    SdkConfig.get("latex_maths_delims")?.[patternType]?.["pattern"]?.[patternName] ||
-                    patternDefaults[patternName][patternType];
-
-                md = md.replace(RegExp(pattern, "gms"), function (m, p1, p2) {
-                    const p2e = encode(p2);
-                    switch (patternType) {
-                        case "display":
-                            return `${p1}<div data-mx-maths="${p2e}">\n\n</div>\n\n`;
-                        case "inline":
-                            return `${p1}<span data-mx-maths="${p2e}"></span>`;
-                    }
-                });
-            });
-        });
-
-        // make sure div tags always start on a new line, otherwise it will confuse the markdown parser
-        md = md.replace(/(.)<div/g, function (m, p1) {
-            return `${p1}\n<div`;
-        });
+    const useMaths = allowMaths && SettingsStore.getValue("feature_latex_maths");
+    if (useMaths) {
+        md = replaceMathsDelimiters(md);
     }
 
     const parser = new Markdown(md);
@@ -135,7 +80,7 @@ export function htmlSerializeFromMdIfNeeded(md: string, { forceHTML = false } = 
         // feed Markdown output to HTML parser
         const phtml = new DOMParser().parseFromString(parser.toHTML(), "text/html");
 
-        if (SettingsStore.getValue("feature_latex_maths")) {
+        if (useMaths) {
             // original Markdown without LaTeX replacements
             const parserOrig = new Markdown(orig);
             const phtmlOrig = new DOMParser().parseFromString(parserOrig.toHTML(), "text/html");

@@ -158,7 +158,7 @@ export default class RoomProfileSettings extends React.Component<IProps, IState>
         }
 
         if (this.state.originalTopic !== this.state.topic) {
-            const html = htmlSerializeFromMdIfNeeded(this.state.topic, { forceHTML: false });
+            const html = htmlSerializeFromMdIfNeeded(this.state.topic, { forceHTML: false, allowMaths: false });
             // XXX: Note that we deliberately send an empty string on an empty topic rather
             // than a clearer `undefined` value. Synapse still requires a string in a topic.
             await client.setRoomTopic(this.props.roomId, this.state.topic, html);

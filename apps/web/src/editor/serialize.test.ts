@@ -11,7 +11,7 @@ Please see LICENSE files in the repository root for full details.
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import EditorModel from "./model";
-import { htmlSerializeFromMdIfNeeded, htmlSerializeIfNeeded } from "./serialize";
+import { htmlSerializeFromMdIfNeeded, htmlSerializeIfNeeded, textSerialize } from "./serialize";
 import { createPartCreator } from "./__mocks__";
 import { type IConfigOptions } from "../IConfigOptions";
 import SettingsStore from "../settings/SettingsStore";
@@ -174,6 +174,44 @@ describe("editor/serialize", function () {
     describe("feature_latex_maths", () => {
         beforeEach(() => {
             vi.spyOn(SettingsStore, "getValue").mockImplementation((feature) => feature === "feature_latex_maths");
+        });
+
+        it.each(["Tickets are $5/$10", "Range $5-$10", "$3,$4", "I paid $5 and $10"])(
+            "should keep currency %s as plain text",
+            (source) => expect(htmlSerializeFromMdIfNeeded(source)).toBeUndefined(),
+        );
+
+        it("should detect maths inside parentheses", () => {
+            expect(htmlSerializeFromMdIfNeeded("($x$)")).toBe('(<span data-mx-maths="x"><code>x</code></span>)');
+        });
+
+        it("should opt out of maths for topics while keeping Markdown", () => {
+            expect(htmlSerializeFromMdIfNeeded("$x$", { allowMaths: false })).toBeUndefined();
+            expect(htmlSerializeFromMdIfNeeded("**Budget** $x$", { allowMaths: false })).toBe(
+                "<strong>Budget</strong> $x$",
+            );
+        });
+
+        it("should leave maths as text when the flag is off", () => {
+            vi.mocked(SettingsStore.getValue).mockReturnValue(false);
+            expect(htmlSerializeFromMdIfNeeded("$x$")).toBeUndefined();
+        });
+
+        it.each([
+            ["Use `$x$`", "Use <code>$x$</code>"],
+            ["`$a$` $b$ `c`", '<code>$a$</code> <span data-mx-maths="b"><code>b</code></span> <code>c</code>'],
+            [String.raw`\$x\$`, "$x$"],
+            ["```\n$$x$$\n```", "<pre><code>$$x$$\n</code></pre>\n"],
+        ])("should restore literal dollars and code in %s", (source, expected) => {
+            expect(htmlSerializeFromMdIfNeeded(source)).toBe(expected);
+        });
+
+        it("should keep the plain-text body exactly as typed", () => {
+            const pc = createPartCreator();
+            const source = String.raw`Euler $e^{i\pi}+1=0$ and \$x\$`;
+            const model = new EditorModel([pc.plain(source)], pc);
+            expect(htmlSerializeIfNeeded(model)).toContain('data-mx-maths="e^{i\\pi}+1=0"');
+            expect(textSerialize(model)).toBe(source);
         });
 
         it("should support inline katex", () => {

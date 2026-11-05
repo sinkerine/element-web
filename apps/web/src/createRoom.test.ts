@@ -42,6 +42,7 @@ import { ElementCallMemberEventType } from "./call-types";
 import DMRoomMap from "./utils/DMRoomMap";
 import { PreferredRoomVersions } from "./utils/PreferredRoomVersions";
 import SdkConfig from "./SdkConfig";
+import SettingsStore from "./settings/SettingsStore";
 
 /**
  * This should be the same as
@@ -282,6 +283,16 @@ describe("createRoom", () => {
             initial_state: [{ state_key: "", type: "m.room.guest_access", content: { guest_access: "can_join" } }],
             power_level_content_override: { events: POWER_LEVELS_WITH_CALL_MEMBER },
         });
+    });
+
+    it("should preserve dollars in a formatted topic with maths enabled", async () => {
+        vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");
+        await createRoomWithStateEncryption(client, { topic: "**Budget** $x$" });
+        expect(client.setRoomTopic).toHaveBeenCalledWith(
+            "!1:example.org",
+            "**Budget** $x$",
+            "<strong>Budget</strong> $x$",
+        );
     });
 
     it("creates a public room in a space", async () => {

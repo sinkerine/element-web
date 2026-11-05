@@ -12,7 +12,8 @@ import { type MatrixEvent, MsgType } from "matrix-js-sdk/src/matrix";
 import { checkBlockNode } from "../HtmlUtils";
 import { getPrimaryPermalinkEntity } from "../utils/permalinks/Permalinks";
 import { type Part, type PartCreator, Type } from "./parts";
-import SdkConfig from "../SdkConfig";
+import SettingsStore from "../settings/SettingsStore";
+import { escapeMathsDelimiters, mathsToComposerText } from "./maths";
 import Markdown from "../Markdown";
 import { textToHtmlRainbow } from "../utils/colour";
 import { stripPlainReply } from "../utils/Reply";
@@ -20,8 +21,13 @@ import { stripPlainReply } from "../utils/Reply";
 const LIST_TYPES = ["UL", "OL", "LI"];
 
 // Escapes all markup in the given text
+function escapeMarkup(text: string): string {
+    return text.replace(/[\\*_[\]`<]|^>/gm, (match) => `\\${match}`);
+}
+
 function escape(text: string): string {
-    return text.replace(/[\\*_[\]`<]|^>/g, (match) => `\\${match}`);
+    const escaped = escapeMarkup(text);
+    return SettingsStore.getValue("feature_latex_maths") ? escapeMathsDelimiters(escaped) : escaped;
 }
 
 /**
@@ -36,7 +42,10 @@ function needsEscaping(body: string): boolean {
     // A backslash is markup in its own right once the body goes back through the parser, so a body
     // containing one has to be escaped even when nothing else in it is markup.
     if (body.includes("\\")) return true;
-    return !new Markdown(body).isPlainText();
+    return (
+        !new Markdown(body).isPlainText() ||
+        (SettingsStore.getValue("feature_latex_maths") && escapeMathsDelimiters(body) !== body)
+    );
 }
 
 // Finds the length of the longest backtick sequence in the given text, used for
@@ -160,11 +169,91 @@ function prefixLines(parts: Part[], prefix: string, pc: PartCreator): void {
     }
 }
 
+function isDisplayMathsNode(n: Node): boolean {
+    return n.nodeName === "DIV" && (n as Element).hasAttribute("data-mx-maths");
+}
+
+function hasKnownDollarFreePrefix(n: Node): boolean {
+    for (let sibling = n.previousSibling; sibling; sibling = sibling.previousSibling) {
+        if (checkIgnored(sibling)) return false;
+        if (sibling.nodeType === Node.TEXT_NODE) {
+            const text = sibling.textContent || "";
+            const lineStart = text.lastIndexOf("\n") + 1;
+            // An earlier literal dollar can consume a restored formula's opening dollar.
+            if (text.slice(lineStart).includes("$")) return false;
+            if (lineStart > 0) return true;
+        } else if (sibling.nodeName === "BR" || isDisplayMathsNode(sibling)) {
+            return true;
+        } else {
+            // Earlier markup or maths may serialize dollars, even across intervening plain text.
+            return false;
+        }
+    }
+    return !!n.parentNode && (n.parentNode.nodeName === "BODY" || checkBlockNode(n.parentNode));
+}
+
+function adjacentChar(n: Node, side: "previous" | "next"): string | null {
+    if (side === "previous" && !hasKnownDollarFreePrefix(n)) return null;
+    const sibling = side === "previous" ? n.previousSibling : n.nextSibling;
+    // Ignored nodes emit no boundary; the Markdown beyond them may prevent dollar detection.
+    if (sibling && checkIgnored(sibling)) return null;
+    if (sibling?.nodeType === Node.TEXT_NODE) {
+        const text = sibling.textContent || "";
+        const char = side === "previous" ? text.slice(-1) : text.slice(0, 1);
+        return char === "\n" ? "" : char;
+    }
+    if (sibling?.nodeName === "BR") return "";
+    if (!sibling && n.parentNode && (n.parentNode.nodeName === "BODY" || checkBlockNode(n.parentNode))) {
+        return "";
+    }
+    // Inline markup or another element may add Markdown characters around the delimiter.
+    return null;
+}
+
 function parseChildren(n: Node, pc: PartCreator, opts: IParseOptions, mkListItem?: (li: Node) => Part[]): Part[] {
     let prev: ChildNode | undefined;
-    return Array.from(n.childNodes).flatMap((c) => {
-        const parsed = parseNode(c, pc, opts, mkListItem);
-        if (parsed.length && prev && (checkBlockNode(prev) || checkBlockNode(c))) {
+    const children = Array.from(n.childNodes);
+    const parts: Part[] = [];
+    let inspectedEnd = 0;
+    for (let index = 0; index < children.length; index++) {
+        const c = children[index];
+        let last = c;
+        let parsed: Part[];
+        if (
+            index >= inspectedEnd &&
+            opts.shouldEscape &&
+            SettingsStore.getValue("feature_latex_maths") &&
+            (c.nodeType === Node.TEXT_NODE || c.nodeName === "BR")
+        ) {
+            // Inspect literal text and line breaks together. Elements, including real maths,
+            // always end the run, so generated maths delimiters cannot be escaped here.
+            let text = "";
+            let end = index;
+            for (; end < children.length; end++) {
+                const child = children[end];
+                if (child.nodeType !== Node.TEXT_NODE && child.nodeName !== "BR") break;
+                if (!checkIgnored(child)) {
+                    text += child.nodeName === "BR" ? "\n" : child.nodeValue || "";
+                }
+            }
+            // Keep normal per-node parsing when no escape is needed, without inspecting this run again.
+            inspectedEnd = end;
+            const markup = escapeMarkup(text);
+            if (escapeMathsDelimiters(markup) !== markup) {
+                parsed = parsePlainTextMessage(text, pc, { ...opts, isQuotedMessage: false });
+                last = children[end - 1];
+                index = end - 1;
+            } else {
+                parsed = parseNode(c, pc, opts, mkListItem);
+            }
+        } else {
+            parsed = parseNode(c, pc, opts, mkListItem);
+        }
+        if (
+            parsed.length &&
+            prev &&
+            (checkBlockNode(prev) || checkBlockNode(c) || isDisplayMathsNode(prev) || isDisplayMathsNode(c))
+        ) {
             if (isListChild(c)) {
                 // Use tighter spacing within lists
                 parsed.unshift(pc.newline());
@@ -172,9 +261,10 @@ function parseChildren(n: Node, pc: PartCreator, opts: IParseOptions, mkListItem
                 parsed.unshift(pc.newline(), pc.newline());
             }
         }
-        if (parsed.length) prev = c;
-        return parsed;
-    });
+        if (parsed.length) prev = last;
+        parts.push(...parsed);
+    }
+    return parts;
 }
 
 function parseNode(n: Node, pc: PartCreator, opts: IParseOptions, mkListItem?: (li: Node) => Part[]): Part[] {
@@ -251,16 +341,15 @@ function parseNode(n: Node, pc: PartCreator, opts: IParseOptions, mkListItem?: (
                 case "SPAN":
                     // Math nodes are translated back into delimited latex strings
                     if ((n as Element).hasAttribute("data-mx-maths")) {
-                        const delims = SdkConfig.get().latex_maths_delims;
-                        const delimLeft =
-                            n.nodeName === "SPAN" ? (delims?.inline?.left ?? "\\(") : (delims?.display?.left ?? "\\[");
-                        const delimRight =
-                            n.nodeName === "SPAN"
-                                ? (delims?.inline?.right ?? "\\)")
-                                : (delims?.display?.right ?? "\\]");
-                        const tex = (n as Element).getAttribute("data-mx-maths");
-
-                        return pc.plainWithEmoji(`${delimLeft}${tex}${delimRight}`);
+                        const tex = (n as Element).getAttribute("data-mx-maths")!;
+                        return pc.plainWithEmoji(
+                            mathsToComposerText(
+                                tex,
+                                n.nodeName === "DIV" ? "display" : "inline",
+                                adjacentChar(n, "previous"),
+                                adjacentChar(n, "next"),
+                            ),
+                        );
                     }
                     // Spoilers are translated back into their slash command form
                     else if ((n as Element).hasAttribute("data-mx-spoiler")) {
@@ -289,12 +378,14 @@ function parseHtmlMessage(html: string, pc: PartCreator, opts: IParseOptions): P
 }
 
 export function parsePlainTextMessage(body: string, pc: PartCreator, opts: IParseOptions): Part[] {
-    const lines = body.split(/\r\n|\r|\n/g); // split on any new-line combination not just \n, collapses \r\n
+    // Escape before splitting so multiline display delimiters are detected together.
+    const text = opts.shouldEscape ? escape(body) : body;
+    const lines = text.split(/\r\n|\r|\n/g); // split on any new-line combination not just \n, collapses \r\n
     return lines.reduce((parts, line, i) => {
         if (opts.isQuotedMessage) {
             parts.push(pc.plain("> "));
         }
-        parts.push(...parseAtRoomMentions(line, pc, opts));
+        parts.push(...parseAtRoomMentions(line, pc, { ...opts, shouldEscape: false }));
         const isLast = i === lines.length - 1;
         if (!isLast) {
             parts.push(pc.newline());

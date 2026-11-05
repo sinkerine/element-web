@@ -461,7 +461,7 @@ async function enableStateEventEncryption(client: MatrixClient, room: Room, opts
 
     // Set room topic
     if (opts.topic) {
-        const htmlTopic = htmlSerializeFromMdIfNeeded(opts.topic, { forceHTML: false });
+        const htmlTopic = htmlSerializeFromMdIfNeeded(opts.topic, { forceHTML: false, allowMaths: false });
         await client.setRoomTopic(room.roomId, opts.topic, htmlTopic);
     }
 
