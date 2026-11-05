@@ -60,14 +60,43 @@ exports[`RoomListHeaderView > renders collapse button 1`] = `
       >
         <button
           aria-disabled="false"
-          aria-expanded="false"
-          aria-haspopup="menu"
-          aria-label="Room Options"
+          aria-label="Mark all rooms as read"
           aria-labelledby="react-use-id-2"
           class="_icon-button_1215g_8"
           data-kind="primary"
+          role="button"
+          style="--cpd-icon-button-size: 28px; padding: 4px;"
+          tabindex="0"
+        >
+          <div
+            class="_indicator-icon_j097f_17"
+            style="--cpd-icon-button-size: 100%;"
+          >
+            <svg
+              aria-hidden="true"
+              color="var(--cpd-color-icon-secondary)"
+              fill="currentColor"
+              height="1em"
+              viewBox="0 0 24 24"
+              width="1em"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M21.324 9.13c0-.66-.339-1.237-.862-1.558l-7.37-4.318a1.81 1.81 0 0 0-1.851 0L3.87 7.572C3.348 7.892 3 8.47 3 9.13v9.167c0 1.008.825 1.833 1.833 1.833H19.5a1.84 1.84 0 0 0 1.833-1.833zm-10.129 3.978-6.6-4.124 6.646-3.896a1.81 1.81 0 0 1 1.851 0l6.646 3.896-6.6 4.124a1.85 1.85 0 0 1-1.943 0"
+              />
+            </svg>
+          </div>
+        </button>
+        <button
+          aria-disabled="false"
+          aria-expanded="false"
+          aria-haspopup="menu"
+          aria-label="Room Options"
+          aria-labelledby="react-use-id-3"
+          class="_icon-button_1215g_8"
+          data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-3"
+          id="radix-react-use-id-4"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -91,7 +120,7 @@ exports[`RoomListHeaderView > renders collapse button 1`] = `
           </div>
         </button>
         <button
-          aria-labelledby="react-use-id-4"
+          aria-labelledby="react-use-id-5"
           class="_icon-button_1215g_8"
           data-kind="primary"
           role="button"
@@ -121,11 +150,11 @@ exports[`RoomListHeaderView > renders collapse button 1`] = `
           aria-disabled="false"
           aria-expanded="false"
           aria-haspopup="menu"
-          aria-labelledby="react-use-id-5"
+          aria-labelledby="react-use-id-6"
           class="_icon-button_1215g_8"
           data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-6"
+          id="radix-react-use-id-7"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -216,14 +245,43 @@ exports[`RoomListHeaderView > renders expand button 1`] = `
       >
         <button
           aria-disabled="false"
-          aria-expanded="false"
-          aria-haspopup="menu"
-          aria-label="Room Options"
+          aria-label="Mark all rooms as read"
           aria-labelledby="react-use-id-2"
           class="_icon-button_1215g_8"
           data-kind="primary"
+          role="button"
+          style="--cpd-icon-button-size: 28px; padding: 4px;"
+          tabindex="0"
+        >
+          <div
+            class="_indicator-icon_j097f_17"
+            style="--cpd-icon-button-size: 100%;"
+          >
+            <svg
+              aria-hidden="true"
+              color="var(--cpd-color-icon-secondary)"
+              fill="currentColor"
+              height="1em"
+              viewBox="0 0 24 24"
+              width="1em"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M21.324 9.13c0-.66-.339-1.237-.862-1.558l-7.37-4.318a1.81 1.81 0 0 0-1.851 0L3.87 7.572C3.348 7.892 3 8.47 3 9.13v9.167c0 1.008.825 1.833 1.833 1.833H19.5a1.84 1.84 0 0 0 1.833-1.833zm-10.129 3.978-6.6-4.124 6.646-3.896a1.81 1.81 0 0 1 1.851 0l6.646 3.896-6.6 4.124a1.85 1.85 0 0 1-1.943 0"
+              />
+            </svg>
+          </div>
+        </button>
+        <button
+          aria-disabled="false"
+          aria-expanded="false"
+          aria-haspopup="menu"
+          aria-label="Room Options"
+          aria-labelledby="react-use-id-3"
+          class="_icon-button_1215g_8"
+          data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-3"
+          id="radix-react-use-id-4"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -247,7 +305,7 @@ exports[`RoomListHeaderView > renders expand button 1`] = `
           </div>
         </button>
         <button
-          aria-labelledby="react-use-id-4"
+          aria-labelledby="react-use-id-5"
           class="_icon-button_1215g_8"
           data-kind="primary"
           role="button"
@@ -277,11 +335,11 @@ exports[`RoomListHeaderView > renders expand button 1`] = `
           aria-disabled="false"
           aria-expanded="false"
           aria-haspopup="menu"
-          aria-labelledby="react-use-id-5"
+          aria-labelledby="react-use-id-6"
           class="_icon-button_1215g_8"
           data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-6"
+          id="radix-react-use-id-7"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -372,14 +430,43 @@ exports[`RoomListHeaderView > renders the default state 1`] = `
       >
         <button
           aria-disabled="false"
-          aria-expanded="false"
-          aria-haspopup="menu"
-          aria-label="Room Options"
+          aria-label="Mark all rooms as read"
           aria-labelledby="react-use-id-2"
           class="_icon-button_1215g_8"
           data-kind="primary"
+          role="button"
+          style="--cpd-icon-button-size: 28px; padding: 4px;"
+          tabindex="0"
+        >
+          <div
+            class="_indicator-icon_j097f_17"
+            style="--cpd-icon-button-size: 100%;"
+          >
+            <svg
+              aria-hidden="true"
+              color="var(--cpd-color-icon-secondary)"
+              fill="currentColor"
+              height="1em"
+              viewBox="0 0 24 24"
+              width="1em"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M21.324 9.13c0-.66-.339-1.237-.862-1.558l-7.37-4.318a1.81 1.81 0 0 0-1.851 0L3.87 7.572C3.348 7.892 3 8.47 3 9.13v9.167c0 1.008.825 1.833 1.833 1.833H19.5a1.84 1.84 0 0 0 1.833-1.833zm-10.129 3.978-6.6-4.124 6.646-3.896a1.81 1.81 0 0 1 1.851 0l6.646 3.896-6.6 4.124a1.85 1.85 0 0 1-1.943 0"
+              />
+            </svg>
+          </div>
+        </button>
+        <button
+          aria-disabled="false"
+          aria-expanded="false"
+          aria-haspopup="menu"
+          aria-label="Room Options"
+          aria-labelledby="react-use-id-3"
+          class="_icon-button_1215g_8"
+          data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-3"
+          id="radix-react-use-id-4"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -406,11 +493,11 @@ exports[`RoomListHeaderView > renders the default state 1`] = `
           aria-disabled="false"
           aria-expanded="false"
           aria-haspopup="menu"
-          aria-labelledby="react-use-id-4"
+          aria-labelledby="react-use-id-5"
           class="_icon-button_1215g_8"
           data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-5"
+          id="radix-react-use-id-6"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -470,14 +557,43 @@ exports[`RoomListHeaderView > renders without space menu 1`] = `
       >
         <button
           aria-disabled="false"
-          aria-expanded="false"
-          aria-haspopup="menu"
-          aria-label="Room Options"
+          aria-label="Mark all rooms as read"
           aria-labelledby="react-use-id-1"
           class="_icon-button_1215g_8"
           data-kind="primary"
+          role="button"
+          style="--cpd-icon-button-size: 28px; padding: 4px;"
+          tabindex="0"
+        >
+          <div
+            class="_indicator-icon_j097f_17"
+            style="--cpd-icon-button-size: 100%;"
+          >
+            <svg
+              aria-hidden="true"
+              color="var(--cpd-color-icon-secondary)"
+              fill="currentColor"
+              height="1em"
+              viewBox="0 0 24 24"
+              width="1em"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M21.324 9.13c0-.66-.339-1.237-.862-1.558l-7.37-4.318a1.81 1.81 0 0 0-1.851 0L3.87 7.572C3.348 7.892 3 8.47 3 9.13v9.167c0 1.008.825 1.833 1.833 1.833H19.5a1.84 1.84 0 0 0 1.833-1.833zm-10.129 3.978-6.6-4.124 6.646-3.896a1.81 1.81 0 0 1 1.851 0l6.646 3.896-6.6 4.124a1.85 1.85 0 0 1-1.943 0"
+              />
+            </svg>
+          </div>
+        </button>
+        <button
+          aria-disabled="false"
+          aria-expanded="false"
+          aria-haspopup="menu"
+          aria-label="Room Options"
+          aria-labelledby="react-use-id-2"
+          class="_icon-button_1215g_8"
+          data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-2"
+          id="radix-react-use-id-3"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"
@@ -504,11 +620,11 @@ exports[`RoomListHeaderView > renders without space menu 1`] = `
           aria-disabled="false"
           aria-expanded="false"
           aria-haspopup="menu"
-          aria-labelledby="react-use-id-3"
+          aria-labelledby="react-use-id-4"
           class="_icon-button_1215g_8"
           data-kind="primary"
           data-state="closed"
-          id="radix-react-use-id-4"
+          id="radix-react-use-id-5"
           role="button"
           style="--cpd-icon-button-size: 28px; padding: 4px;"
           tabindex="0"

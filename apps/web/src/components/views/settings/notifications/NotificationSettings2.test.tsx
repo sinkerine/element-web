@@ -18,6 +18,7 @@ import {
     NotificationCountType,
     PushRuleKind,
     Room,
+    KnownMembership,
     RuleId,
 } from "matrix-js-sdk/src/matrix";
 import { mkMessage, stubClient } from "test-utils";
@@ -745,6 +746,7 @@ describe("<Notifications />", () => {
     describe("clear all notifications", () => {
         it("is hidden when no notifications exist", async () => {
             const room = new Room("room123", cli, "@alice:example.org");
+            room.updateMyMembership(KnownMembership.Join);
             cli.getRooms = vi.fn(cli.getRooms).mockReturnValue([room]);
 
             const { container } = render(
@@ -762,6 +764,7 @@ describe("<Notifications />", () => {
 
         it("clears all notifications", async () => {
             const room = new Room("room123", cli, "@alice:example.org");
+            room.updateMyMembership(KnownMembership.Join);
             cli.getRooms = vi.fn(cli.getRooms).mockReturnValue([room]);
 
             const message = mkMessage({

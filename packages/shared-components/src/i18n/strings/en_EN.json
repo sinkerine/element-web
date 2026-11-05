@@ -267,6 +267,7 @@
             "unread": "Unread"
         },
         "list_title": "Room list",
+        "mark_all_rooms_read": "Mark all rooms as read",
         "more_options": {
             "copy_link": "Copy link",
             "favourited": "Favourited",

@@ -1,0 +1,77 @@
+diff --git a/src/client.ts b/src/client.ts
+index a5bee729ff1597749d88f76de3304a923c9d7c67..4d6c61f2cc93df4b71880ee9678c201127fefb28 100644
+--- a/src/client.ts
++++ b/src/client.ts
+@@ -3870,6 +3870,7 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+      * ReceiptType.Read are experimental!
+      * @param body - Additional content to send alongside the receipt.
+      * @param unthreaded - An unthreaded receipt will clear room+thread notifications
++     * @param localEcho - Whether to apply the receipt locally before the request completes.
+      * @returns Promise which resolves: to an empty object `{}`
+      * @returns Rejects: with an error response.
+      */
+@@ -3878,6 +3879,7 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+         receiptType: ReceiptType,
+         body?: Record<string, any>,
+         unthreaded = false,
++        localEcho = true,
+     ): Promise<EmptyObject> {
+         if (this.isGuest()) {
+             return Promise.resolve({}); // guests cannot send receipts so don't bother.
+@@ -3897,7 +3899,7 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+         const promise = this.http.authedRequest<EmptyObject>(Method.Post, path, undefined, fullBody || {});
+ 
+         const room = this.getRoom(event.getRoomId());
+-        if (room && this.credentials.userId) {
++        if (localEcho && room && this.credentials.userId) {
+             room.addLocalEchoReceipt(this.credentials.userId, event, receiptType, unthreaded);
+         }
+         return promise;
+@@ -3907,6 +3909,8 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+      * Send a read receipt.
+      * @param event - The event that has been read.
+      * @param receiptType - other than ReceiptType.Read are experimental! Optional.
++     * @param unthreaded - An unthreaded receipt will clear room+thread notifications.
++     * @param localEcho - Whether to apply the receipt locally before the request completes.
+      * @returns Promise which resolves: to an empty object `{}`
+      * @returns Rejects: with an error response.
+      */
+@@ -3914,6 +3918,7 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+         event: MatrixEvent | null,
+         receiptType = ReceiptType.Read,
+         unthreaded = false,
++        localEcho = true,
+     ): Promise<EmptyObject | undefined> {
+         if (!event) return;
+         const eventId = event.getId()!;
+@@ -3922,7 +3927,7 @@ export class MatrixClient extends TypedEventEmitter<EmittedEvents, ClientEventHa
+             throw new Error(`Cannot set read receipt to a pending event (${eventId})`);
+         }
+ 
+-        return this.sendReceipt(event, receiptType, {}, unthreaded);
++        return this.sendReceipt(event, receiptType, {}, unthreaded, localEcho);
+     }
+ 
+     /**
+diff --git a/src/models/room.ts b/src/models/room.ts
+index 9b935510728272b80e342e30235bee43125d5b19..daa265dfa156a39269141c65e87288c3ac4089fa 100644
+--- a/src/models/room.ts
++++ b/src/models/room.ts
+@@ -1623,6 +1623,17 @@ export class Room extends ReadReceipt<RoomEmittedEvents, RoomEventHandlerMap> {
+         return type;
+     }
+ 
++    /**
++     * Reset total and highlight notification counts for every thread, including threads
++     * whose timelines have not been loaded. Call after successfully marking the room as read.
++     */
++    public resetThreadUnreadNotificationCount(): void {
++        for (const threadId of this.threadNotifications.keys()) {
++            this.setThreadUnreadNotificationCount(threadId, NotificationCountType.Highlight, 0);
++            this.setThreadUnreadNotificationCount(threadId, NotificationCountType.Total, 0);
++        }
++    }
++
+     /**
+      * Resets the total thread notifications for all threads in this room to zero,
+      * excluding any threads whose IDs are given in `exceptThreadIds`.

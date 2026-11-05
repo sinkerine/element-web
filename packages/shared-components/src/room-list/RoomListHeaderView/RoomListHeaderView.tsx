@@ -7,7 +7,12 @@
 
 import React, { type JSX } from "react";
 import { IconButton, H1 } from "@vector-im/compound-web";
-import { CollapseAllIcon, ExpandAllIcon, ChatIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import {
+    CollapseAllIcon,
+    ExpandAllIcon,
+    ChatIcon,
+    MarkAsReadIcon,
+} from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { type ViewModel, useViewModel } from "../../core/viewmodel";
 import { Flex } from "../../core/utils/Flex";
@@ -26,6 +31,10 @@ export type SortOption = "recent" | "alphabetical" | "unread-first";
 export type CollapseSectionsOption = "collapse" | "expand";
 
 export interface RoomListHeaderViewSnapshot {
+    /** Whether at least one joined room, in any space, can be marked as read. */
+    canMarkAllAsRead: boolean;
+    /** Whether a "mark all rooms as read" run is in progress. */
+    isMarkingAllAsRead: boolean;
     /**
      * The title of the room list
      */
@@ -76,6 +85,8 @@ export interface RoomListHeaderViewSnapshot {
 }
 
 export interface RoomListHeaderViewActions {
+    /** Mark every joined room as read, across all spaces and regardless of filters. */
+    markAllAsRead: () => void;
     /**
      * Create a chat room
      */
@@ -149,8 +160,16 @@ interface RoomListHeaderViewProps {
  */
 export function RoomListHeaderView({ vm }: Readonly<RoomListHeaderViewProps>): JSX.Element {
     const { translate: _t } = useI18n();
-    const { title, displaySpaceMenu, collapseSections, areSectionsEnabled, canCreateRoom, canCreateVideoRoom } =
-        useViewModel(vm);
+    const {
+        title,
+        displaySpaceMenu,
+        collapseSections,
+        areSectionsEnabled,
+        canCreateRoom,
+        canCreateVideoRoom,
+        canMarkAllAsRead,
+        isMarkingAllAsRead,
+    } = useViewModel(vm);
     const canOnlyStartChat = !areSectionsEnabled && !canCreateRoom && !canCreateVideoRoom;
 
     return (
@@ -169,6 +188,16 @@ export function RoomListHeaderView({ vm }: Readonly<RoomListHeaderViewProps>): J
                     {displaySpaceMenu && <SpaceMenuView vm={vm} />}
                 </Flex>
                 <Flex align="center" gap="var(--cpd-space-2x)">
+                    <IconButton
+                        size="28px"
+                        style={{ padding: "4px" }} // Work around miscalculated padding on 28px buttons, as below.
+                        onClick={() => vm.markAllAsRead()}
+                        disabled={!canMarkAllAsRead || isMarkingAllAsRead}
+                        tooltip={_t("room_list|mark_all_rooms_read")}
+                        aria-label={_t("room_list|mark_all_rooms_read")}
+                    >
+                        <MarkAsReadIcon color="var(--cpd-color-icon-secondary)" aria-hidden />
+                    </IconButton>
                     <OptionMenuView vm={vm} />
                     {areSectionsEnabled && collapseSections && (
                         <IconButton

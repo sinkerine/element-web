@@ -8,9 +8,26 @@
 // @vitest-environment happy-dom
 
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { JoinRule, type MatrixClient, type Room, RoomEvent, RoomType } from "matrix-js-sdk/src/matrix";
+import {
+    ClientEvent,
+    JoinRule,
+    KnownMembership,
+    type MatrixClient,
+    NotificationCountType,
+    Room,
+    RoomEvent,
+    RoomType,
+} from "matrix-js-sdk/src/matrix";
 import { createTestClient, mkSpace, TestSDKContext } from "test-utils";
 
+import Modal from "../../Modal";
+import ErrorDialog from "../../components/views/dialogs/ErrorDialog";
+import {
+    getRoomsToMarkAsRead,
+    hasRoomsToMarkAsRead,
+    markRoomsAsRead,
+    type MarkRoomsAsReadResult,
+} from "../../utils/notifications";
 import { RoomListHeaderViewModel } from "./RoomListHeaderViewModel";
 import { MetaSpace, UPDATE_HOME_BEHAVIOUR, UPDATE_SELECTED_SPACE } from "../../stores/spaces";
 import defaultDispatcher from "../../dispatcher/dispatcher";
@@ -28,6 +45,15 @@ import {
 import { createRoom, hasCreateRoomRights } from "./utils";
 import PosthogTrackers from "../../PosthogTrackers";
 import { ReleaseAnnouncementStore } from "../../stores/ReleaseAnnouncementStore";
+
+vi.mock("../../utils/notifications", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../utils/notifications")>()),
+    hasRoomsToMarkAsRead: vi.fn(),
+    getRoomsToMarkAsRead: vi.fn(),
+    markRoomsAsRead: vi.fn(),
+}));
+
+vi.mock("../../Modal", () => ({ default: { createDialog: vi.fn() } }));
 
 vi.mock("../../PosthogTrackers", () => ({
     default: {
@@ -57,6 +83,10 @@ describe("RoomListHeaderViewModel", () => {
     let sdkContext: TestSDKContext;
 
     beforeEach(() => {
+        vi.mocked(hasRoomsToMarkAsRead).mockReset().mockReturnValue(false);
+        vi.mocked(getRoomsToMarkAsRead).mockReset().mockReturnValue([]);
+        vi.mocked(markRoomsAsRead).mockReset().mockResolvedValue({ marked: [], failed: [] });
+        vi.mocked(Modal.createDialog).mockClear();
         matrixClient = createTestClient();
         sdkContext = new TestSDKContext();
         sdkContext._client = matrixClient;
@@ -79,8 +109,248 @@ describe("RoomListHeaderViewModel", () => {
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
         vm.dispose();
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+    });
+
+    describe("markAllAsRead", () => {
+        it.each([true, false])("should initialise global enabled state to %s", (canMarkAllAsRead) => {
+            vi.mocked(hasRoomsToMarkAsRead).mockReturnValue(canMarkAllAsRead);
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            expect(vm.getSnapshot()).toMatchObject({ canMarkAllAsRead, isMarkingAllAsRead: false });
+            expect(hasRoomsToMarkAsRead).toHaveBeenCalledWith(matrixClient);
+        });
+
+        const unreadEvents = [RoomEvent.Timeline, RoomEvent.Receipt, RoomEvent.AccountData, RoomEvent.MyMembership];
+
+        it.each(unreadEvents)("should update global enabled state on %s", (event) => {
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            vi.mocked(hasRoomsToMarkAsRead).mockReturnValue(true);
+            // Event arguments are irrelevant to the global scan.
+            matrixClient.emit(event as RoomEvent.AccountData, undefined!, undefined!);
+            expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+        });
+
+        it("should throttle bursts and apply the latest unread state within 500 ms", () => {
+            vi.useFakeTimers();
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            vi.mocked(hasRoomsToMarkAsRead).mockClear().mockReturnValue(true);
+            matrixClient.emit(RoomEvent.Timeline, undefined!, undefined!, false, false, {
+                liveEvent: true,
+                timeline: mockSpace.getLiveTimeline(),
+            });
+            expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+            vi.mocked(hasRoomsToMarkAsRead).mockReturnValue(false);
+            matrixClient.emit(RoomEvent.AccountData, undefined!, undefined!);
+            matrixClient.emit(RoomEvent.Receipt, undefined!, undefined!);
+            expect(hasRoomsToMarkAsRead).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(499);
+            expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+            vi.advanceTimersByTime(1);
+            expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+            expect(hasRoomsToMarkAsRead).toHaveBeenCalledTimes(2);
+        });
+
+        it("should remove unread listeners and cancel trailing work on dispose", () => {
+            vi.useFakeTimers();
+            const on = vi.spyOn(matrixClient, "on");
+            const off = vi.spyOn(matrixClient, "off");
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            unreadEvents.forEach((event) => {
+                expect(on).toHaveBeenCalledWith(event, expect.any(Function));
+            });
+            matrixClient.emit(RoomEvent.Timeline, undefined!, undefined!, false, false, {
+                liveEvent: true,
+                timeline: mockSpace.getLiveTimeline(),
+            });
+            matrixClient.emit(RoomEvent.AccountData, undefined!, undefined!);
+            vi.mocked(hasRoomsToMarkAsRead).mockClear();
+            vm.dispose();
+            unreadEvents.forEach((event) => {
+                const callback = on.mock.calls.find(([name]) => name === event)![1];
+                expect(off).toHaveBeenCalledWith(event, callback);
+                matrixClient.emit(event as RoomEvent.AccountData, undefined!, undefined!);
+            });
+            vi.advanceTimersByTime(1000);
+            expect(hasRoomsToMarkAsRead).not.toHaveBeenCalled();
+        });
+
+        describe("room unread notifications", () => {
+            let rooms: Room[];
+
+            function joinedRoom(roomId = "!room:server"): Room {
+                const room = new Room(roomId, matrixClient, matrixClient.getSafeUserId());
+                room.updateMyMembership(KnownMembership.Join);
+                return room;
+            }
+
+            beforeEach(async () => {
+                vi.useFakeTimers();
+                const actual =
+                    await vi.importActual<typeof import("../../utils/notifications")>("../../utils/notifications");
+                vi.mocked(hasRoomsToMarkAsRead).mockImplementation(actual.hasRoomsToMarkAsRead);
+                rooms = [joinedRoom()];
+                vi.spyOn(matrixClient, "getRooms").mockImplementation(() => rooms);
+            });
+
+            it.each([
+                ["room", NotificationCountType.Total],
+                ["room", NotificationCountType.Highlight],
+                ["thread", NotificationCountType.Total],
+                ["thread", NotificationCountType.Highlight],
+            ])("should enable and disable within 500 ms for %s %s count-only updates", (scope, type) => {
+                const room = rooms[0];
+                const setCount = (count: number): void => {
+                    if (scope === "room") room.setUnreadNotificationCount(type, count);
+                    else room.setThreadUnreadNotificationCount("$thread", type, count);
+                };
+                vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+                setCount(1);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+                setCount(0);
+                vi.advanceTimersByTime(499);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+                vi.advanceTimersByTime(1);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+                setCount(2);
+                vi.advanceTimersByTime(500);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+            });
+
+            it("should track added rooms and detach deleted rooms", () => {
+                vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+                const added = joinedRoom("!added:server");
+                added.setUnreadNotificationCount(NotificationCountType.Total, 1);
+                rooms.push(added);
+                matrixClient.emit(ClientEvent.Room, added);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+                expect(added.listenerCount(RoomEvent.UnreadNotifications)).toBe(1);
+                added.setUnreadNotificationCount(NotificationCountType.Total, 0);
+                vi.advanceTimersByTime(500);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+                added.setThreadUnreadNotificationCount("$thread", NotificationCountType.Total, 1);
+                vi.advanceTimersByTime(500);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+                rooms = rooms.filter((room) => room !== added);
+                matrixClient.emit(ClientEvent.DeleteRoom, added.roomId);
+                vi.advanceTimersByTime(500);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+                expect(added.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+                vi.mocked(hasRoomsToMarkAsRead).mockClear();
+                added.setUnreadNotificationCount(NotificationCountType.Total, 2);
+                vi.advanceTimersByTime(500);
+                expect(hasRoomsToMarkAsRead).not.toHaveBeenCalled();
+            });
+
+            it("should detach replaced rooms and avoid duplicate listeners for the same room", () => {
+                const original = rooms[0];
+                vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+                const replacement = joinedRoom(original.roomId);
+                rooms = [replacement];
+                matrixClient.emit(ClientEvent.Room, replacement);
+                matrixClient.emit(ClientEvent.Room, replacement);
+                vi.advanceTimersByTime(500);
+                expect(original.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+                expect(replacement.listenerCount(RoomEvent.UnreadNotifications)).toBe(1);
+                vi.mocked(hasRoomsToMarkAsRead).mockClear();
+                original.setUnreadNotificationCount(NotificationCountType.Total, 1);
+                vi.advanceTimersByTime(500);
+                expect(hasRoomsToMarkAsRead).not.toHaveBeenCalled();
+                replacement.setUnreadNotificationCount(NotificationCountType.Total, 1);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(true);
+                rooms = [];
+                matrixClient.emit(ClientEvent.DeleteRoom, replacement.roomId);
+                vi.advanceTimersByTime(500);
+                expect(vm.getSnapshot().canMarkAllAsRead).toBe(false);
+                expect(replacement.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+            });
+
+            it("should remove room and lifecycle listeners and cancel count updates on dispose", () => {
+                const original = rooms[0];
+                const on = vi.spyOn(matrixClient, "on");
+                const off = vi.spyOn(matrixClient, "off");
+                vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+                const added = joinedRoom("!added:server");
+                rooms.push(added);
+                matrixClient.emit(ClientEvent.Room, added);
+                original.setUnreadNotificationCount(NotificationCountType.Total, 1);
+                added.setThreadUnreadNotificationCount("$thread", NotificationCountType.Highlight, 1);
+                vi.mocked(hasRoomsToMarkAsRead).mockClear();
+                vm.dispose();
+                expect(original.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+                expect(added.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+                for (const event of [ClientEvent.Room, ClientEvent.DeleteRoom]) {
+                    const callback = on.mock.calls.find(([name]) => name === event)![1];
+                    expect(off).toHaveBeenCalledWith(event, callback);
+                }
+                original.setUnreadNotificationCount(NotificationCountType.Total, 0);
+                added.setThreadUnreadNotificationCount("$thread", NotificationCountType.Highlight, 0);
+                const later = joinedRoom("!later:server");
+                matrixClient.emit(ClientEvent.Room, later);
+                matrixClient.emit(ClientEvent.DeleteRoom, original.roomId);
+                expect(later.listenerCount(RoomEvent.UnreadNotifications)).toBe(0);
+                vi.advanceTimersByTime(1000);
+                expect(hasRoomsToMarkAsRead).not.toHaveBeenCalled();
+            });
+        });
+
+        it("should select rooms at click time, prevent reentry and clear pending state on success", async () => {
+            const run = Promise.withResolvers<MarkRoomsAsReadResult>();
+            vi.mocked(markRoomsAsRead).mockReturnValue(run.promise);
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            const rooms = [mockSpace];
+            vi.mocked(getRoomsToMarkAsRead).mockReturnValue(rooms);
+            const action = vm.markAllAsRead;
+            action();
+            expect(vm.getSnapshot().isMarkingAllAsRead).toBe(true);
+            expect(markRoomsAsRead).toHaveBeenCalledExactlyOnceWith(rooms, matrixClient);
+            vi.mocked(getRoomsToMarkAsRead).mockReturnValue([]);
+            action();
+            expect(getRoomsToMarkAsRead).toHaveBeenCalledTimes(1);
+            expect(markRoomsAsRead).toHaveBeenCalledTimes(1);
+            run.resolve({ marked: rooms, failed: [] });
+            await run.promise;
+            expect(vm.getSnapshot()).toMatchObject({ isMarkingAllAsRead: false, canMarkAllAsRead: false });
+            expect(Modal.createDialog).not.toHaveBeenCalled();
+        });
+
+        it("should do nothing when no rooms need marking at click time", () => {
+            vi.mocked(hasRoomsToMarkAsRead).mockReturnValue(true);
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            vm.markAllAsRead();
+            expect(markRoomsAsRead).not.toHaveBeenCalled();
+            expect(vm.getSnapshot().isMarkingAllAsRead).toBe(false);
+        });
+
+        it.each([1, 2])("should report %s failed rooms and retain enabled state for retry", async (count) => {
+            const rooms = Array.from({ length: count }, () => mockSpace);
+            vi.mocked(getRoomsToMarkAsRead).mockReturnValue(rooms);
+            vi.mocked(hasRoomsToMarkAsRead).mockReturnValue(true);
+            vi.mocked(markRoomsAsRead).mockResolvedValue({ marked: [], failed: rooms });
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            vm.markAllAsRead();
+            await vi.mocked(markRoomsAsRead).mock.results[0].value;
+            expect(vm.getSnapshot()).toMatchObject({ isMarkingAllAsRead: false, canMarkAllAsRead: true });
+            expect(Modal.createDialog).toHaveBeenCalledExactlyOnceWith(ErrorDialog, {
+                title: "Couldn't mark all rooms as read",
+                description: `${count} ${count === 1 ? "room" : "rooms"} could not be marked as read. Check your connection and try again.`,
+            });
+        });
+
+        it("should finish requests without showing an error after disposal", async () => {
+            const run = Promise.withResolvers<MarkRoomsAsReadResult>();
+            vi.mocked(getRoomsToMarkAsRead).mockReturnValue([mockSpace]);
+            vi.mocked(markRoomsAsRead).mockReturnValue(run.promise);
+            vm = new RoomListHeaderViewModel({ matrixClient, spaceStore: sdkContext.spaceStore });
+            vm.markAllAsRead();
+            vm.dispose();
+            run.resolve({ marked: [], failed: [mockSpace] });
+            await run.promise;
+            expect(vm.getSnapshot().isMarkingAllAsRead).toBe(false);
+            expect(Modal.createDialog).not.toHaveBeenCalled();
+        });
     });
 
     describe("snapshot", () => {

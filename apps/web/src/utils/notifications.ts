@@ -17,13 +17,16 @@ import {
     type IMarkedUnreadEvent,
     type EmptyObject,
     EventType,
+    KnownMembership,
 } from "matrix-js-sdk/src/matrix";
+import { logger } from "matrix-js-sdk/src/logger";
 import { type IndicatorIcon } from "@vector-im/compound-web";
 
 import SettingsStore from "../settings/SettingsStore";
 import { NotificationLevel } from "../stores/notifications/NotificationLevel";
 import { doesRoomHaveUnreadMessages } from "../Unread";
 import { type SettingKey } from "../settings/Settings.tsx";
+import { isRoomVisible } from "../stores/room-list-v3/isRoomVisible";
 
 // MSC2867 is not yet spec at time of writing. We read from both stable
 // and unstable prefixes and accept the risk that the format may change,
@@ -87,34 +90,54 @@ export function localNotificationsAreSilenced(cli: MatrixClient): boolean {
  * Mark a room as read
  * @param room
  * @param client
+ * @param options Bulk calls set `clearCountsOnFailure` to false to defer local receipts and counts until success
  * @returns a promise that resolves when the room has been marked as read
  */
-export async function clearRoomNotification(room: Room, client: MatrixClient): Promise<EmptyObject | undefined> {
+export async function clearRoomNotification(
+    room: Room,
+    client: MatrixClient,
+    options: { clearCountsOnFailure?: boolean } = {},
+): Promise<EmptyObject | undefined> {
     const lastEvent = room.getLastLiveEvent();
+    const clearCountsOnFailure = options.clearCountsOnFailure ?? true;
 
     await setMarkedUnreadState(room, client, false);
 
+    let succeeded = false;
     try {
         if (lastEvent) {
             const receiptType = SettingsStore.getValue("sendReadReceipts", room.roomId)
                 ? ReceiptType.Read
                 : ReceiptType.ReadPrivate;
-            return await client.sendReadReceipt(lastEvent, receiptType, true);
+            // Bulk failures must leave receipt state untouched so zero-count and muted rooms remain eligible.
+            const result = clearCountsOnFailure
+                ? await client.sendReadReceipt(lastEvent, receiptType, true)
+                : await client.sendReadReceipt(lastEvent, receiptType, true, false);
+            if (!clearCountsOnFailure && !client.isGuest() && client.credentials.userId) {
+                room.addLocalEchoReceipt(client.credentials.userId, lastEvent, receiptType, true);
+            }
+            succeeded = true;
+            return result;
         } else {
+            succeeded = true;
             return {};
         }
     } finally {
-        // We've had a lot of stuck unread notifications that in e2ee rooms
-        // They occur on event decryption when clients try to replicate the logic
-        //
-        // This resets the notification on a room, even though no read receipt
-        // has been sent, particularly useful when the clients has incorrectly
-        // notified a user.
-        room.setUnreadNotificationCount(NotificationCountType.Highlight, 0);
-        room.setUnreadNotificationCount(NotificationCountType.Total, 0);
-        for (const thread of room.getThreads()) {
-            room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Highlight, 0);
-            room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Total, 0);
+        // Bulk failures must retain counts so stuck-count-only rooms remain eligible for retry.
+        if (succeeded || clearCountsOnFailure) {
+            // Clear stuck counts caused by local notification calculations during decryption.
+            // Existing single-room callers also clear these counts when sending the receipt fails.
+            room.setUnreadNotificationCount(NotificationCountType.Highlight, 0);
+            room.setUnreadNotificationCount(NotificationCountType.Total, 0);
+            if (!clearCountsOnFailure) {
+                // Sync can store counts for threads whose timelines have never been loaded, including encrypted ones.
+                room.resetThreadUnreadNotificationCount();
+            } else {
+                for (const thread of room.getThreads()) {
+                    room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Highlight, 0);
+                    room.setThreadUnreadNotificationCount(thread.id, NotificationCountType.Total, 0);
+                }
+            }
         }
     }
 }
@@ -136,24 +159,73 @@ export async function clearThreadsNotifications(threads: Thread[], client: Matri
     await Promise.all(threads.map((thread) => clearThreadNotification(thread, client)));
 }
 
-/**
- * Marks all rooms with an unread counter as read
- * @param client The matrix client
- * @returns a promise that resolves when all rooms have been marked as read
- */
-export function clearAllNotifications(client: MatrixClient): Promise<Array<EmptyObject | undefined>> {
-    const receiptPromises = client
-        .getRooms()
-        .reduce((promises: Array<Promise<EmptyObject | undefined>>, room: Room) => {
-            if (doesRoomHaveUnreadMessages(room, true)) {
-                const promise = clearRoomNotification(room, client);
-                promises.push(promise);
+/** Maximum number of rooms marked as read at the same time by {@link markRoomsAsRead}. */
+export const MARK_ROOMS_AS_READ_CONCURRENCY = 10;
+
+/** Outcome of {@link markRoomsAsRead}, in input order. */
+export interface MarkRoomsAsReadResult {
+    /** Rooms whose marker and receipt were sent. */
+    marked: Room[];
+    /** Rooms where clearing the marker or sending the receipt failed. */
+    failed: Room[];
+}
+
+/** Whether a joined, visible room needs marking, including muted rooms and stuck room or thread counts. */
+export function shouldMarkRoomAsRead(room: Room): boolean {
+    if (room.getMyMembership() !== KnownMembership.Join || !isRoomVisible(room)) return false;
+    if (getMarkedUnreadState(room) === true || doesRoomHaveUnreadMessages(room, true)) return true;
+
+    return [NotificationCountType.Total, NotificationCountType.Highlight].some(
+        (type) =>
+            room.getUnreadNotificationCount(type) !== 0 ||
+            room.getThreads().some((thread) => room.getThreadUnreadNotificationCount(thread.id, type) !== 0),
+    );
+}
+
+/** Every joined room needing marking, across all spaces and regardless of room list filters. */
+export function getRoomsToMarkAsRead(client: MatrixClient): Room[] {
+    return client.getRooms().filter(shouldMarkRoomAsRead);
+}
+
+/** Whether any room needs marking, stopping at the first match. */
+export function hasRoomsToMarkAsRead(client: MatrixClient): boolean {
+    return client.getRooms().some(shouldMarkRoomAsRead);
+}
+
+/** Mark rooms with bounded concurrency. Each failure is logged and returned without rejecting the run. */
+export async function markRoomsAsRead(
+    rooms: Room[],
+    client: MatrixClient,
+    concurrency = MARK_ROOMS_AS_READ_CONCURRENCY,
+): Promise<MarkRoomsAsReadResult> {
+    const succeeded = new Array<boolean>(rooms.length);
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+        while (nextIndex < rooms.length) {
+            const index = nextIndex++;
+            const room = rooms[index];
+            try {
+                await clearRoomNotification(room, client, { clearCountsOnFailure: false });
+                succeeded[index] = true;
+            } catch (error) {
+                succeeded[index] = false;
+                logger.warn("Failed to mark room as read", room.roomId, error);
             }
+        }
+    };
+    const workerCount = Number.isFinite(concurrency)
+        ? Math.max(1, Math.floor(concurrency))
+        : MARK_ROOMS_AS_READ_CONCURRENCY;
+    await Promise.all(Array.from({ length: Math.min(workerCount, rooms.length) }, worker));
+    return {
+        marked: rooms.filter((_, index) => succeeded[index]),
+        failed: rooms.filter((_, index) => !succeeded[index]),
+    };
+}
 
-            return promises;
-        }, []);
-
-    return Promise.all(receiptPromises);
+/** Marks every room returned by {@link getRoomsToMarkAsRead} as read. */
+export function clearAllNotifications(client: MatrixClient): Promise<MarkRoomsAsReadResult> {
+    return markRoomsAsRead(getRoomsToMarkAsRead(client), client);
 }
 
 /**

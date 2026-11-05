@@ -21,6 +21,7 @@ import { defaultSnapshot } from "./default-snapshot";
 type RoomListHeaderProps = RoomListHeaderViewSnapshot & RoomListHeaderViewActions;
 
 const RoomListHeaderViewWrapperImpl = ({
+    markAllAsRead,
     createChatRoom,
     createRoom,
     createVideoRoom,
@@ -36,6 +37,7 @@ const RoomListHeaderViewWrapperImpl = ({
     ...rest
 }: RoomListHeaderProps): JSX.Element => {
     const vm = useMockedViewModel(rest, {
+        markAllAsRead,
         createChatRoom,
         createRoom,
         createVideoRoom,
@@ -59,6 +61,7 @@ const meta = {
     tags: ["autodocs"],
     args: {
         ...defaultSnapshot,
+        markAllAsRead: fn(),
         createChatRoom: fn(),
         createRoom: fn(),
         createVideoRoom: fn(),
@@ -84,6 +87,18 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
+
+export const NothingToMark: Story = {
+    args: {
+        canMarkAllAsRead: false,
+    },
+};
+
+export const MarkingInProgress: Story = {
+    args: {
+        isMarkingAllAsRead: true,
+    },
+};
 
 export const NoSpaceMenu: Story = {
     args: {
