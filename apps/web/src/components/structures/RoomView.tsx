@@ -1283,9 +1283,14 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     phase: RightPanelPhases.ThreadView,
                     state: {
                         threadHeadEvent,
-                        initialEvent,
-                        isInitialEventHighlighted: this.roomViewStore.isInitialEventHighlighted(),
-                        initialEventScrollIntoView: this.roomViewStore.initialEventScrollIntoView(),
+                        // A fresh root-only URL opens at the root; toggles reuse the matching card and its anchor.
+                        initialEvent: initialEvent ?? threadHeadEvent,
+                        isInitialEventHighlighted: initialEvent
+                            ? this.roomViewStore.isInitialEventHighlighted()
+                            : false,
+                        initialEventScrollIntoView: initialEvent
+                            ? this.roomViewStore.initialEventScrollIntoView()
+                            : true,
                     },
                 },
             ],

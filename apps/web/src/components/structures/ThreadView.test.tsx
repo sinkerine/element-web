@@ -325,6 +325,32 @@ describe("ThreadView", () => {
         renderPanel.mockRestore();
     });
 
+    it.each([false, true])(
+        "should reset an untracked initial target only for an ordinary thread (expanded: %s)",
+        async (expanded) => {
+            fullPage = expanded;
+            initialEventScrollIntoView = true;
+            const store = SDKContextClass.instance.roomViewStore;
+            const initialId = vi.spyOn(store, "getInitialEventId").mockReturnValue(null);
+            const { unmount } = await getComponent(rootEvent);
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            try {
+                act(() => viewRef.current!["resetJumpToEvent"](rootEvent.getId()));
+                if (expanded) {
+                    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ViewRoom }));
+                } else {
+                    expect(dispatch).toHaveBeenCalledWith(
+                        expect.objectContaining({ action: Action.ViewRoom, event_id: rootEvent.getId() }),
+                    );
+                }
+            } finally {
+                unmount();
+                dispatch.mockRestore();
+                initialId.mockRestore();
+            }
+        },
+    );
+
     it("should preserve expanded state when resetting or unmounting a permalink", async () => {
         fullPage = true;
         const store = SDKContextClass.instance.roomViewStore;

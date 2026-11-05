@@ -51,6 +51,7 @@ import { Action } from "../../dispatcher/actions";
 import defaultDispatcher from "../../dispatcher/dispatcher";
 import { type ViewRoomPayload } from "../../dispatcher/payloads/ViewRoomPayload";
 import { RoomView } from "./RoomView";
+import TimelinePanel from "./TimelinePanel";
 import SettingsStore from "../../settings/SettingsStore";
 import { SettingLevel } from "../../settings/SettingLevel";
 import DMRoomMap from "../../utils/DMRoomMap";
@@ -315,6 +316,44 @@ describe("RoomView", () => {
                 expect(stores.roomViewStore.getFullPageThreadId()).toBe(root.getId());
                 expect(fetch).toHaveBeenCalledTimes(rootState === "unloaded" ? 1 : 0);
                 find.mockRestore();
+            },
+        );
+
+        it.each(["loaded", "unloaded"])(
+            "should scroll a fresh root-only expanded URL to its %s root without highlighting it",
+            async (rootState) => {
+                await expand();
+                await act(flushPromises);
+                const fetch = vi.spyOn(EventUtils, "fetchInitialEvent").mockResolvedValue(root);
+                const find = vi.spyOn(room, "findEventById");
+                if (rootState === "unloaded") find.mockReturnValue(undefined);
+                const panelProps: React.ComponentProps<typeof TimelinePanel>[] = [];
+                const renderPanel = TimelinePanel.prototype.render;
+                const panelRender = vi.spyOn(TimelinePanel.prototype, "render").mockImplementation(function (
+                    this: TimelinePanel,
+                ) {
+                    panelProps.push(this.props);
+                    return renderPanel.call(this);
+                });
+                const refresh = vi.spyOn(TimelinePanel.prototype, "refreshTimeline");
+                try {
+                    await mountRoomView();
+                    const thread = room.getThread(root.getId()!)!;
+                    const panels = panelProps.filter((props) => props.timelineSet === thread.timelineSet);
+                    expect(panels.length).toBeGreaterThan(0);
+                    for (const props of panels) {
+                        expect(props.eventId).toBe(root.getId());
+                        expect(props.eventScrollIntoView).toBe(true);
+                        expect(props.highlightedEventId).toBeUndefined();
+                    }
+                    expect(refresh).toHaveBeenCalledWith(root.getId());
+                    expect(stores.roomViewStore.getInitialEventId()).toBeFalsy();
+                    expect(fetch).toHaveBeenCalledTimes(rootState === "unloaded" ? 1 : 0);
+                } finally {
+                    refresh.mockRestore();
+                    panelRender.mockRestore();
+                    find.mockRestore();
+                }
             },
         );
 

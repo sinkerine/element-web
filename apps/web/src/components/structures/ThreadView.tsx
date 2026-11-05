@@ -397,7 +397,9 @@ export default class ThreadView extends React.Component<IProps, IState> {
         if (
             this.props.initialEvent &&
             this.props.initialEventScrollIntoView &&
-            event === this.props.initialEvent?.getId()
+            event === this.props.initialEvent?.getId() &&
+            // An expanded root-only URL has an implicit target, without a room permalink to reset.
+            (!this.props.fullPage || this.context.roomViewStore.getInitialEventId() === event)
         ) {
             dis.dispatch<ViewRoomPayload>({
                 action: Action.ViewRoom,
