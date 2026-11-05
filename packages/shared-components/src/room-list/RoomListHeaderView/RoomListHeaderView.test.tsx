@@ -7,8 +7,9 @@
 
 import { composeStories } from "@storybook/react-vite";
 import { render } from "@test-utils";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import React from "react";
+import { fn } from "storybook/test";
 import { userEvent } from "vitest/browser";
 
 import * as stories from "./RoomListHeaderView.stories";
@@ -18,7 +19,7 @@ const { Default, NoSpaceMenu, CollapseSections, ExpandSections, NothingToMark, M
 
 describe("RoomListHeaderView", () => {
     it("should mark all rooms as read when clicked by accessible name", async () => {
-        const markAllAsRead = vi.fn();
+        const markAllAsRead = fn<() => void>();
         const { getByRole, findByText } = render(<Default markAllAsRead={markAllAsRead} />);
         const button = getByRole("button", { name: "Mark all rooms as read" });
         expect(button).toBeEnabled();
@@ -32,7 +33,7 @@ describe("RoomListHeaderView", () => {
         ["nothing needs marking", NothingToMark],
         ["marking is in progress", MarkingInProgress],
     ] as const)("should disable marking when %s", (_state, Story) => {
-        const markAllAsRead = vi.fn();
+        const markAllAsRead = fn<() => void>();
         const { getByRole } = render(<Story markAllAsRead={markAllAsRead} />);
         const button = getByRole("button", { name: "Mark all rooms as read" });
         expect(button).toBeDisabled();
