@@ -12,7 +12,17 @@ dropped. Ask in the room if you are unclear about any details here.**
 
 ## Render LaTeX maths in messages (`feature_latex_maths`)
 
-Enables rendering of LaTeX maths in messages using [KaTeX](https://katex.org/). LaTeX between single dollar-signs is interpreted as inline maths and double dollar-signs as display maths (i.e. centred on its own line).
+Enabled by default, this renders LaTeX maths in messages using [KaTeX](https://katex.org/). In the regular composer
+with Markdown enabled, use `$…$` or `\(…\)` for inline maths, and `$$…$$` or `\[…\]` on a line of their own for
+display maths (centred on its own line). Display maths can span several lines.
+
+An opening `$` must follow the start of a line, whitespace, or one of `. , ! ? : ; ( [ { " '`, and cannot be followed
+by whitespace. A closing `$` cannot follow whitespace or a backslash, or be followed by a digit. Currency such as
+`$5/$10` stays plain text. Escape a dollar sign with `\$`, or put text in backticks or a fenced code block, to keep
+it literal. Room and space topics are excluded from maths parsing.
+
+The switch remains in Settings → Labs → Messaging. Deployments can turn it off by setting
+`features.feature_latex_maths` to `false` in `config.json`.
 
 ## Message pinning (`feature_pinning`)
 

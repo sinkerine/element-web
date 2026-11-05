@@ -1578,6 +1578,7 @@
         "jump_to_date": "Scroll to date (adds /jumptodate and date headers)",
         "jump_to_date_msc_support": "Requires your server to support MSC3030",
         "latex_maths": "Render LaTeX maths in messages",
+        "latex_maths_description": "Type $…$ or \\(…\\) for inline maths, and $$…$$ or \\[…\\] on a line of their own for display maths.",
         "leave_beta": "Leave the beta",
         "leave_beta_reload": "Leaving the beta will reload %(brand)s.",
         "location_share_live": "Live Location Sharing",

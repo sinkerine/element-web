@@ -257,7 +257,7 @@ export const Commands = [
         isEnabled: (cli) => !isCurrentLocalRoom(cli),
         runFn: function (cli, roomId, threadId, args) {
             if (args) {
-                const html = htmlSerializeFromMdIfNeeded(args, { forceHTML: false });
+                const html = htmlSerializeFromMdIfNeeded(args, { forceHTML: false, allowMaths: false });
                 return success(cli.setRoomTopic(roomId, args, html));
             }
             const room = cli.getRoom(roomId);

@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>LaTeX maths mocks</title>
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css"
+            crossorigin="anonymous"
+        />
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"
+            crossorigin="anonymous"
+        ></script>
+        <style>
+            :root {
+                --bg: #ffffff;
+                --bg-subtle: #f4f6fa;
+                --fg: #1b1d22;
+                --fg-muted: #656d77;
+                --border: #e1e6ec;
+                --accent: #0dbd8b;
+                --accent-bg: #e3f7ef;
+                --warn: #c4361d;
+                --warn-bg: #fdeee9;
+                --code-bg: #eef1f5;
+                --hl-inline: #fff3c4;
+                --hl-display: #d9ecff;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root:not([data-theme="light"]) {
+                    --bg: #101317;
+                    --bg-subtle: #1a1e24;
+                    --fg: #ebeef2;
+                    --fg-muted: #9199a4;
+                    --border: #2b3139;
+                    --accent: #1fc090;
+                    --accent-bg: #133328;
+                    --warn: #ff8a73;
+                    --warn-bg: #3a1d17;
+                    --code-bg: #232831;
+                    --hl-inline: #4a3f12;
+                    --hl-display: #17324f;
+                }
+            }
+            :root[data-theme="dark"] {
+                --bg: #101317;
+                --bg-subtle: #1a1e24;
+                --fg: #ebeef2;
+                --fg-muted: #9199a4;
+                --border: #2b3139;
+                --accent: #1fc090;
+                --accent-bg: #133328;
+                --warn: #ff8a73;
+                --warn-bg: #3a1d17;
+                --code-bg: #232831;
+                --hl-inline: #4a3f12;
+                --hl-display: #17324f;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--fg);
+                font:
+                    15px/1.5 Inter,
+                    system-ui,
+                    sans-serif;
+            }
+            main {
+                max-width: 1100px;
+                margin: 0 auto;
+                padding: 24px 16px 80px;
+            }
+            h1 {
+                font-size: 26px;
+                margin: 0 0 4px;
+            }
+            h2 {
+                font-size: 19px;
+                margin: 40px 0 8px;
+                padding-top: 16px;
+                border-top: 1px solid var(--border);
+            }
+            p.lead,
+            .muted {
+                color: var(--fg-muted);
+            }
+            nav a {
+                color: var(--accent);
+                margin-right: 14px;
+                font-size: 14px;
+            }
+            .row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+            }
+            @media (max-width: 760px) {
+                .row {
+                    grid-template-columns: 1fr;
+                }
+            }
+            .card {
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 14px;
+                background: var(--bg);
+                min-width: 0;
+            }
+            .card h3 {
+                margin: 0 0 8px;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: var(--fg-muted);
+            }
+            textarea {
+                width: 100%;
+                min-height: 110px;
+                font:
+                    14px/1.5 ui-monospace,
+                    monospace;
+                padding: 10px;
+                border-radius: 8px;
+                border: 1px solid var(--border);
+                background: var(--bg-subtle);
+                color: var(--fg);
+                resize: vertical;
+            }
+            .seg {
+                display: inline-flex;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                overflow: hidden;
+            }
+            .seg button {
+                border: 0;
+                background: transparent;
+                color: var(--fg);
+                padding: 6px 12px;
+                cursor: pointer;
+                font: inherit;
+                font-size: 13px;
+            }
+            .seg button[aria-pressed="true"] {
+                background: var(--accent);
+                color: #fff;
+            }
+            .chips button {
+                margin: 4px 6px 0 0;
+                border: 1px solid var(--border);
+                background: var(--bg-subtle);
+                color: var(--fg);
+                border-radius: 999px;
+                padding: 3px 10px;
+                font:
+                    12px ui-monospace,
+                    monospace;
+                cursor: pointer;
+            }
+            pre {
+                background: var(--code-bg);
+                padding: 10px;
+                border-radius: 8px;
+                white-space: pre-wrap;
+                word-break: break-word;
+                font-size: 12.5px;
+                margin: 6px 0 0;
+                overflow-x: auto;
+            }
+            code {
+                background: var(--code-bg);
+                padding: 1px 4px;
+                border-radius: 4px;
+                font-size: 0.92em;
+            }
+            mark.i {
+                background: var(--hl-inline);
+                color: inherit;
+                border-radius: 3px;
+            }
+            mark.d {
+                background: var(--hl-display);
+                color: inherit;
+                border-radius: 3px;
+            }
+            .tile {
+                display: flex;
+                gap: 10px;
+                padding: 8px 4px;
+            }
+            .avatar {
+                flex: none;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: #5c56f5;
+                color: #fff;
+                display: grid;
+                place-items: center;
+                font-weight: 600;
+            }
+            .sender {
+                font-weight: 600;
+                color: #5c56f5;
+                font-size: 14px;
+            }
+            .body {
+                overflow-x: auto;
+            }
+            .body .katex-display {
+                margin: 6px 0;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 14px;
+            }
+            th,
+            td {
+                text-align: left;
+                padding: 8px;
+                border-bottom: 1px solid var(--border);
+                vertical-align: top;
+            }
+            th {
+                color: var(--fg-muted);
+                font-weight: 600;
+                font-size: 12px;
+                text-transform: uppercase;
+            }
+            .tblwrap {
+                overflow-x: auto;
+            }
+            .tag {
+                font-size: 11px;
+                padding: 1px 7px;
+                border-radius: 999px;
+                font-weight: 600;
+                white-space: nowrap;
+            }
+            .tag.ok {
+                background: var(--accent-bg);
+                color: var(--accent);
+            }
+            .tag.bad {
+                background: var(--warn-bg);
+                color: var(--warn);
+            }
+            .settings {
+                max-width: 560px;
+            }
+            .setrow {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 12px 0;
+                border-bottom: 1px solid var(--border);
+            }
+            .toggle {
+                flex: none;
+                width: 40px;
+                height: 22px;
+                border-radius: 999px;
+                background: var(--border);
+                position: relative;
+                cursor: pointer;
+                border: 0;
+            }
+            .toggle::after {
+                content: "";
+                position: absolute;
+                top: 3px;
+                left: 3px;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: #fff;
+                transition: left 0.15s;
+            }
+            .toggle[aria-checked="true"] {
+                background: var(--accent);
+            }
+            .toggle[aria-checked="true"]::after {
+                left: 21px;
+            }
+            .note {
+                background: var(--bg-subtle);
+                border-left: 3px solid var(--accent);
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>LaTeX maths in messages</h1>
+            <p class="lead">
+                Interactive mocks for the <code>feature_latex_maths</code> design. The send-side rules are a JS port of
+                <code>apps/web/src/editor/serialize.ts</code>; rendering uses KaTeX with the proposed options.
+                Simplification: Markdown is not applied here, only code spans are protected.
+            </p>
+            <nav>
+                <a href="#playground">1 · Playground</a><a href="#edges">2 · Edge cases</a
+                ><a href="#errors">3 · Errors &amp; limits</a><a href="#edit">4 · Edit round-trip</a
+                ><a href="#switch">5 · The switch</a><a href="#topics">6 · Topics</a>
+            </nav>
+
+            <h2 id="playground">1 · Composer playground</h2>
+            <p class="muted">
+                Type as you would in the composer. Highlights show what is detected: yellow is inline, blue is display.
+            </p>
+            <div style="margin: 8px 0">
+                Rules:
+                <span class="seg" id="ruleSeg"
+                    ><button data-r="current" aria-pressed="false">Current (develop)</button
+                    ><button data-r="proposed" aria-pressed="true">Proposed</button></span
+                >
+            </div>
+            <div class="row">
+                <div class="card">
+                    <h3>Composer</h3>
+                    <textarea id="src">
+Euler: $e^{i\pi} + 1 = 0$, and ($a^2+b^2=c^2$) too.
+Tickets cost $5/$10, and `$x$` stays code.
+$$
+\int_0^1 x^2\,dx = \frac{1}{3}
+$$
+LaTeX style works too: \(\alpha\) and
+\[\sum_{n=1}^\infty \frac{1}{n^2} = \frac{\pi^2}{6}\]</textarea>
+                    <div class="chips" id="presets"></div>
+                    <h3 style="margin-top: 12px">Detected</h3>
+                    <pre id="detected"></pre>
+                </div>
+                <div class="card">
+                    <h3>Timeline</h3>
+                    <div class="tile">
+                        <div class="avatar">A</div>
+                        <div style="min-width: 0">
+                            <div class="sender">Alice</div>
+                            <div class="body" id="rendered"></div>
+                        </div>
+                    </div>
+                    <h3 style="margin-top: 12px">Event content sent</h3>
+                    <pre id="content"></pre>
+                </div>
+            </div>
+
+            <h2 id="edges">2 · Edge cases: current vs proposed</h2>
+            <p class="muted">
+                Each row is rendered live with both rule sets. A <span class="tag bad">changed</span> tag marks rows
+                where the proposed rules give a different result.
+            </p>
+            <div class="tblwrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Input</th>
+                            <th>Current</th>
+                            <th>Proposed</th>
+                            <th>Why</th>
+                        </tr>
+                    </thead>
+                    <tbody id="edgeRows"></tbody>
+                </table>
+            </div>
+
+            <h2 id="errors">3 · Errors and limits</h2>
+            <p class="muted">
+                Invalid TeX is never dropped. KaTeX shows the source in red, and hovering shows the parse error. If
+                KaTeX throws anyway (not a ParseError), we keep the sanitized <code>&lt;code&gt;</code> fallback from
+                the sender.
+            </p>
+            <div class="row">
+                <div class="card">
+                    <h3>Invalid TeX</h3>
+                    <div class="body" id="errDemo"></div>
+                </div>
+                <div class="card">
+                    <h3>Oversized / unsafe input</h3>
+                    <div class="body" id="limitDemo"></div>
+                </div>
+            </div>
+
+            <h2 id="edit">4 · Editing a sent message</h2>
+            <p class="muted">
+                What appears in the composer when you press ↑ to edit. Proposed: inline maths comes back as
+                <code>$…$</code> when that would be detected again, otherwise as <code>\(…\)</code>. Display maths
+                always comes back on its own line as <code>$$…$$</code>. Today, two display blocks in a row are glued
+                into <code>\[a\]\[b\]</code>, which re-sends as one broken formula.
+            </p>
+            <div class="row">
+                <div class="card">
+                    <h3>Sent</h3>
+                    <textarea id="editSrc" style="min-height: 80px">
+Area is $\pi r^2$ (roughly $3r^2$).
+$$a^2+b^2=c^2$$
+$$E = mc^2$$
+Next line</textarea>
+                </div>
+                <div class="card">
+                    <h3>Edit composer shows</h3>
+                    <div style="margin-bottom: 6px">
+                        <span class="seg" id="editSeg"
+                            ><button data-r="current" aria-pressed="false">Current</button
+                            ><button data-r="proposed" aria-pressed="true">Proposed</button></span
+                        >
+                    </div>
+                    <pre id="editOut"></pre>
+                    <div id="editCheck" style="margin-top: 6px"></div>
+                </div>
+            </div>
+
+            <h2 id="switch">5 · The on/off switch</h2>
+            <p class="muted">
+                One setting controls both sending (maths detection in the composer) and showing (KaTeX rendering of
+                received maths). It is on by default; deployments can still turn it off with
+                <code>features.feature_latex_maths</code> in config.json.
+            </p>
+            <div class="row">
+                <div class="card settings">
+                    <h3>Option A: Settings → Labs → Messaging</h3>
+                    <div class="setrow">
+                        <div>
+                            <div>Render LaTeX maths in messages</div>
+                            <div class="muted" style="font-size: 13px">
+                                Type $…$ or \(…\) for inline maths and $$…$$ or \[…\] on their own lines for display
+                                maths.
+                            </div>
+                        </div>
+                        <button class="toggle" role="switch" aria-checked="true" data-sw></button>
+                    </div>
+                    <p class="muted" style="font-size: 13px">
+                        Same pattern as Interactive messages. Hidden when the deployment has no Labs tab.
+                    </p>
+                </div>
+                <div class="card settings">
+                    <h3>Option B: Settings → Preferences → Composer</h3>
+                    <div class="setrow">
+                        <div>Enable Markdown</div>
+                        <button class="toggle" role="switch" aria-checked="true" data-sw></button>
+                    </div>
+                    <div class="setrow">
+                        <div>
+                            <div>Render LaTeX maths in messages</div>
+                            <div class="muted" style="font-size: 13px">
+                                Type $…$ for inline maths and $$…$$ on their own lines for display maths.
+                            </div>
+                        </div>
+                        <button class="toggle" role="switch" aria-checked="true" data-sw></button>
+                    </div>
+                    <p class="muted" style="font-size: 13px">
+                        A real setting, not a lab. Always visible. Needs a rename/migration of the labs flag.
+                    </p>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 16px">
+                <h3>Effect of the switch on a received message</h3>
+                <div style="margin-bottom: 6px">
+                    <span class="seg" id="recvSeg"
+                        ><button data-r="on" aria-pressed="true">Switch on</button
+                        ><button data-r="off" aria-pressed="false">Switch off</button></span
+                    >
+                </div>
+                <div class="tile">
+                    <div class="avatar" style="background: #c5498b">B</div>
+                    <div>
+                        <div class="sender" style="color: #c5498b">Bob</div>
+                        <div class="body" id="recvBody"></div>
+                    </div>
+                </div>
+            </div>
+
+            <h2 id="topics">6 · Room topics</h2>
+            <p class="muted">
+                Topics are set through the same Markdown parser, but topics never render KaTeX. With maths on by
+                default, a topic like this would lose its dollar signs.
+            </p>
+            <div class="row">
+                <div class="card">
+                    <h3>Today with the flag on</h3>
+                    <div class="body">
+                        Weekly sync · budget <b>5/</b>10 per head
+                        <div class="muted" style="font-size: 13px">
+                            from <code>/topic Weekly sync · budget $5/$10 per head</code>: the
+                            <code>&lt;code&gt;</code> fallback is stripped by the topic sanitizer.
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Proposed: no maths detection in topics</h3>
+                    <div class="body">Weekly sync · budget $5/$10 per head</div>
+                </div>
+            </div>
+        </main>
+
+        <script>
+            const RULES = {
+                current: {
+                    texDisplay: "(^)\\$\\$(([^$]|\\\\\\$)+?)\\$\\$$",
+                    texInline:
+                        "(^|\\s|[.,!?:;])(?!\\\\)\\$(?!\\s)(([^$\\n]|\\\\\\$)*([^\\\\\\s\\$]|\\\\\\$)(?:\\\\\\$)?)\\$",
+                    latexDisplay: "(^)\\\\\\[(?!\\\\\\])(.*?)\\\\\\]$",
+                    latexInline: "(^|[^\\\\])\\\\\\((?!\\\\\\))(.*?)\\\\\\)",
+                },
+                proposed: {
+                    texDisplay: "(^)\\$\\$(([^$]|\\\\\\$)+?)\\$\\$$",
+                    // adds opening brackets/quotes before, and "closing $ not followed by a digit"
+                    texInline:
+                        "(^|[\\s.,!?:;(\\[{\"'])(?!\\\\)\\$(?!\\s)(([^$\\n]|\\\\\\$)*([^\\\\\\s\\$]|\\\\\\$)(?:\\\\\\$)?)\\$(?!\\d)",
+                    latexDisplay: "(^)\\\\\\[(?!\\\\\\])(.*?)\\\\\\]$",
+                    latexInline: "(^|[^\\\\])\\\\\\((?!\\\\\\))(.*?)\\\\\\)",
+                },
+            };
+            const esc = (s) =>
+                s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+            const KATEX_OPTS = {
+                throwOnError: false,
+                output: "htmlAndMathml",
+                maxSize: 50,
+                maxExpand: 1000,
+                trust: false,
+            };
+
+            // Detect maths; returns list of {type, tex, start, end} on the original string (code spans masked).
+            function detect(src, ruleName) {
+                const r = RULES[ruleName];
+                const masked = src.replace(/`[^`\n]*`/g, (m) => "\u0000".repeat(m.length));
+                const hits = [];
+                const taken = (a, b) => hits.some((h) => a < h.end && b > h.start);
+                const run = (pat, type) => {
+                    const re = new RegExp(pat, "gms");
+                    let m;
+                    while ((m = re.exec(masked))) {
+                        const start = m.index + m[1].length;
+                        const end = m.index + m[0].length;
+                        if (!taken(start, end))
+                            hits.push({
+                                type,
+                                tex: src.slice(start, end).replace(/^(\$\$|\$|\\\[|\\\()|(\$\$|\$|\\\]|\\\))$/g, ""),
+                                start,
+                                end,
+                            });
+                        if (m[0].length === 0) re.lastIndex++;
+                    }
+                };
+                run(r.texDisplay, "display");
+                run(r.texInline, "inline");
+                run(r.latexDisplay, "display");
+                run(r.latexInline, "inline");
+                return hits.sort((a, b) => a.start - b.start);
+            }
+            function renderParts(src, hits, mode) {
+                let out = "",
+                    pos = 0;
+                for (const h of hits) {
+                    out += plain(src.slice(pos, h.start));
+                    if (mode === "highlight")
+                        out += `<mark class="${h.type[0]}">${esc(src.slice(h.start, h.end))}</mark>`;
+                    else if (mode === "html")
+                        out +=
+                            h.type === "display"
+                                ? `<div data-mx-maths="${esc(h.tex)}"><code>${esc(h.tex)}</code></div>`
+                                : `<span data-mx-maths="${esc(h.tex)}"><code>${esc(h.tex)}</code></span>`;
+                    else out += katex.renderToString(h.tex, { ...KATEX_OPTS, displayMode: h.type === "display" });
+                    pos = h.end;
+                }
+                out += plain(src.slice(pos));
+                return out;
+                function plain(t) {
+                    if (mode === "highlight") return esc(t);
+                    return esc(t)
+                        .replace(/`([^`\n]*)`/g, "<code>$1</code>")
+                        .replace(/\n/g, mode === "render" ? "<br>" : "\n");
+                }
+            }
+            const $ = (id) => document.getElementById(id);
+            let rule = "proposed";
+            function update() {
+                const src = $("src").value;
+                const hits = detect(src, rule);
+                $("detected").innerHTML = renderParts(src, hits, "highlight") || "&nbsp;";
+                $("rendered").innerHTML = renderParts(src, hits, "render");
+                const content = { msgtype: "m.text", body: src };
+                if (hits.length || /`/.test(src)) {
+                    content.format = "org.matrix.custom.html";
+                    content.formatted_body = renderParts(src, hits, "html").replace(/\n/g, "<br>");
+                }
+                $("content").textContent = JSON.stringify(content, null, 2);
+            }
+            function seg(id, cb) {
+                $(id).addEventListener("click", (e) => {
+                    const b = e.target.closest("button");
+                    if (!b) return;
+                    [...$(id).children].forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                    cb(b.dataset.r);
+                });
+            }
+            seg("ruleSeg", (r) => {
+                rule = r;
+                update();
+            });
+            $("src").addEventListener("input", update);
+            const PRESETS = [
+                "$x^2$",
+                "($x$)",
+                "$5/$10",
+                "\\(\\alpha\\)",
+                "`$x$`",
+                "\\$5 \\$10",
+                "$$\n\\frac{a}{b}\n$$",
+            ];
+            PRESETS.forEach((p) => {
+                const b = document.createElement("button");
+                b.textContent = p.replace(/\n/g, "⏎");
+                b.onclick = () => {
+                    $("src").value = p;
+                    update();
+                };
+                $("presets").appendChild(b);
+            });
+            update();
+
+            // Edge cases
+            const EDGES = [
+                ["Tickets are $5/$10", "Currency pair: closing $ followed by a digit is not maths."],
+                ["Range $5-$10 per seat", "Same rule."],
+                ["Prices: $3,$4", "Same rule."],
+                ["I paid $5 and $10", "Space before closing $: not maths (unchanged)."],
+                ["Identity ($a+b$) holds", "Opening ( before $ is now allowed."],
+                ['Quote "$x$"', "Opening quote before $ is now allowed."],
+                ["Euler $e^{i\\pi}=-1$.", "Normal inline maths (unchanged)."],
+                ["Escaped \\$x\\$ stays text", "Backslash escapes (unchanged)."],
+                ["Use `$x$` in code", "Code spans are never maths (unchanged)."],
+                ["Shell $HOME/$USER", "Still maths: use backticks. Accepted trade-off."],
+                ["US$5 and US$10", "Letter before $: not maths (unchanged)."],
+                ["Inline \\(\\sqrt{2}\\) works", "LaTeX delimiters (unchanged)."],
+            ];
+            $("edgeRows").innerHTML = EDGES.map(([inp, why]) => {
+                const c = renderParts(inp, detect(inp, "current"), "render");
+                const p = renderParts(inp, detect(inp, "proposed"), "render");
+                const tag = c !== p ? ' <span class="tag bad">changed</span>' : "";
+                return `<tr><td><code>${esc(inp)}</code></td><td class="body">${c}</td><td class="body">${p}${tag}</td><td class="muted">${esc(why)}</td></tr>`;
+            }).join("");
+
+            // Errors
+            $("errDemo").innerHTML =
+                "Missing brace: " +
+                katex.renderToString("\\frac{1}{2", KATEX_OPTS) +
+                "<br>Unknown command: " +
+                katex.renderToString("\\foo + 1", KATEX_OPTS) +
+                '<div class="muted" style="font-size:13px;margin-top:6px">Hover the red text to see the error.</div>';
+            $("limitDemo").innerHTML =
+                "<code>\\rule{1000em}{1000em}</code> with maxSize 50 → " +
+                katex.renderToString("\\rule{1000em}{1em}x", KATEX_OPTS).slice(0, 4000) +
+                "<br><code>\\href{javascript:…}{click}</code> with trust false → " +
+                katex.renderToString("\\href{javascript:alert(1)}{click}", KATEX_OPTS) +
+                "<br><code>\\def\\a{\\a\\a}\\a</code> with maxExpand 1000 → " +
+                katex.renderToString("\\def\\a{\\a\\a}\\a", KATEX_OPTS);
+
+            // Edit round trip
+            let editRule = "proposed";
+            function deser(src, mode) {
+                const hits = detect(src, "proposed");
+                let out = "",
+                    pos = 0;
+                for (const h of hits) {
+                    let before = src.slice(pos, h.start);
+                    if (h.type === "inline") {
+                        if (mode === "current") out += before + `\\(${h.tex}\\)`;
+                        else {
+                            const cand = `$${h.tex}$`;
+                            const prev = out + before;
+                            const after = src.slice(h.end, h.end + 1);
+                            const test = prev.slice(-1) + cand + after;
+                            const ok = detect(test, "proposed").some((x) => x.type === "inline" && x.tex === h.tex);
+                            out += before + (ok ? cand : `\\(${h.tex}\\)`);
+                        }
+                    } else {
+                        before = before.replace(/\n$/, "");
+                        const tex = h.tex.trim();
+                        if (mode === "current") out += before + `\\[${tex}\\]`;
+                        else out += before + (before ? "\n" : "") + `$$${tex}$$\n`;
+                        if (mode === "proposed" && src[h.end] === "\n") pos = h.end + 1;
+                        else pos = h.end;
+                        continue;
+                    }
+                    pos = h.end;
+                }
+                out += src.slice(pos);
+                if (mode === "current") out = out.replace(/\\\]\n(?=\\\[)/g, "\\]"); // adjacent display <div>s are not block nodes: newline lost
+                return out;
+            }
+            function updateEdit() {
+                const sent = $("editSrc").value;
+                const shown = deser(sent, editRule);
+                $("editOut").textContent = shown;
+                const a = detect(sent, "proposed").map((h) => h.type + ":" + h.tex.trim());
+                const b = detect(shown, "proposed").map((h) => h.type + ":" + h.tex.trim());
+                const same = JSON.stringify(a) === JSON.stringify(b);
+                $("editCheck").innerHTML = same
+                    ? '<span class="tag ok">re-sends the same maths</span>'
+                    : '<span class="tag bad">maths changes on re-send</span> <span class="muted" style="font-size:13px">(adjacent display blocks were glued together)</span>';
+            }
+            seg("editSeg", (r) => {
+                editRule = r;
+                updateEdit();
+            });
+            $("editSrc").addEventListener("input", updateEdit);
+            updateEdit();
+
+            // Switch
+            document
+                .querySelectorAll("[data-sw]")
+                .forEach((t) =>
+                    t.addEventListener("click", () =>
+                        t.setAttribute("aria-checked", String(t.getAttribute("aria-checked") !== "true")),
+                    ),
+                );
+            const RECV = "The roots are $x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ in general.";
+            function recv(on) {
+                const hits = detect(RECV, "proposed");
+                $("recvBody").innerHTML = on
+                    ? renderParts(RECV, hits, "render")
+                    : renderParts(RECV, hits, "html").replace(/data-mx-maths="[^"]*"/g, "");
+            }
+            seg("recvSeg", (r) => recv(r === "on"));
+            recv(true);
+        </script>
+    </body>
+</html>

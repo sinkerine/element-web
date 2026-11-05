@@ -8,12 +8,14 @@ Please see LICENSE files in the repository root for full details.
 
 // @vitest-environment jsdom
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
 import { parseEvent } from "./deserialize";
 import { type Part } from "./parts";
 import { createPartCreator } from "./__mocks__";
+import SettingsStore from "../settings/SettingsStore";
+import * as maths from "./maths";
 
 const FOUR_SPACES = " ".repeat(4);
 
@@ -74,6 +76,91 @@ function normalize(parts: Part[]) {
 }
 
 describe("editor/deserialize", function () {
+    describe("maths editing", () => {
+        beforeEach(() => {
+            vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");
+        });
+
+        it.each([
+            ['<span data-mx-maths="x"><code>x</code></span>', "$x$"],
+            ['(<span data-mx-maths="x"></span>)', "($x$)"],
+            ['Cost $5 (<span data-mx-maths="x"></span>)', String.raw`Cost $5 (\(x\))`],
+            ['Cost $5 <strong>today</strong> (<span data-mx-maths="x"></span>)', String.raw`Cost $5 **today** (\(x\))`],
+            ['<strong>Cost $5</strong> (<span data-mx-maths="x"></span>)', String.raw`**Cost $5** (\(x\))`],
+            ['<span data-mx-maths="a"></span> (<span data-mx-maths="x"></span>)', String.raw`$a$ (\(x\))`],
+            ['Cost $5<br>(<span data-mx-maths="x"></span>)', "Cost $5\n($x$)"],
+            ['Cost $5\n(<span data-mx-maths="x"></span>)', "Cost $5\n($x$)"],
+            ['Cost 5 (<span data-mx-maths="x"></span>)', "Cost 5 ($x$)"],
+            ['a<span data-mx-maths="x"></span>', String.raw`a\(x\)`],
+            ['<span data-mx-maths="x"></span>2', String.raw`\(x\)2`],
+            ['<strong><span data-mx-maths="x"></span></strong>', String.raw`**\(x\)**`],
+            ['<em>a</em><span data-mx-maths="x"></span>', String.raw`_a_\(x\)`],
+            ['<em>a</em>\n<span data-mx-maths="x"><code>x</code></span>', String.raw`_a_\(x\)`],
+            ['<span data-mx-maths="x"></span>\n<code>2</code>', String.raw`\(x\)` + "`2`"],
+            ['<span data-mx-maths="x"></span><em>b</em>', String.raw`\(x\)_b_`],
+            ['<br><span data-mx-maths="x"></span><br>', "\n$x$\n"],
+            ['a\n<span data-mx-maths="x"></span>\nb', "a\n$x$\nb"],
+            ['<p><span data-mx-maths="x"></span></p>', "$x$"],
+            ['<div data-mx-maths="a"></div><div data-mx-maths="b"></div>', "$$a$$\n\n$$b$$"],
+            ['before<div data-mx-maths="a"></div>after', "before\n\n$$a$$\n\nafter"],
+            ["$x$", String.raw`\$x$`],
+            ["<strong>$x$</strong>", String.raw`**\$x$**`],
+            [String.raw`\(x\)`, String.raw`\\(x\\)`],
+        ])("should restore %s safely", (html, expected) => {
+            const parts = parseEvent(htmlMessage(html), createPartCreator());
+            expect(parts.map((part) => part.text).join("")).toBe(expected);
+        });
+
+        it("should escape literal maths in plain text messages", () => {
+            const parts = parseEvent(textMessage("$x$"), createPartCreator());
+            expect(parts.map((part) => part.text).join("")).toBe(String.raw`\$x$`);
+        });
+
+        it.each([
+            ["$$\na\n$$", "\\$$\na\n$$"],
+            ["$$\r\na\r\n$$", "\\$$\na\n$$"],
+            ["> first\n> second $x$", String.raw`\> first` + "\n" + String.raw`\> second \$x$`],
+            [String.raw`C:\files` + "\n@room $x$", String.raw`C:\\files` + "\n@room " + String.raw`\$x$`],
+        ])("should escape the full plain-text body %s", (body, expected) => {
+            const parts = parseEvent(textMessage(body), createPartCreator());
+            expect(parts.map((part) => part.text).join("")).toBe(expected);
+        });
+
+        it("should scan a long ordinary text/BR run with linear total input", () => {
+            const lineCount = 5000;
+            const escapeMaths = vi.spyOn(maths, "escapeMathsDelimiters");
+            const parts = parseEvent(htmlMessage("x<br>".repeat(lineCount)), createPartCreator());
+            expect(parts.map((part) => part.text).join("")).toBe("x\n".repeat(lineCount));
+            // Count scanned characters instead of relying on machine-dependent timing.
+            expect(escapeMaths).toHaveBeenCalledWith("x\n".repeat(lineCount));
+            const scannedCharacters = escapeMaths.mock.calls.reduce((total, [text]) => total + text.length, 0);
+            expect(scannedCharacters).toBeLessThanOrEqual(lineCount * 4);
+        });
+
+        it("should retain per-node escaping, ignored newlines and mentions in ordinary text/BR runs", () => {
+            const parts = normalize(
+                parseEvent(htmlMessage("x<br>\n<br>@room *text*<br><span>tail</span>"), createPartCreator()),
+            );
+            expect(parts).toEqual([
+                { type: "plain", text: "x" },
+                { type: "newline", text: "\n" },
+                { type: "newline", text: "\n" },
+                { type: "at-room-pill", text: "@room" },
+                { type: "plain", text: String.raw` \*text\*` },
+                { type: "newline", text: "\n" },
+                { type: "plain", text: "tail" },
+            ]);
+        });
+
+        it("should leave literal dollars alone when maths is off", () => {
+            vi.mocked(SettingsStore.getValue).mockReturnValue(false);
+            for (const event of [textMessage("$x$"), htmlMessage("$x$")]) {
+                const parts = parseEvent(event, createPartCreator());
+                expect(parts.map((part) => part.text).join("")).toBe("$x$");
+            }
+        });
+    });
+
     describe("text messages", function () {
         it("test with newlines", function () {
             const parts = normalize(parseEvent(textMessage("hello\nworld"), createPartCreator()));

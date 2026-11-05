@@ -16,6 +16,7 @@ import { mkStubRoom, stubClient } from "test-utils";
 
 import RoomProfileSettings from "./RoomProfileSettings";
 import DMRoomMap from "../../../utils/DMRoomMap";
+import SettingsStore from "../../../settings/SettingsStore";
 
 const BASE64_GIF = "R0lGODlhAQABAAAAACw=";
 const AVATAR_FILE = new File([Uint8Array.from(atob(BASE64_GIF), (c) => c.charCodeAt(0))], "avatar.gif", {
@@ -84,6 +85,17 @@ describe("RoomProfileSetting", () => {
 
         await waitFor(() =>
             expect(client.sendStateEvent).toHaveBeenCalledWith("!floob:itty", EventType.RoomAvatar, {}, ""),
+        );
+    });
+
+    it("should preserve dollar signs in the topic with maths enabled", async () => {
+        const user = userEvent.setup();
+        vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");
+        render(<RoomProfileSettings roomId={ROOM_ID} />);
+        await user.type(screen.getByLabelText("Room Topic"), "**Budget** $x$");
+        await user.click(screen.getByRole("button", { name: "Save" }));
+        await waitFor(() =>
+            expect(client.setRoomTopic).toHaveBeenCalledWith(ROOM_ID, "**Budget** $x$", "<strong>Budget</strong> $x$"),
         );
     });
 

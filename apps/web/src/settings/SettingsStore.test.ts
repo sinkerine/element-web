@@ -67,6 +67,37 @@ describe("SettingsStore", () => {
         expect(SettingsStore.getValue("feature_interactive_ui")).toBe(true);
     });
 
+    describe("feature_latex_maths", () => {
+        beforeEach(() => {
+            localStorage.removeItem("mx_labs_feature_feature_latex_maths");
+        });
+
+        afterEach(() => {
+            localStorage.removeItem("mx_labs_feature_feature_latex_maths");
+        });
+
+        it("should enable LaTeX maths by default without a device setting", () => {
+            expect(SettingsStore.getDefaultValue("feature_latex_maths")).toBe(true);
+            expect(SettingsStore.getValueAt(SettingLevel.DEVICE, "feature_latex_maths", null, true, true)).toBeNull();
+            expect(SettingsStore.getValue("feature_latex_maths")).toBe(true);
+        });
+
+        it("should allow deployments to disable LaTeX maths", async () => {
+            SdkConfig.put({ features: { feature_latex_maths: false } });
+            expect(SettingsStore.getValue("feature_latex_maths")).toBe(false);
+
+            await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, true);
+
+            expect(SettingsStore.getValue("feature_latex_maths")).toBe(false);
+        });
+
+        it("should allow devices to disable LaTeX maths", async () => {
+            await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, false);
+
+            expect(SettingsStore.getValue("feature_latex_maths")).toBe(false);
+        });
+    });
+
     describe("getValueAt", () => {
         TEST_DATA.forEach((d) => {
             it(`should return the value "${d.level}"."${d.name}"`, () => {

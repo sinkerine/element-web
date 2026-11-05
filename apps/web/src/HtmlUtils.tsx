@@ -12,9 +12,10 @@ Please see LICENSE files in the repository root for full details.
 import React, { type JSX, type Key, type LegacyRef, type ReactNode } from "react";
 import { sanitizeHtml, type HtmlSanitizeOptions } from "@element-hq/element-web-shared-utils";
 import classNames from "classnames";
-import katex from "katex";
+import katex, { type KatexOptions } from "katex";
 import { decode } from "html-entities";
 import { type IContent } from "matrix-js-sdk/src/matrix";
+import { logger } from "matrix-js-sdk/src/logger";
 import escapeHtml from "escape-html";
 import { getEmojiFromUnicode } from "@matrix-org/emojibase-bindings";
 import { LINKIFIED_DATA_ATTRIBUTE } from "@element-hq/web-shared-components";
@@ -26,6 +27,30 @@ import { graphemeSegmenter } from "./utils/strings";
 
 export { linkifyAndSanitizeHtml } from "./Linkify";
 export { isUrlPermitted, sanitizeHtmlText } from "@element-hq/element-web-shared-utils";
+
+/** KaTeX options for received maths. Disable trusted commands and bound sizes and macro expansion. */
+const KATEX_OPTIONS: KatexOptions = {
+    throwOnError: false,
+    output: "htmlAndMathml",
+    trust: false,
+    maxSize: 20,
+    maxExpand: 1000,
+    strict: "ignore",
+};
+
+/** Replaces sanitized maths elements with KaTeX output, keeping each element's fallback on failure. */
+function renderMathsElements(root: ParentNode): void {
+    for (const element of root.querySelectorAll<HTMLElement>("div[data-mx-maths], span[data-mx-maths]")) {
+        try {
+            element.outerHTML = katex.renderToString(decode(element.getAttribute("data-mx-maths")), {
+                ...KATEX_OPTIONS,
+                displayMode: element.tagName === "DIV",
+            });
+        } catch (err) {
+            logger.warn("Failed to render maths", err);
+        }
+    }
+}
 
 // Anything outside the basic multilingual plane will be a surrogate pair
 const SURROGATE_PAIR_PATTERN = /([\ud800-\udbff])([\udc00-\udfff])/;
@@ -374,13 +399,7 @@ function analyseEvent(content: IContent, highlights?: string[], opts: EventRende
             isHtmlMessage = !isPlainText;
 
             if (isHtmlMessage && SettingsStore.getValue("feature_latex_maths")) {
-                [...phtml.querySelectorAll<HTMLElement>("div[data-mx-maths], span[data-mx-maths]")].forEach((e) => {
-                    e.outerHTML = katex.renderToString(decode(e.getAttribute("data-mx-maths")), {
-                        throwOnError: false,
-                        displayMode: e.tagName == "DIV",
-                        output: "htmlAndMathml",
-                    });
-                });
+                renderMathsElements(phtml);
                 safeBody = phtml.body.innerHTML;
             }
         } else if (opts.linkify) {
