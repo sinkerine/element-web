@@ -128,7 +128,8 @@ Renders Element Call as a React component instead of a widget.
 ## Interactive messages (`feature_interactive_ui`)
 
 Display declarative interactive cards, forms, charts, tables, carousels and knowledge maps sent in messages.
-Enable **Interactive messages** in the Messaging group in Labs. Local choices are saved on this device;
+**Interactive messages** is enabled by default and can be toggled in the Messaging group in Labs.
+Local choices are saved on this device;
 submitting an action sends a visible reply in the same room or thread. External links require confirmation.
 Every message keeps its normal text fallback, available with **Show as text** or when the feature is off.
 

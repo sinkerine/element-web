@@ -62,6 +62,11 @@ describe("SettingsStore", () => {
         SettingsStore.reset();
     });
 
+    it("should enable interactive messages by default without a device setting", () => {
+        expect(SettingsStore.getDefaultValue("feature_interactive_ui")).toBe(true);
+        expect(SettingsStore.getValue("feature_interactive_ui")).toBe(true);
+    });
+
     describe("getValueAt", () => {
         TEST_DATA.forEach((d) => {
             it(`should return the value "${d.level}"."${d.name}"`, () => {
