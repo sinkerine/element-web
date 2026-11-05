@@ -67,6 +67,7 @@ import * as StorageManager from "../../utils/StorageManager";
 import type LoggedInViewType from "./LoggedInView";
 import LoggedInView from "./LoggedInView";
 import { Action } from "../../dispatcher/actions";
+import { formatFullPageThreadPath, parseFullPageThreadPath } from "../../utils/fullPageThreadPath";
 import { hideToast as hideAnalyticsToast, showToast as showAnalyticsToast } from "../../toasts/AnalyticsToast";
 import { showToast as showNotificationsToast } from "../../toasts/DesktopNotificationsToast";
 import { type OpenToTabPayload } from "../../dispatcher/payloads/OpenToTabPayload";
@@ -192,6 +193,8 @@ interface IState {
     // in the case where we view a room by ID or by RoomView when it resolves
     // what ID an alias points at.
     currentRoomId: string | null;
+    /** The expanded-thread URL suffix for the current room, if any. */
+    currentFullPageThreadPath?: string;
     // If we're trying to just view a user ID (i.e. /user URL), this is it
     currentUserId: string | null;
     // Parameters used in the registration dance with the IS
@@ -759,10 +762,14 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                     event.getType() === EventType.RoomCanonicalAlias &&
                     event.getRoomId() === this.state.currentRoomId
                 ) {
-                    // re-view the current room so we can update alias/id in the URL properly
+                    // Re-view the current destination so alias updates preserve an expanded thread in the URL.
+                    const fullPageThreadPath = parseFullPageThreadPath(this.state.currentFullPageThreadPath);
                     void this.viewRoom({
                         action: Action.ViewRoom,
                         room_id: this.state.currentRoomId,
+                        full_page_thread_id: fullPageThreadPath?.threadId,
+                        event_id: fullPageThreadPath?.eventId,
+                        highlighted: Boolean(fullPageThreadPath?.eventId),
                         metricsTrigger: undefined, // room doesn't change
                     });
                 }
@@ -1062,8 +1069,19 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             localStorage?.setItem("mx_last_room_id", room.roomId);
         }
 
-        // If we are redirecting to a Room Alias and it is for the room we already showing then replace history item
-        let replaceLast = presentedId[0] === "#" && roomInfo.room_id === this.state.currentRoomId;
+        const fullPageThreadPath = roomInfo.full_page_thread_id
+            ? formatFullPageThreadPath(
+                  roomInfo.full_page_thread_id,
+                  roomInfo.highlighted ? roomInfo.event_id : undefined,
+              )
+            : undefined;
+        const previousFullPageThreadPath =
+            this.state.page_type === PageType.RoomView ? this.state.currentFullPageThreadPath : undefined;
+        // Canonicalize aliases without replacing navigation into or out of an expanded-thread destination.
+        let replaceLast =
+            presentedId[0] === "#" &&
+            roomInfo.room_id === this.state.currentRoomId &&
+            fullPageThreadPath === previousFullPageThreadPath;
 
         if (isLocalRoom(this.state.currentRoomId)) {
             // Replace local room history items
@@ -1078,13 +1096,16 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             roomInfo.justCreatedOpts = roomInfo.justCreatedOpts ?? this.state.roomJustCreatedOpts;
         }
 
-        if (roomInfo.event_id && roomInfo.highlighted) {
+        if (fullPageThreadPath) {
+            presentedId += "/" + fullPageThreadPath;
+        } else if (roomInfo.event_id && roomInfo.highlighted) {
             presentedId += "/" + roomInfo.event_id;
         }
         this.setState(
             {
                 view: Views.LOGGED_IN,
                 currentRoomId: roomInfo.room_id ?? null,
+                currentFullPageThreadPath: fullPageThreadPath,
                 page_type: PageType.RoomView,
                 threepidInvite: roomInfo.threepid_invite,
                 roomOobData: roomInfo.oob_data,
@@ -1991,6 +2012,8 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
             // an empty string. To maintain our potential contract with the rest
             // of the app, we coerce the eventId to be undefined where applicable.
             if (!eventId) eventId = undefined;
+            const threadPath = parseFullPageThreadPath(eventId);
+            if (threadPath) eventId = threadPath.eventId;
 
             // TODO: Handle encoded room/event IDs: https://github.com/vector-im/element-web/issues/9149
 
@@ -2040,6 +2063,7 @@ export default class MatrixChat extends React.PureComponent<IProps, IState> {
                 room_id: undefined,
                 metricsTrigger: undefined, // unknown or external trigger
             };
+            if (threadPath) payload.full_page_thread_id = threadPath.threadId;
             if (roomString[0] === "#") {
                 payload.room_alias = roomString;
             } else {

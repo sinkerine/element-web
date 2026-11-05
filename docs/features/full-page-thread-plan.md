@@ -151,7 +151,9 @@ full_page_thread_id?: string;
   `INITIAL_STATE.fullPageThreadId = null`.
 - In `viewRoom`, in the branch that builds `newState` for a known `room_id`:
   `fullPageThreadId: payload.full_page_thread_id ?? null`. The alias branch re-dispatches with `...payload`, so the
-  field survives alias resolution. The "alias cache miss" `setState` sets `fullPageThreadId: null`.
+  field survives alias resolution. The preliminary Sliding Sync `setState` also assigns the field before awaiting
+  `setRoomVisible`, so a new room never exposes the previous room's thread. The "alias cache miss" `setState` sets
+  `fullPageThreadId: null`.
 - `"view_welcome_page"`, `Action.ViewHomePage`, `Action.ViewThreads` and `viewRoomError` also set
   `fullPageThreadId: null`.
 - New getter:
@@ -169,9 +171,11 @@ full_page_thread_id?: string;
   Otherwise the payload is unchanged.
 - `viewRoom`: if `roomInfo.full_page_thread_id` is set, append
   `"/" + formatFullPageThreadPath(roomInfo.full_page_thread_id, roomInfo.highlighted ? roomInfo.event_id : undefined)`
-  to `presentedId`. Otherwise keep the existing `event_id` logic. `replaceLast` is unchanged, so expanding and
-  collapsing push history entries and Back works. Re-dispatching the same URL does not add an entry, because
-  `onNewScreen` assigns an identical hash.
+  to `presentedId`. Otherwise keep the existing `event_id` logic. **T1 review correction (parent ruling):** alias-driven
+  `replaceLast` must exclude transitions into or out of an expanded-thread destination. Expanding and collapsing push
+  history entries; canonicalizing the alias of the same destination still replaces history. The original assumption
+  that `replaceLast` could remain unchanged was incorrect for rooms with display aliases. Re-dispatching the same URL
+  does not add an entry, because `onNewScreen` assigns an identical hash.
 
 ### 2.4 Thread view and room view (task T2)
 
