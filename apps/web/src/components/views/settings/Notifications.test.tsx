@@ -12,12 +12,14 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
     type IPushRule,
+    type MatrixClient,
     type IPushRules,
     RuleId,
     type IPusher,
     LOCAL_NOTIFICATION_SETTINGS_PREFIX,
     MatrixEvent,
     Room,
+    KnownMembership,
     PushRuleActionName,
     TweakName,
     ConditionKind,
@@ -1171,6 +1173,7 @@ describe("<Notifications />", () => {
     describe("clear all notifications", () => {
         it("clears all notifications", async () => {
             const room = new Room("room123", mockClient, "@alice:example.org");
+            room.updateMyMembership(KnownMembership.Join);
             mockClient.getRooms.mockReset().mockReturnValue([room]);
 
             const message = mkMessage({
@@ -1181,13 +1184,17 @@ describe("<Notifications />", () => {
             });
             await room.addLiveEvents([message], { addToState: true });
 
+            const pending = Promise.withResolvers<Awaited<ReturnType<MatrixClient["sendReadReceipt"]>>>();
+            mockClient.sendReadReceipt.mockReturnValueOnce(pending.promise);
             const { container } = await getComponentAndWait();
             const clearNotificationEl = getByTestId(container, "clear-notifications");
 
             fireEvent.click(clearNotificationEl);
 
             expect(clearNotificationEl.className).toContain("mx_AccessibleButton_disabled");
-            await waitFor(() => expect(clearNotificationEl.className).not.toContain("mx_AccessibleButton_disabled"));
+            await act(async () => pending.resolve({}));
+            // Successful receipts now clear local unread state, so the existing visibility rule hides the button.
+            await waitFor(() => expect(screen.queryByTestId("clear-notifications")).not.toBeInTheDocument());
             expect(mockClient.sendReadReceipt).toHaveBeenCalled();
         });
     });

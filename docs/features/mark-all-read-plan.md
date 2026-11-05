@@ -88,7 +88,7 @@ RoomListHeaderViewModel (apps/web viewmodels)  owns enabled state, runs the acti
         │ hasRoomsToMarkAsRead / getRoomsToMarkAsRead / markRoomsAsRead
         ▼
 utils/notifications.ts                         room selection + bounded bulk marking (no UI)
-        │ clearRoomNotification (existing, unchanged)
+        │ clearRoomNotification (bulk runs defer local receipts and counts until HTTP success)
         ▼
 MatrixClient: setRoomAccountData(m.marked_unread), sendReadReceipt(unthreaded)
 ```
@@ -99,6 +99,13 @@ a thin wrapper over the same two helpers.
 ### `apps/web/src/utils/notifications.ts`
 
 ```ts
+/** Mark one room as read; bulk runs defer local receipts and counts until HTTP success. */
+export async function clearRoomNotification(
+    room: Room,
+    client: MatrixClient,
+    options: { clearCountsOnFailure?: boolean } = {}, // defaults to true for existing callers
+): Promise<EmptyObject | undefined>;
+
 /** Maximum number of rooms marked as read at the same time by {@link markRoomsAsRead}. */
 export const MARK_ROOMS_AS_READ_CONCURRENCY = 10;
 
@@ -124,6 +131,7 @@ export function hasRoomsToMarkAsRead(client: MatrixClient): boolean;
 
 /**
  * Mark the given rooms as read with {@link clearRoomNotification}, at most `concurrency` at a time.
+ * Passes `clearCountsOnFailure: false` so failed receipts retain local unread state and remain eligible for retry.
  * Never rejects: each failure is logged with its room ID and reported in `failed`.
  */
 export async function markRoomsAsRead(
@@ -139,9 +147,27 @@ export function clearAllNotifications(client: MatrixClient): Promise<MarkRoomsAs
 Notes:
 
 - Membership check uses `room.getMyMembership() === KnownMembership.Join`.
-- Counts use `room.getUnreadNotificationCount(type)` plus `room.getThreads()` with
-  `room.getThreadUnreadNotificationCount(thread.id, type)` for `NotificationCountType.Total` and `.Highlight`.
+- Counts use `room.getUnreadNotificationCount(type)` (which includes unloaded thread entries) plus `room.getThreads()`
+  with `room.getThreadUnreadNotificationCount(thread.id, type)` for `NotificationCountType.Total` and `.Highlight`.
 - The concurrency limit is a small worker loop over a shared index (no new dependency). Results keep input order.
+- `clearRoomNotification` defaults `clearCountsOnFailure` to true, preserving existing single-room behavior, including
+  optimistic receipt echo and clearing loaded thread counts on failure. Bulk marking passes false: it sends
+  `sendReadReceipt(event, receiptType, true, false)` and calls `room.addLocalEchoReceipt` only after HTTP success,
+  retaining the SDK's guest and pending-event behavior. Failed zero-count/muted rooms retain unread receipt state;
+  encrypted highlight-only failures retain their counts. No captured counts are restored and no global failed-room
+  state is tracked. On success (also without a live event), bulk calls `room.resetThreadUnreadNotificationCount()`
+  to clear both count types for every stored thread ID, including unloaded encrypted threads, via the SDK setters.
+- **T1 review r1 SDK extension (approved):** `patches/matrix-js-sdk@44.0.0.patch`, registered in
+  `pnpm-workspace.yaml` and `pnpm-lock.yaml`, adds optional `localEcho = true` to `sendReadReceipt` (fourth argument)
+  and `sendReceipt` (fifth argument), plus `Room.resetThreadUnreadNotificationCount()`. Existing SDK APIs cannot
+  suppress optimistic receipt echo or clear unloaded encrypted highlight counts; the sync-specific reset deliberately
+  preserves those highlights. The patch changes only the SDK source supplied by the locked git tarball: generated
+  `lib` files are absent from that tarball. The app imports `matrix-js-sdk/src`, verified by real-SDK tests and the
+  app typecheck, so it requires no extra generation for these APIs. A clean install applies the patch with
+  `corepack pnpm install --frozen-lockfile`; SDK consumers of generated `lib` need the normal upstream SDK build
+  from a complete SDK checkout. Recheck/remove this patch when upgrading the SDK or when equivalent APIs land upstream.
+  Patch setup used `corepack pnpm patch matrix-js-sdk --edit-dir .tmp/mark-all-read-sdk`, edits to that ignored local
+  extraction, then `corepack pnpm patch-commit .tmp/mark-all-read-sdk`. No installed SDK source was edited directly.
 - `clearAllNotifications` changes its return type from `Promise<Array<EmptyObject | undefined>>` to
   `Promise<MarkRoomsAsReadResult>`. Both callers ignore the value; the legacy settings `try/finally` stays as is.
 
@@ -241,13 +267,25 @@ files; no `export default`; i18n via `pnpm i18n`; feature on by default with no 
   `apps/web/src/components/views/settings/notifications/NotificationSettings2.test.tsx`,
   `apps/web/src/components/views/settings/Notifications.test.tsx` (their "clear all notifications" fixtures build a
   `Room` with no member state, so `getMyMembership()` is not `join`; give Alice a join membership there).
+- Extend `clearRoomNotification(room, client, options: { clearCountsOnFailure?: boolean } = {})`, preserving true as
+  the default. Bulk marking passes false to defer local receipt echo and count clearing until HTTP success. No
+  captured-count restoration or global failed-room state.
+- Approved r1 scope extension: own the minimal tracked SDK source patch, its `pnpm-workspace.yaml` registration and
+  resulting `pnpm-lock.yaml` changes for the two SDK APIs described above. No T2/T3 changes.
+- Additional owned documentation: this plan's relevant design, signature and T1 scope for that failure behavior.
 - Consumes: `clearRoomNotification`, `doesRoomHaveUnreadMessages`, `getMarkedUnreadState`, `isRoomVisible`.
 - Produces: the signatures in [utils](#appswebsrcutilsnotificationsts).
 - Depends on: none.
 - Tests cover: joined unread room selected; invite, left, space and local rooms excluded; marked-unread-only room
   selected; stuck room count and stuck thread count selected; muted unread room selected; read room excluded;
   `hasRoomsToMarkAsRead` matches; concurrency never exceeds the limit (deferred promises); one failure keeps others
-  going and lands in `failed`; `clearAllNotifications` uses the new selection.
+  going and lands in `failed`; `clearAllNotifications` uses the new selection; a stuck-count-only room retains counts
+  after a failed bulk receipt and clears them on successful retry; legacy single-room calls still clear counts after
+  a failed receipt by default. Real SDK receipt processing with mocked HTTP also covers zero-count/muted failures
+  retaining retry eligibility, encrypted highlight-only failures, deferred echo on success for public/private
+  unthreaded receipts, unloaded total/highlight counts without a live event in encrypted/plain rooms, legacy
+  optimistic failure behavior, guests and pending-event rejection. The legacy Settings regression asserts its
+  existing visibility rule hides the button after the successful local receipt makes the room read.
 - Done when: `pnpm vitest run apps/web/src/utils/notifications.test.ts
   apps/web/src/components/views/settings/Notifications.test.tsx
   apps/web/src/components/views/settings/notifications/NotificationSettings2.test.tsx` passes.
