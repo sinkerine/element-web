@@ -24,11 +24,11 @@ rooms in Home" preference do not narrow it.
 
 ### What exists today
 
-| Piece                                                                         | Behaviour                                                                                                                                                                                                                                                                                         |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Piece                                                                         | Behaviour                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `clearRoomNotification(room, client)` (`apps/web/src/utils/notifications.ts`) | Clears the room's `m.marked_unread` flag, sends an **unthreaded** receipt (`m.read`, or `m.read.private` when "Send read receipts" is off) on `room.getLastLiveEvent()`, then zeroes the room and thread counts locally even if the receipt fails. Used by the room list "Mark as read" menu item. |
 | `clearAllNotifications(client)` (same file)                                   | Calls `clearRoomNotification` for every `client.getRooms()` room where `doesRoomHaveUnreadMessages(room, true)`. Used only by Settings → Notifications → "Mark all messages as read". Uses `Promise.all` with no concurrency limit.                                                                |
-| `RoomListHeaderView` (shared-components)                                      | Title, optional space menu, then "Room Options" (…) menu, collapse/expand all sections button, compose (+) menu.                                                                                                                                                                                 |
+| `RoomListHeaderView` (shared-components)                                      | Title, optional space menu, then "Room Options" (…) menu, collapse/expand all sections button, compose (+) menu.                                                                                                                                                                                   |
 
 Gaps in `clearAllNotifications` that the new action must not inherit:
 
@@ -246,13 +246,13 @@ private async runMarkAllAsRead(rooms: Room[]): Promise<void>;
 
 ### Error handling
 
-| Failure                                | Behaviour                                                                                    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Receipt or account data request fails  | Room goes to `failed`, `logger.warn` with room ID; others continue; error dialog at the end. |
-| Button clicked twice / while running   | Button is disabled; the action also returns early on `isMarkingAllAsRead`.                   |
-| Nothing to mark when clicked (race)    | Returns without sending anything.                                                            |
-| View model disposed mid-run            | Requests finish; `snapshot.merge` after dispose is harmless; no dialog shown after dispose.  |
-| Room has no live event                 | `clearRoomNotification` still clears the marker and local counts (existing behaviour).       |
+| Failure                               | Behaviour                                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Receipt or account data request fails | Room goes to `failed`, `logger.warn` with room ID; others continue; error dialog at the end. |
+| Button clicked twice / while running  | Button is disabled; the action also returns early on `isMarkingAllAsRead`.                   |
+| Nothing to mark when clicked (race)   | Returns without sending anything.                                                            |
+| View model disposed mid-run           | Requests finish; `snapshot.merge` after dispose is harmless; no dialog shown after dispose.  |
+| Room has no live event                | `clearRoomNotification` still clears the marker and local counts (existing behaviour).       |
 
 ### Conventions
 
@@ -341,19 +341,19 @@ files; no `export default`; i18n via `pnpm i18n`; feature on by default with no 
 
 Run after wave 2, from the repo root:
 
-| Check                      | Command                                                                                                                                                                 |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Helper unit tests          | `pnpm vitest run apps/web/src/utils/notifications.test.ts`                                                                                                              |
-| Settings regression        | `pnpm vitest run apps/web/src/components/views/settings/Notifications.test.tsx apps/web/src/components/views/settings/notifications/NotificationSettings2.test.tsx`     |
-| View model unit tests      | `pnpm vitest run apps/web/src/viewmodels/room-list/RoomListHeaderViewModel.test.ts`                                                                                     |
-| Shared view tests          | `cd packages/shared-components && pnpm test:unit -- src/room-list/RoomListHeaderView`                                                                                   |
-| i18n                       | `pnpm i18n` produces no further diff                                                                                                                                    |
-| Types                      | `pnpm --filter @element-hq/web-shared-components build && pnpm -r --workspace-concurrency=1 lint:types`                                                                 |
-| Lint and format            | `pnpm lint`                                                                                                                                                             |
-| Build                      | `cd apps/web && pnpm build`                                                                                                                                             |
-| Coverage                   | `pnpm test:unit --coverage`, `cd packages/shared-components && pnpm coverage`, then `pnpm coverage:diff`                                                                |
-| E2E journey                | `cd apps/web && pnpm test:playwright -- playwright/e2e/left-panel/room-list-panel/room-list-mark-all-read.spec.ts --project=Chrome`                                     |
-| E2E header regression      | `cd apps/web && pnpm test:playwright -- playwright/e2e/left-panel/room-list-panel --project=Chrome`                                                                     |
+| Check                 | Command                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Helper unit tests     | `pnpm vitest run apps/web/src/utils/notifications.test.ts`                                                                                                          |
+| Settings regression   | `pnpm vitest run apps/web/src/components/views/settings/Notifications.test.tsx apps/web/src/components/views/settings/notifications/NotificationSettings2.test.tsx` |
+| View model unit tests | `pnpm vitest run apps/web/src/viewmodels/room-list/RoomListHeaderViewModel.test.ts`                                                                                 |
+| Shared view tests     | `cd packages/shared-components && pnpm test:unit -- src/room-list/RoomListHeaderView`                                                                               |
+| i18n                  | `pnpm i18n` produces no further diff                                                                                                                                |
+| Types                 | `pnpm --filter @element-hq/web-shared-components build && pnpm -r --workspace-concurrency=1 lint:types`                                                             |
+| Lint and format       | `pnpm lint`                                                                                                                                                         |
+| Build                 | `cd apps/web && pnpm build`                                                                                                                                         |
+| Coverage              | `pnpm test:unit --coverage`, `cd packages/shared-components && pnpm coverage`, then `pnpm coverage:diff`                                                            |
+| E2E journey           | `cd apps/web && pnpm test:playwright -- playwright/e2e/left-panel/room-list-panel/room-list-mark-all-read.spec.ts --project=Chrome`                                 |
+| E2E header regression | `cd apps/web && pnpm test:playwright -- playwright/e2e/left-panel/room-list-panel --project=Chrome`                                                                 |
 
 ## E2E journey
 

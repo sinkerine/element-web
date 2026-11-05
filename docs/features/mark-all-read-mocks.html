@@ -1,31 +1,54 @@
 <title>Mark All Read Mocks</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<meta name="claude:viewport-fit-sides" content="cover" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+/>
 <style>
-/* Layout: mock Element left panel on the left, decision controls + live scope table on the right; stacks on phones. */
-:root {
-    --bg: #f4f6fa;
-    --surface: #ffffff;
-    --surface-2: #f0f2f5;
-    --border: #e1e6ec;
-    --text: #1b1d22;
-    --text-2: #656d77;
-    --accent: #0bc491;
-    --accent-strong: #007a62;
-    --accent-bg: #e3f7ed;
-    --critical: #d51928;
-    --critical-bg: #fde9ea;
-    --proposed: #7b3ff2;
-    --proposed-bg: #f0e9ff;
-    --dot: #1b1d22;
-    --shadow: 0 6px 24px rgba(27, 29, 34, 0.16);
-    --scrim: rgba(27, 29, 34, 0.45);
-    --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
+    /* Layout: mock Element left panel on the left, decision controls + live scope table on the right; stacks on phones. */
+    :root {
+        --bg: #f4f6fa;
+        --surface: #ffffff;
+        --surface-2: #f0f2f5;
+        --border: #e1e6ec;
+        --text: #1b1d22;
+        --text-2: #656d77;
+        --accent: #0bc491;
+        --accent-strong: #007a62;
+        --accent-bg: #e3f7ed;
+        --critical: #d51928;
+        --critical-bg: #fde9ea;
+        --proposed: #7b3ff2;
+        --proposed-bg: #f0e9ff;
+        --dot: #1b1d22;
+        --shadow: 0 6px 24px rgba(27, 29, 34, 0.16);
+        --scrim: rgba(27, 29, 34, 0.45);
+        --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            --bg: #101317;
+            --surface: #1b1d22;
+            --surface-2: #26282d;
+            --border: #34383f;
+            --text: #ebeef2;
+            --text-2: #a3a9b1;
+            --accent: #1fc090;
+            --accent-strong: #5fd8ac;
+            --accent-bg: #12352a;
+            --critical: #fd3e3c;
+            --critical-bg: #3a1617;
+            --proposed: #b08cff;
+            --proposed-bg: #2a2140;
+            --dot: #ebeef2;
+            --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+            --scrim: rgba(0, 0, 0, 0.6);
+            color-scheme: dark;
+        }
+    }
+    :root[data-theme="dark"] {
         --bg: #101317;
         --surface: #1b1d22;
         --surface-2: #26282d;
@@ -44,168 +67,578 @@
         --scrim: rgba(0, 0, 0, 0.6);
         color-scheme: dark;
     }
-}
-:root[data-theme="dark"] {
-    --bg: #101317;
-    --surface: #1b1d22;
-    --surface-2: #26282d;
-    --border: #34383f;
-    --text: #ebeef2;
-    --text-2: #a3a9b1;
-    --accent: #1fc090;
-    --accent-strong: #5fd8ac;
-    --accent-bg: #12352a;
-    --critical: #fd3e3c;
-    --critical-bg: #3a1617;
-    --proposed: #b08cff;
-    --proposed-bg: #2a2140;
-    --dot: #ebeef2;
-    --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
-    --scrim: rgba(0, 0, 0, 0.6);
-    color-scheme: dark;
-}
-* { box-sizing: border-box; }
-body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 14px;
-    line-height: 1.45;
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-    padding-block: 24px 48px;
-}
-.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
-h1 { font-size: 22px; margin: 0; text-wrap: balance; }
-h2 { font-size: 15px; margin: 0 0 8px; text-wrap: balance; }
-p { margin: 0; }
-.lede { color: var(--text-2); max-width: 70ch; }
-.eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); font-weight: 600; }
-code, .mono { font-family: var(--mono); font-size: 12px; }
-button { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+    * {
+        box-sizing: border-box;
+    }
+    body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        font-size: 14px;
+        line-height: 1.45;
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+        padding-block: 24px 48px;
+    }
+    .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+    }
+    h1 {
+        font-size: 22px;
+        margin: 0;
+        text-wrap: balance;
+    }
+    h2 {
+        font-size: 15px;
+        margin: 0 0 8px;
+        text-wrap: balance;
+    }
+    p {
+        margin: 0;
+    }
+    .lede {
+        color: var(--text-2);
+        max-width: 70ch;
+    }
+    .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-2);
+        font-weight: 600;
+    }
+    code,
+    .mono {
+        font-family: var(--mono);
+        font-size: 12px;
+    }
+    button {
+        font: inherit;
+        color: inherit;
+    }
+    :focus-visible {
+        outline: 2px solid var(--accent-strong);
+        outline-offset: 2px;
+    }
 
-.main { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
-@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+    .main {
+        display: grid;
+        grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+    }
+    @media (max-width: 860px) {
+        .main {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
 
-/* ---------- Mock app ---------- */
-.app {
-    position: relative;
-    display: grid;
-    grid-template-columns: 64px minmax(0, 1fr);
-    height: 640px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-}
-.spacebar { background: var(--surface-2); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 14px; }
-.space {
-    position: relative; width: 40px; height: 40px; border-radius: 10px; border: 0; cursor: pointer;
-    display: grid; place-items: center; font-weight: 700; background: var(--surface); color: var(--text-2);
-}
-.space[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent-strong); color: var(--text); }
-.space .badge { position: absolute; top: -5px; right: -6px; }
-.list { display: flex; flex-direction: column; min-width: 0; }
-.header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 12px 8px 16px; }
-.header h3 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hbtns { display: flex; gap: 6px; align-items: center; }
-.ibtn {
-    width: 28px; height: 28px; border-radius: 50%; border: 0; background: transparent; cursor: pointer;
-    display: grid; place-items: center; color: var(--text-2); position: relative;
-}
-.ibtn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-.ibtn:disabled { opacity: 0.35; cursor: not-allowed; }
-.ibtn.proposed { box-shadow: 0 0 0 2px var(--proposed); }
-.ibtn svg { width: 20px; height: 20px; }
-.tip {
-    position: absolute; top: 34px; left: 50%; transform: translateX(-50%); white-space: nowrap; z-index: 5;
-    background: var(--text); color: var(--surface); font-size: 12px; padding: 4px 8px; border-radius: 6px; pointer-events: none;
-}
-.filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 10px 16px; }
-.chip {
-    border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer;
-}
-.chip[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
-.rooms { overflow-y: auto; flex: 1; padding-bottom: 12px; }
-.section { padding: 10px 16px 4px; font-size: 12px; font-weight: 600; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; }
-.room { display: flex; align-items: center; gap: 10px; padding: 7px 16px; transition: background 0.3s; }
-.room.flash { background: var(--accent-bg); }
-.avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 13px; flex: none; }
-.room .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room .name.bold { font-weight: 600; }
-.room .sub { display: block; font-size: 12px; color: var(--text-2); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
-.badge { min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px; font-size: 11px; font-weight: 600; display: inline-grid; place-items: center; color: #fff; background: var(--accent-strong); }
-.badge.red { background: var(--critical); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
-.muted-ic { width: 16px; height: 16px; color: var(--text-2); flex: none; }
-.empty { padding: 24px 16px; color: var(--text-2); text-align: center; }
+    /* ---------- Mock app ---------- */
+    .app {
+        position: relative;
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr);
+        height: 640px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .spacebar {
+        background: var(--surface-2);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding-top: 14px;
+    }
+    .space {
+        position: relative;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: 0;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        background: var(--surface);
+        color: var(--text-2);
+    }
+    .space[aria-pressed="true"] {
+        box-shadow: 0 0 0 2px var(--accent-strong);
+        color: var(--text);
+    }
+    .space .badge {
+        position: absolute;
+        top: -5px;
+        right: -6px;
+    }
+    .list {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 14px 12px 8px 16px;
+    }
+    .header h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .hbtns {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+    .ibtn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        color: var(--text-2);
+        position: relative;
+    }
+    .ibtn:hover:not(:disabled) {
+        background: var(--surface-2);
+        color: var(--text);
+    }
+    .ibtn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+    }
+    .ibtn.proposed {
+        box-shadow: 0 0 0 2px var(--proposed);
+    }
+    .ibtn svg {
+        width: 20px;
+        height: 20px;
+    }
+    .tip {
+        position: absolute;
+        top: 34px;
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        z-index: 5;
+        background: var(--text);
+        color: var(--surface);
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        pointer-events: none;
+    }
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 4px 12px 10px 16px;
+    }
+    .chip {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .chip[aria-pressed="true"] {
+        background: var(--text);
+        color: var(--surface);
+        border-color: var(--text);
+    }
+    .rooms {
+        overflow-y: auto;
+        flex: 1;
+        padding-bottom: 12px;
+    }
+    .section {
+        padding: 10px 16px 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-2);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .room {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 16px;
+        transition: background 0.3s;
+    }
+    .room.flash {
+        background: var(--accent-bg);
+    }
+    .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 600;
+        font-size: 13px;
+        flex: none;
+    }
+    .room .name {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .room .name.bold {
+        font-weight: 600;
+    }
+    .room .sub {
+        display: block;
+        font-size: 12px;
+        color: var(--text-2);
+        font-weight: 400;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .badge {
+        min-width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        padding: 0 5px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-grid;
+        place-items: center;
+        color: #fff;
+        background: var(--accent-strong);
+    }
+    .badge.red {
+        background: var(--critical);
+    }
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--dot);
+        flex: none;
+    }
+    .muted-ic {
+        width: 16px;
+        height: 16px;
+        color: var(--text-2);
+        flex: none;
+    }
+    .empty {
+        padding: 24px 16px;
+        color: var(--text-2);
+        text-align: center;
+    }
 
-/* Menu */
-.menu {
-    position: absolute; top: 48px; z-index: 10; width: 240px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; box-shadow: var(--shadow); padding: 6px 0;
-}
-.menu .mt { font-size: 12px; font-weight: 600; color: var(--text-2); padding: 8px 14px 4px; }
-.menu .mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; }
-.menu .mi:hover:not(:disabled) { background: var(--surface-2); }
-.menu .mi:disabled { color: var(--text-2); opacity: 0.55; cursor: not-allowed; }
-.menu .mi svg { width: 20px; height: 20px; flex: none; color: var(--text-2); }
-.menu .mi.proposed { box-shadow: inset 3px 0 0 var(--proposed); background: var(--proposed-bg); }
-.menu .mi.proposed:disabled { background: transparent; }
-.menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 0; }
-.radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--text-2); flex: none; }
-.radio.on { border: 5px solid var(--accent-strong); }
-.check { width: 16px; height: 16px; border-radius: 4px; background: var(--accent-strong); flex: none; }
+    /* Menu */
+    .menu {
+        position: absolute;
+        top: 48px;
+        z-index: 10;
+        width: 240px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        padding: 6px 0;
+    }
+    .menu .mt {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-2);
+        padding: 8px 14px 4px;
+    }
+    .menu .mi {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 14px;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+    }
+    .menu .mi:hover:not(:disabled) {
+        background: var(--surface-2);
+    }
+    .menu .mi:disabled {
+        color: var(--text-2);
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+    .menu .mi svg {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        color: var(--text-2);
+    }
+    .menu .mi.proposed {
+        box-shadow: inset 3px 0 0 var(--proposed);
+        background: var(--proposed-bg);
+    }
+    .menu .mi.proposed:disabled {
+        background: transparent;
+    }
+    .menu hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+        margin: 6px 0;
+    }
+    .radio {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid var(--text-2);
+        flex: none;
+    }
+    .radio.on {
+        border: 5px solid var(--accent-strong);
+    }
+    .check {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        background: var(--accent-strong);
+        flex: none;
+    }
 
-/* Dialogs */
-.scrim { position: absolute; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 20; padding: 16px; }
-.dialog { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 20px; width: 100%; max-width: 300px; display: grid; gap: 12px; }
-.dialog h4 { margin: 0; font-size: 17px; }
-.dialog p { color: var(--text-2); }
-.dialog .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-.btn { border-radius: 999px; padding: 7px 16px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; }
-.btn.primary { background: var(--text); color: var(--surface); border-color: var(--text); }
-.btn.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
-.toast { position: absolute; left: 76px; right: 12px; bottom: 12px; z-index: 15; background: var(--text); color: var(--surface); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    /* Dialogs */
+    .scrim {
+        position: absolute;
+        inset: 0;
+        background: var(--scrim);
+        display: grid;
+        place-items: center;
+        z-index: 20;
+        padding: 16px;
+    }
+    .dialog {
+        background: var(--surface);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+        width: 100%;
+        max-width: 300px;
+        display: grid;
+        gap: 12px;
+    }
+    .dialog h4 {
+        margin: 0;
+        font-size: 17px;
+    }
+    .dialog p {
+        color: var(--text-2);
+    }
+    .dialog .row {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+    .btn {
+        border-radius: 999px;
+        padding: 7px 16px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .btn.primary {
+        background: var(--text);
+        color: var(--surface);
+        border-color: var(--text);
+    }
+    .btn.danger {
+        background: var(--critical);
+        border-color: var(--critical);
+        color: #fff;
+    }
+    .toast {
+        position: absolute;
+        left: 76px;
+        right: 12px;
+        bottom: 12px;
+        z-index: 15;
+        background: var(--text);
+        color: var(--surface);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
 
-/* ---------- Side panel ---------- */
-.side { display: grid; gap: 16px; min-width: 0; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
-.decision { display: grid; gap: 6px; }
-.decision .q { font-weight: 600; }
-.seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.seg button { border: 1px solid var(--border); background: var(--surface); padding: 5px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
-.seg button[aria-pressed="true"] { background: var(--proposed-bg); border-color: var(--proposed); color: var(--text); font-weight: 600; }
-.rec { font-size: 11px; color: var(--accent-strong); font-weight: 600; margin-left: 4px; }
-.note { font-size: 13px; color: var(--text-2); }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.actions .btn { font-weight: 500; font-size: 13px; padding: 5px 12px; }
-.tablewrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); font-weight: 600; }
-.pill { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
-.pill.yes { background: var(--accent-bg); color: var(--accent-strong); }
-.pill.no { background: var(--surface-2); color: var(--text-2); }
-.log { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; max-height: 160px; overflow-y: auto; display: grid; gap: 2px; }
-.log .err { color: var(--critical); }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); align-items: center; }
-.legend span { display: inline-flex; gap: 6px; align-items: center; }
-.sw { width: 12px; height: 12px; border-radius: 3px; background: var(--proposed-bg); box-shadow: inset 0 0 0 2px var(--proposed); }
-@media (prefers-reduced-motion: reduce) { .room { transition: none; } }
+    /* ---------- Side panel ---------- */
+    .side {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+    }
+    .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        min-width: 0;
+    }
+    .decision {
+        display: grid;
+        gap: 6px;
+    }
+    .decision .q {
+        font-weight: 600;
+    }
+    .seg {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .seg button {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        padding: 5px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .seg button[aria-pressed="true"] {
+        background: var(--proposed-bg);
+        border-color: var(--proposed);
+        color: var(--text);
+        font-weight: 600;
+    }
+    .rec {
+        font-size: 11px;
+        color: var(--accent-strong);
+        font-weight: 600;
+        margin-left: 4px;
+    }
+    .note {
+        font-size: 13px;
+        color: var(--text-2);
+    }
+    .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .actions .btn {
+        font-weight: 500;
+        font-size: 13px;
+        padding: 5px 12px;
+    }
+    .tablewrap {
+        overflow-x: auto;
+    }
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+    }
+    th,
+    td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+    }
+    th {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-2);
+        font-weight: 600;
+    }
+    .pill {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .pill.yes {
+        background: var(--accent-bg);
+        color: var(--accent-strong);
+    }
+    .pill.no {
+        background: var(--surface-2);
+        color: var(--text-2);
+    }
+    .log {
+        font-family: var(--mono);
+        font-size: 12px;
+        background: var(--surface-2);
+        border-radius: 8px;
+        padding: 10px;
+        max-height: 160px;
+        overflow-y: auto;
+        display: grid;
+        gap: 2px;
+    }
+    .log .err {
+        color: var(--critical);
+    }
+    .legend {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--text-2);
+        align-items: center;
+    }
+    .legend span {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+    }
+    .sw {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        background: var(--proposed-bg);
+        box-shadow: inset 0 0 0 2px var(--proposed);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .room {
+            transition: none;
+        }
+    }
 </style>
 
 <div class="wrap">
-    <header style="display:grid;gap:6px">
+    <header style="display: grid; gap: 6px">
         <span class="eyebrow">Design mock · room list header</span>
         <h1>Mark all rooms as read</h1>
         <p class="lede">
-            Try the action in the mock on the left. The demo account has unread rooms in Home, in space <b>S</b> (not shown in
-            Home), in Low Priority, a muted room, a thread-only unread, a room flagged "unread", and an invite. Use the
-            decision toggles on the right to compare options. The scope table shows which rooms a run would touch and why.
+            Try the action in the mock on the left. The demo account has unread rooms in Home, in space <b>S</b> (not
+            shown in Home), in Low Priority, a muted room, a thread-only unread, a room flagged "unread", and an invite.
+            Use the decision toggles on the right to compare options. The scope table shows which rooms a run would
+            touch and why.
         </p>
-        <div class="legend"><span><i class="sw"></i>New UI proposed by this plan</span></div>
+        <div class="legend">
+            <span><i class="sw"></i>New UI proposed by this plan</span>
+        </div>
     </header>
 
     <div class="main">
@@ -230,10 +663,15 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: 
                 <div class="actions">
                     <button class="btn" id="sim-space">BotBob posts in "Infra on-call" (space S)</button>
                     <button class="btn" id="sim-muted">BotBob posts in muted "Random"</button>
-                    <button class="btn" id="sim-fail" aria-pressed="false">Next run: "Design sync" receipt fails</button>
+                    <button class="btn" id="sim-fail" aria-pressed="false">
+                        Next run: "Design sync" receipt fails
+                    </button>
                     <button class="btn" id="sim-reset">Reset demo</button>
                 </div>
-                <p class="note">A posted message reaches the header within 1 s, so the menu item turns enabled again even when the room is not visible.</p>
+                <p class="note">
+                    A posted message reaches the header within 1 s, so the menu item turns enabled again even when the
+                    room is not visible.
+                </p>
             </div>
             <div class="card">
                 <h2>Scope of the next run</h2>
@@ -249,153 +687,305 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 </div>
 
 <script>
-(() => {
-    const ICON = {
-        more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
-        collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>',
-        plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-        markRead: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 11h7M4 16h5"/><path d="M12 17l3 3 6-7"/></svg>',
-        muted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-9.3-5M6 8c0 7-3 9-3 9h13M13.7 21a2 2 0 0 1-3.4 0M3 3l18 18"/></svg>',
-    };
-    const COLORS = ["#0dbd8b", "#368bd6", "#ac3ba8", "#e64f7a", "#ff812d", "#2dc2c5", "#5c56f5", "#74d12c"];
+    (() => {
+        const ICON = {
+            more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+            collapse:
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>',
+            plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+            markRead:
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 11h7M4 16h5"/><path d="M12 17l3 3 6-7"/></svg>',
+            muted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-9.3-5M6 8c0 7-3 9-3 9h13M13.7 21a2 2 0 0 1-3.4 0M3 3l18 18"/></svg>',
+        };
+        const COLORS = ["#0dbd8b", "#368bd6", "#ac3ba8", "#e64f7a", "#ff812d", "#2dc2c5", "#5c56f5", "#74d12c"];
 
-    const SEED = [
-        { id: "dm", name: "BotBob", kind: "dm", where: "home", section: "People", unread: 2, mention: true, preview: "@alice can you review?" },
-        { id: "design", name: "Design sync", kind: "room", where: "home", section: "Rooms", unread: 3, preview: "New mocks are up" },
-        { id: "release", name: "Release planning", kind: "room", where: "home", section: "Rooms", thread: true, preview: "Thread: RC2 is tagged" },
-        { id: "reading", name: "Reading list", kind: "room", where: "home", section: "Rooms", flagged: true, preview: "Marked as unread by you" },
-        { id: "retro", name: "Weekly retro", kind: "room", where: "home", section: "Rooms", preview: "You: see you Friday" },
-        { id: "random", name: "Random", kind: "room", where: "home", section: "Rooms", unread: 12, muted: true, preview: "lol" },
-        { id: "announce", name: "Old announcements", kind: "room", where: "home", section: "Low priority", unread: 5, preview: "Maintenance window" },
-        { id: "infra", name: "Infra on-call", kind: "room", where: "S", section: "Rooms", unread: 4, mention: true, preview: "@alice pager fired" },
-        { id: "party", name: "Party planning", kind: "room", where: "home", section: "Invites", invite: true, preview: "BotBob invited you" },
-    ];
+        const SEED = [
+            {
+                id: "dm",
+                name: "BotBob",
+                kind: "dm",
+                where: "home",
+                section: "People",
+                unread: 2,
+                mention: true,
+                preview: "@alice can you review?",
+            },
+            {
+                id: "design",
+                name: "Design sync",
+                kind: "room",
+                where: "home",
+                section: "Rooms",
+                unread: 3,
+                preview: "New mocks are up",
+            },
+            {
+                id: "release",
+                name: "Release planning",
+                kind: "room",
+                where: "home",
+                section: "Rooms",
+                thread: true,
+                preview: "Thread: RC2 is tagged",
+            },
+            {
+                id: "reading",
+                name: "Reading list",
+                kind: "room",
+                where: "home",
+                section: "Rooms",
+                flagged: true,
+                preview: "Marked as unread by you",
+            },
+            {
+                id: "retro",
+                name: "Weekly retro",
+                kind: "room",
+                where: "home",
+                section: "Rooms",
+                preview: "You: see you Friday",
+            },
+            {
+                id: "random",
+                name: "Random",
+                kind: "room",
+                where: "home",
+                section: "Rooms",
+                unread: 12,
+                muted: true,
+                preview: "lol",
+            },
+            {
+                id: "announce",
+                name: "Old announcements",
+                kind: "room",
+                where: "home",
+                section: "Low priority",
+                unread: 5,
+                preview: "Maintenance window",
+            },
+            {
+                id: "infra",
+                name: "Infra on-call",
+                kind: "room",
+                where: "S",
+                section: "Rooms",
+                unread: 4,
+                mention: true,
+                preview: "@alice pager fired",
+            },
+            {
+                id: "party",
+                name: "Party planning",
+                kind: "room",
+                where: "home",
+                section: "Invites",
+                invite: true,
+                preview: "BotBob invited you",
+            },
+        ];
 
-    const state = {
-        rooms: [],
-        space: "home",
-        filter: null,
-        menuOpen: false,
-        overlay: null, // null | {type:"confirm", count} | {type:"error", count} | {type:"toast", text}
-        running: false,
-        failNext: false,
-        tip: null,
-        d: { placement: "icon", confirm: "no", muted: "include", disabled: "disabled" },
-        log: [],
-    };
+        const state = {
+            rooms: [],
+            space: "home",
+            filter: null,
+            menuOpen: false,
+            overlay: null, // null | {type:"confirm", count} | {type:"error", count} | {type:"toast", text}
+            running: false,
+            failNext: false,
+            tip: null,
+            d: { placement: "icon", confirm: "no", muted: "include", disabled: "disabled" },
+            log: [],
+        };
 
-    const DECISIONS = [
-        { key: "placement", q: "D1 · Where does the action live?", opts: [["menu", "Room Options (…) menu"], ["icon", "Header icon button", true], ["both", "Both"]],
-          note: "Chosen: an icon button first in the header's button group, before Room Options." },
-        { key: "confirm", q: "D2 · Confirm before marking?", opts: [["yes", "Yes, with room count"], ["no", "No dialog", true]],
-          note: "Chosen: one click marks every joined room. Only a failure shows a dialog." },
-        { key: "muted", q: "D3 · Include muted rooms with unread messages?", opts: [["include", "Include", true], ["exclude", "Only rooms with a badge or dot"]],
-          note: "Chosen: muted rooms are marked too, so nothing stays unread on other clients." },
-        { key: "disabled", q: "D4 · Button when nothing is unread", opts: [["disabled", "Shown, disabled", true], ["hidden", "Hidden"]],
-          note: "Chosen: the button stays in place, disabled, so the header doesn't shift." },
-    ];
+        const DECISIONS = [
+            {
+                key: "placement",
+                q: "D1 · Where does the action live?",
+                opts: [
+                    ["menu", "Room Options (…) menu"],
+                    ["icon", "Header icon button", true],
+                    ["both", "Both"],
+                ],
+                note: "Chosen: an icon button first in the header's button group, before Room Options.",
+            },
+            {
+                key: "confirm",
+                q: "D2 · Confirm before marking?",
+                opts: [
+                    ["yes", "Yes, with room count"],
+                    ["no", "No dialog", true],
+                ],
+                note: "Chosen: one click marks every joined room. Only a failure shows a dialog.",
+            },
+            {
+                key: "muted",
+                q: "D3 · Include muted rooms with unread messages?",
+                opts: [
+                    ["include", "Include", true],
+                    ["exclude", "Only rooms with a badge or dot"],
+                ],
+                note: "Chosen: muted rooms are marked too, so nothing stays unread on other clients.",
+            },
+            {
+                key: "disabled",
+                q: "D4 · Button when nothing is unread",
+                opts: [
+                    ["disabled", "Shown, disabled", true],
+                    ["hidden", "Hidden"],
+                ],
+                note: "Chosen: the button stays in place, disabled, so the header doesn't shift.",
+            },
+        ];
 
-    function reset() {
-        state.rooms = SEED.map((r, i) => ({ unread: 0, mention: false, thread: false, flagged: false, muted: false, invite: false, color: COLORS[i % COLORS.length], ...r }));
-        state.space = "home"; state.filter = null; state.menuOpen = false; state.overlay = null; state.running = false; state.failNext = false; state.log = [];
-    }
-
-    const isUnread = (r) => r.unread > 0 || r.thread || r.flagged;
-    function selection(r) {
-        if (r.invite) return [false, "invite: not joined"];
-        if (!isUnread(r)) return [false, "already read"];
-        if (r.muted && state.d.muted === "exclude") return [false, "muted (excluded by D3)"];
-        const why = [];
-        if (r.unread) why.push(r.mention ? "mention" : "unread messages");
-        if (r.thread) why.push("unread thread");
-        if (r.flagged) why.push("marked unread");
-        if (r.muted) why.push("muted");
-        if (r.where === "S") why.push("other space");
-        if (r.section === "Low priority") why.push("low priority");
-        return [true, why.join(", ")];
-    }
-    const targets = () => state.rooms.filter((r) => selection(r)[0]);
-    const visibleBadge = (r) => !r.muted && (isUnread(r) || r.invite);
-
-    function inSpace(r) { return state.space === "home" ? r.where === "home" : r.where === state.space; }
-    function passesFilter(r) {
-        switch (state.filter) {
-            case "Unread": return visibleBadge(r);
-            case "People": return r.kind === "dm";
-            case "Rooms": return r.kind === "room";
-            case "Mentions": return r.mention && r.unread > 0;
-            default: return true;
+        function reset() {
+            state.rooms = SEED.map((r, i) => ({
+                unread: 0,
+                mention: false,
+                thread: false,
+                flagged: false,
+                muted: false,
+                invite: false,
+                color: COLORS[i % COLORS.length],
+                ...r,
+            }));
+            state.space = "home";
+            state.filter = null;
+            state.menuOpen = false;
+            state.overlay = null;
+            state.running = false;
+            state.failNext = false;
+            state.log = [];
         }
-    }
 
-    const el = (id) => document.getElementById(id);
-    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-
-    function renderSpacebar() {
-        const spaces = [["home", "⌂", "Home"], ["S", "S", "Space S"]];
-        el("spacebar").innerHTML = spaces.map(([id, label, title]) => {
-            const rooms = state.rooms.filter((r) => r.where === id && !r.muted && r.section !== "Low priority");
-            const mention = rooms.some((r) => (r.mention && r.unread) || r.invite);
-            const count = rooms.reduce((n, r) => n + r.unread, 0);
-            const dot = rooms.some((r) => r.thread || r.flagged);
-            const badge = count || mention ? `<span class="badge ${mention ? "red" : ""}">${count || "!"}</span>` : dot ? `<span class="badge" style="min-width:10px;height:10px;padding:0;background:var(--dot)"></span>` : "";
-            return `<button class="space" aria-pressed="${state.space === id}" data-space="${id}" title="${title}" aria-label="${title}">${label}${badge}</button>`;
-        }).join("");
-    }
-
-    function headerButton(id, icon, label, extra = "") {
-        const tip = state.tip === id ? `<span class="tip">${esc(label)}</span>` : "";
-        return `<button class="ibtn ${extra}" id="hb-${id}" data-tipid="${id}" aria-label="${esc(label)}">${icon}${tip}</button>`;
-    }
-
-    function renderHeader() {
-        const canMark = targets().length > 0 && !state.running;
-        const showIcon = state.d.placement !== "menu";
-        let html = `<h3>${state.space === "home" ? "Home" : "Space S"}</h3><div class="hbtns">`;
-        if (showIcon && (canMark || state.d.disabled === "disabled")) {
-            html += headerButton("markall", ICON.markRead, "Mark all rooms as read", "proposed").replace("<button", `<button ${canMark ? "" : "disabled"}`);
+        const isUnread = (r) => r.unread > 0 || r.thread || r.flagged;
+        function selection(r) {
+            if (r.invite) return [false, "invite: not joined"];
+            if (!isUnread(r)) return [false, "already read"];
+            if (r.muted && state.d.muted === "exclude") return [false, "muted (excluded by D3)"];
+            const why = [];
+            if (r.unread) why.push(r.mention ? "mention" : "unread messages");
+            if (r.thread) why.push("unread thread");
+            if (r.flagged) why.push("marked unread");
+            if (r.muted) why.push("muted");
+            if (r.where === "S") why.push("other space");
+            if (r.section === "Low priority") why.push("low priority");
+            return [true, why.join(", ")];
         }
-        html += headerButton("more", ICON.more, "Room Options") + headerButton("collapse", ICON.collapse, "Collapse all sections") + headerButton("plus", ICON.plus, "Add") + "</div>";
-        el("header").innerHTML = html;
-    }
+        const targets = () => state.rooms.filter((r) => selection(r)[0]);
+        const visibleBadge = (r) => !r.muted && (isUnread(r) || r.invite);
 
-    function renderFilters() {
-        el("filters").innerHTML = ["Unread", "People", "Rooms", "Mentions"].map((f) => `<button class="chip" aria-pressed="${state.filter === f}" data-filter="${f}">${f}</button>`).join("");
-    }
+        function inSpace(r) {
+            return state.space === "home" ? r.where === "home" : r.where === state.space;
+        }
+        function passesFilter(r) {
+            switch (state.filter) {
+                case "Unread":
+                    return visibleBadge(r);
+                case "People":
+                    return r.kind === "dm";
+                case "Rooms":
+                    return r.kind === "room";
+                case "Mentions":
+                    return r.mention && r.unread > 0;
+                default:
+                    return true;
+            }
+        }
 
-    function roomRow(r) {
-        let deco = "";
-        if (r.invite) deco = `<span class="badge red">!</span>`;
-        else if (r.muted) deco = `<span class="muted-ic" aria-label="Muted">${ICON.muted}</span>`;
-        else if (r.unread) deco = `<span class="badge ${r.mention ? "red" : ""}">${r.unread}</span>`;
-        else if (r.thread || r.flagged) deco = `<span class="dot" aria-label="Unread"></span>`;
-        const bold = !r.muted && (isUnread(r) || r.invite);
-        return `<div class="room ${r.flash ? "flash" : ""}" data-room="${r.id}"><span class="avatar" style="background:${r.color}">${esc(r.name[0])}</span>
+        const el = (id) => document.getElementById(id);
+        const esc = (s) =>
+            String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+        function renderSpacebar() {
+            const spaces = [
+                ["home", "⌂", "Home"],
+                ["S", "S", "Space S"],
+            ];
+            el("spacebar").innerHTML = spaces
+                .map(([id, label, title]) => {
+                    const rooms = state.rooms.filter((r) => r.where === id && !r.muted && r.section !== "Low priority");
+                    const mention = rooms.some((r) => (r.mention && r.unread) || r.invite);
+                    const count = rooms.reduce((n, r) => n + r.unread, 0);
+                    const dot = rooms.some((r) => r.thread || r.flagged);
+                    const badge =
+                        count || mention
+                            ? `<span class="badge ${mention ? "red" : ""}">${count || "!"}</span>`
+                            : dot
+                              ? `<span class="badge" style="min-width:10px;height:10px;padding:0;background:var(--dot)"></span>`
+                              : "";
+                    return `<button class="space" aria-pressed="${state.space === id}" data-space="${id}" title="${title}" aria-label="${title}">${label}${badge}</button>`;
+                })
+                .join("");
+        }
+
+        function headerButton(id, icon, label, extra = "") {
+            const tip = state.tip === id ? `<span class="tip">${esc(label)}</span>` : "";
+            return `<button class="ibtn ${extra}" id="hb-${id}" data-tipid="${id}" aria-label="${esc(label)}">${icon}${tip}</button>`;
+        }
+
+        function renderHeader() {
+            const canMark = targets().length > 0 && !state.running;
+            const showIcon = state.d.placement !== "menu";
+            let html = `<h3>${state.space === "home" ? "Home" : "Space S"}</h3><div class="hbtns">`;
+            if (showIcon && (canMark || state.d.disabled === "disabled")) {
+                html += headerButton("markall", ICON.markRead, "Mark all rooms as read", "proposed").replace(
+                    "<button",
+                    `<button ${canMark ? "" : "disabled"}`,
+                );
+            }
+            html +=
+                headerButton("more", ICON.more, "Room Options") +
+                headerButton("collapse", ICON.collapse, "Collapse all sections") +
+                headerButton("plus", ICON.plus, "Add") +
+                "</div>";
+            el("header").innerHTML = html;
+        }
+
+        function renderFilters() {
+            el("filters").innerHTML = ["Unread", "People", "Rooms", "Mentions"]
+                .map(
+                    (f) => `<button class="chip" aria-pressed="${state.filter === f}" data-filter="${f}">${f}</button>`,
+                )
+                .join("");
+        }
+
+        function roomRow(r) {
+            let deco = "";
+            if (r.invite) deco = `<span class="badge red">!</span>`;
+            else if (r.muted) deco = `<span class="muted-ic" aria-label="Muted">${ICON.muted}</span>`;
+            else if (r.unread) deco = `<span class="badge ${r.mention ? "red" : ""}">${r.unread}</span>`;
+            else if (r.thread || r.flagged) deco = `<span class="dot" aria-label="Unread"></span>`;
+            const bold = !r.muted && (isUnread(r) || r.invite);
+            return `<div class="room ${r.flash ? "flash" : ""}" data-room="${r.id}"><span class="avatar" style="background:${r.color}">${esc(r.name[0])}</span>
             <span class="name ${bold ? "bold" : ""}">${esc(r.name)}<span class="sub">${esc(r.preview)}</span></span>${deco}</div>`;
-    }
-
-    function renderRooms() {
-        const rooms = state.rooms.filter((r) => inSpace(r) && passesFilter(r));
-        if (!rooms.length) {
-            el("rooms").innerHTML = `<p class="empty">${state.filter === "Unread" ? "You don't have any unread messages" : "No rooms match this filter"}</p>`;
-            return;
         }
-        const order = ["Invites", "People", "Rooms", "Low priority"];
-        el("rooms").innerHTML = order.map((s) => {
-            const rs = rooms.filter((r) => r.section === s);
-            if (!rs.length) return "";
-            return `<div class="section"><span>${s}</span></div>` + rs.map(roomRow).join("");
-        }).join("");
-    }
 
-    function renderMenu() {
-        if (!state.menuOpen) return "";
-        const canMark = targets().length > 0 && !state.running;
-        const showItem = state.d.placement !== "icon" && (canMark || state.d.disabled === "disabled");
-        const app = el("app").getBoundingClientRect();
-        const btn = el("hb-more").getBoundingClientRect();
-        const left = Math.max(8, Math.min(btn.left - app.left - 100, app.width - 248));
-        return `<div class="menu" role="menu" aria-label="Room Options" style="left:${left}px">
+        function renderRooms() {
+            const rooms = state.rooms.filter((r) => inSpace(r) && passesFilter(r));
+            if (!rooms.length) {
+                el("rooms").innerHTML =
+                    `<p class="empty">${state.filter === "Unread" ? "You don't have any unread messages" : "No rooms match this filter"}</p>`;
+                return;
+            }
+            const order = ["Invites", "People", "Rooms", "Low priority"];
+            el("rooms").innerHTML = order
+                .map((s) => {
+                    const rs = rooms.filter((r) => r.section === s);
+                    if (!rs.length) return "";
+                    return `<div class="section"><span>${s}</span></div>` + rs.map(roomRow).join("");
+                })
+                .join("");
+        }
+
+        function renderMenu() {
+            if (!state.menuOpen) return "";
+            const canMark = targets().length > 0 && !state.running;
+            const showItem = state.d.placement !== "icon" && (canMark || state.d.disabled === "disabled");
+            const app = el("app").getBoundingClientRect();
+            const btn = el("hb-more").getBoundingClientRect();
+            const left = Math.max(8, Math.min(btn.left - app.left - 100, app.width - 248));
+            return `<div class="menu" role="menu" aria-label="Room Options" style="left:${left}px">
             <div class="mt">Sort</div>
             <button class="mi" role="menuitemradio"><span class="radio on"></span>Activity</button>
             <button class="mi" role="menuitemradio"><span class="radio"></span>Unread first</button>
@@ -404,137 +994,209 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: 
             <button class="mi" role="menuitemcheckbox"><span class="check"></span>Show message previews</button>
             ${showItem ? `<hr><button class="mi proposed" role="menuitem" id="mi-markall" ${canMark ? "" : "disabled"}>${ICON.markRead}Mark all rooms as read</button>` : ""}
         </div>`;
-    }
+        }
 
-    function renderOverlay() {
-        const o = state.overlay;
-        let html = renderMenu();
-        if (o?.type === "confirm") {
-            html += `<div class="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
+        function renderOverlay() {
+            const o = state.overlay;
+            let html = renderMenu();
+            if (o?.type === "confirm") {
+                html += `<div class="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-t">
                 <h4 id="dlg-t">Mark all rooms as read?</h4>
                 <p>${o.count} ${o.count === 1 ? "room" : "rooms"} will be marked as read, including rooms in other spaces and rooms hidden by filters. This can't be undone.</p>
                 <div class="row"><button class="btn" id="dlg-cancel">Cancel</button><button class="btn primary" id="dlg-ok">Mark as read</button></div>
             </div></div>`;
-        } else if (o?.type === "error") {
-            html += `<div class="scrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="err-t">
+            } else if (o?.type === "error") {
+                html += `<div class="scrim"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="err-t">
                 <h4 id="err-t">Couldn't mark all rooms as read</h4>
                 <p>${o.count} ${o.count === 1 ? "room" : "rooms"} could not be marked as read. Check your connection and try again.</p>
                 <div class="row"><button class="btn primary" id="err-ok">OK</button></div>
             </div></div>`;
-        } else if (o?.type === "toast") {
-            html += `<div class="toast" role="status">${esc(o.text)}</div>`;
-        }
-        el("overlay").innerHTML = html;
-    }
-
-    function renderDecisions() {
-        el("decisions").innerHTML = "<h2>Decisions</h2>" + DECISIONS.map((d) => `<div class="decision"><span class="q">${d.q}</span>
-            <div class="seg">${d.opts.map(([v, label, rec]) => `<button data-dkey="${d.key}" data-dval="${v}" aria-pressed="${state.d[d.key] === v}">${label}${rec ? '<span class="rec">Chosen</span>' : ""}</button>`).join("")}</div>
-            <p class="note">${d.note}</p></div>`).join("");
-    }
-
-    function renderScope() {
-        const t = targets();
-        const hidden = t.filter((r) => !(inSpace(r) && passesFilter(r))).length;
-        el("scope-summary").textContent = t.length
-            ? `${t.length} rooms would be marked as read. ${hidden} of them are not visible in the list right now.`
-            : "Nothing to mark. The menu item is " + (state.d.disabled === "disabled" ? "disabled." : "hidden.");
-        el("scope").innerHTML = `<thead><tr><th>Room</th><th>Where</th><th>Selected</th><th>Why</th></tr></thead><tbody>` +
-            state.rooms.map((r) => {
-                const [sel, why] = selection(r);
-                const where = (r.where === "S" ? "Space S" : "Home") + (r.section === "Low priority" ? " · Low priority" : "");
-                return `<tr><td>${esc(r.name)}</td><td>${where}</td><td><span class="pill ${sel ? "yes" : "no"}">${sel ? "Yes" : "No"}</span></td><td>${esc(why)}</td></tr>`;
-            }).join("") + "</tbody>";
-    }
-
-    function renderLog() {
-        el("log").innerHTML = state.log.length ? state.log.map((l) => `<span class="${l.err ? "err" : ""}">${esc(l.text)}</span>`).join("") : '<span class="note">Nothing sent yet.</span>';
-        el("log").scrollTop = el("log").scrollHeight;
-    }
-
-    function render() {
-        renderSpacebar(); renderHeader(); renderFilters(); renderRooms(); renderOverlay(); renderDecisions(); renderScope(); renderLog();
-        el("sim-fail").setAttribute("aria-pressed", String(state.failNext));
-        el("sim-fail").classList.toggle("primary", state.failNext);
-    }
-
-    function startMarkAll() {
-        state.menuOpen = false;
-        const count = targets().length;
-        if (!count || state.running) return render();
-        if (state.d.confirm === "yes") state.overlay = { type: "confirm", count };
-        else run();
-        render();
-    }
-
-    async function run() {
-        // Re-select at confirm time, mark at most 10 at once.
-        const rooms = targets();
-        state.overlay = null; state.running = true; render();
-        const failed = [];
-        const failId = state.failNext ? "design" : null;
-        state.failNext = false;
-        for (let i = 0; i < rooms.length; i += 10) {
-            const batch = rooms.slice(i, i + 10);
-            await new Promise((res) => setTimeout(res, 450));
-            for (const r of batch) {
-                if (r.flagged) state.log.push({ text: `PUT account_data m.marked_unread {unread:false}  ${r.name}` });
-                if (r.id === failId) {
-                    state.log.push({ text: `POST receipt m.read (unthreaded)  ${r.name}  → 500`, err: true });
-                    failed.push(r);
-                    continue;
-                }
-                state.log.push({ text: `POST receipt m.read (unthreaded)  ${r.name}  → 200` });
-                Object.assign(r, { unread: 0, mention: false, thread: false, flagged: false, flash: true });
+            } else if (o?.type === "toast") {
+                html += `<div class="toast" role="status">${esc(o.text)}</div>`;
             }
+            el("overlay").innerHTML = html;
+        }
+
+        function renderDecisions() {
+            el("decisions").innerHTML =
+                "<h2>Decisions</h2>" +
+                DECISIONS.map(
+                    (d) => `<div class="decision"><span class="q">${d.q}</span>
+            <div class="seg">${d.opts.map(([v, label, rec]) => `<button data-dkey="${d.key}" data-dval="${v}" aria-pressed="${state.d[d.key] === v}">${label}${rec ? '<span class="rec">Chosen</span>' : ""}</button>`).join("")}</div>
+            <p class="note">${d.note}</p></div>`,
+                ).join("");
+        }
+
+        function renderScope() {
+            const t = targets();
+            const hidden = t.filter((r) => !(inSpace(r) && passesFilter(r))).length;
+            el("scope-summary").textContent = t.length
+                ? `${t.length} rooms would be marked as read. ${hidden} of them are not visible in the list right now.`
+                : "Nothing to mark. The menu item is " + (state.d.disabled === "disabled" ? "disabled." : "hidden.");
+            el("scope").innerHTML =
+                `<thead><tr><th>Room</th><th>Where</th><th>Selected</th><th>Why</th></tr></thead><tbody>` +
+                state.rooms
+                    .map((r) => {
+                        const [sel, why] = selection(r);
+                        const where =
+                            (r.where === "S" ? "Space S" : "Home") +
+                            (r.section === "Low priority" ? " · Low priority" : "");
+                        return `<tr><td>${esc(r.name)}</td><td>${where}</td><td><span class="pill ${sel ? "yes" : "no"}">${sel ? "Yes" : "No"}</span></td><td>${esc(why)}</td></tr>`;
+                    })
+                    .join("") +
+                "</tbody>";
+        }
+
+        function renderLog() {
+            el("log").innerHTML = state.log.length
+                ? state.log.map((l) => `<span class="${l.err ? "err" : ""}">${esc(l.text)}</span>`).join("")
+                : '<span class="note">Nothing sent yet.</span>';
+            el("log").scrollTop = el("log").scrollHeight;
+        }
+
+        function render() {
+            renderSpacebar();
+            renderHeader();
+            renderFilters();
+            renderRooms();
+            renderOverlay();
+            renderDecisions();
+            renderScope();
+            renderLog();
+            el("sim-fail").setAttribute("aria-pressed", String(state.failNext));
+            el("sim-fail").classList.toggle("primary", state.failNext);
+        }
+
+        function startMarkAll() {
+            state.menuOpen = false;
+            const count = targets().length;
+            if (!count || state.running) return render();
+            if (state.d.confirm === "yes") state.overlay = { type: "confirm", count };
+            else run();
             render();
         }
-        setTimeout(() => { state.rooms.forEach((r) => (r.flash = false)); render(); }, 900);
-        state.running = false;
-        state.overlay = failed.length ? { type: "error", count: failed.length } : null;
-        render();
-    }
 
-    function post(id, text, mention) {
-        const r = state.rooms.find((x) => x.id === id);
-        r.unread += 1; r.mention = r.mention || mention; r.preview = text;
-        state.overlay = { type: "toast", text: `${r.name}: new message. Item re-enabled.` };
-        render();
-        setTimeout(() => { if (state.overlay?.type === "toast") { state.overlay = null; render(); } }, 2200);
-    }
-
-    document.addEventListener("click", (e) => {
-        const t = e.target.closest("button");
-        if (!t) {
-            if (state.menuOpen && !e.target.closest(".menu")) { state.menuOpen = false; render(); }
-            return;
+        async function run() {
+            // Re-select at confirm time, mark at most 10 at once.
+            const rooms = targets();
+            state.overlay = null;
+            state.running = true;
+            render();
+            const failed = [];
+            const failId = state.failNext ? "design" : null;
+            state.failNext = false;
+            for (let i = 0; i < rooms.length; i += 10) {
+                const batch = rooms.slice(i, i + 10);
+                await new Promise((res) => setTimeout(res, 450));
+                for (const r of batch) {
+                    if (r.flagged)
+                        state.log.push({ text: `PUT account_data m.marked_unread {unread:false}  ${r.name}` });
+                    if (r.id === failId) {
+                        state.log.push({ text: `POST receipt m.read (unthreaded)  ${r.name}  → 500`, err: true });
+                        failed.push(r);
+                        continue;
+                    }
+                    state.log.push({ text: `POST receipt m.read (unthreaded)  ${r.name}  → 200` });
+                    Object.assign(r, { unread: 0, mention: false, thread: false, flagged: false, flash: true });
+                }
+                render();
+            }
+            setTimeout(() => {
+                state.rooms.forEach((r) => (r.flash = false));
+                render();
+            }, 900);
+            state.running = false;
+            state.overlay = failed.length ? { type: "error", count: failed.length } : null;
+            render();
         }
-        if (t.dataset.space) { state.space = t.dataset.space; state.menuOpen = false; return render(); }
-        if (t.dataset.filter) { state.filter = state.filter === t.dataset.filter ? null : t.dataset.filter; return render(); }
-        if (t.dataset.dkey) { state.d[t.dataset.dkey] = t.dataset.dval; state.menuOpen = false; return render(); }
-        switch (t.id) {
-            case "hb-more": state.menuOpen = !state.menuOpen; return render();
-            case "mi-markall": case "hb-markall": return startMarkAll();
-            case "dlg-cancel": state.overlay = null; state.log.push({ text: "Cancelled: nothing sent" }); return render();
-            case "dlg-ok": return void run();
-            case "err-ok": state.overlay = null; return render();
-            case "sim-space": return post("infra", "@alice disk at 95%", true);
-            case "sim-muted": return post("random", "another meme", false);
-            case "sim-fail": state.failNext = !state.failNext; return render();
-            case "sim-reset": reset(); return render();
-        }
-        if (state.menuOpen && !t.closest(".menu")) { state.menuOpen = false; render(); }
-    });
-    document.addEventListener("mouseover", (e) => {
-        const t = e.target.closest("[data-tipid]");
-        const id = t ? t.dataset.tipid : null;
-        if (id !== state.tip) { state.tip = id; renderHeader(); }
-    });
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && (state.menuOpen || state.overlay)) { state.menuOpen = false; state.overlay = null; render(); }
-    });
 
-    reset();
-    render();
-})();
+        function post(id, text, mention) {
+            const r = state.rooms.find((x) => x.id === id);
+            r.unread += 1;
+            r.mention = r.mention || mention;
+            r.preview = text;
+            state.overlay = { type: "toast", text: `${r.name}: new message. Item re-enabled.` };
+            render();
+            setTimeout(() => {
+                if (state.overlay?.type === "toast") {
+                    state.overlay = null;
+                    render();
+                }
+            }, 2200);
+        }
+
+        document.addEventListener("click", (e) => {
+            const t = e.target.closest("button");
+            if (!t) {
+                if (state.menuOpen && !e.target.closest(".menu")) {
+                    state.menuOpen = false;
+                    render();
+                }
+                return;
+            }
+            if (t.dataset.space) {
+                state.space = t.dataset.space;
+                state.menuOpen = false;
+                return render();
+            }
+            if (t.dataset.filter) {
+                state.filter = state.filter === t.dataset.filter ? null : t.dataset.filter;
+                return render();
+            }
+            if (t.dataset.dkey) {
+                state.d[t.dataset.dkey] = t.dataset.dval;
+                state.menuOpen = false;
+                return render();
+            }
+            switch (t.id) {
+                case "hb-more":
+                    state.menuOpen = !state.menuOpen;
+                    return render();
+                case "mi-markall":
+                case "hb-markall":
+                    return startMarkAll();
+                case "dlg-cancel":
+                    state.overlay = null;
+                    state.log.push({ text: "Cancelled: nothing sent" });
+                    return render();
+                case "dlg-ok":
+                    return void run();
+                case "err-ok":
+                    state.overlay = null;
+                    return render();
+                case "sim-space":
+                    return post("infra", "@alice disk at 95%", true);
+                case "sim-muted":
+                    return post("random", "another meme", false);
+                case "sim-fail":
+                    state.failNext = !state.failNext;
+                    return render();
+                case "sim-reset":
+                    reset();
+                    return render();
+            }
+            if (state.menuOpen && !t.closest(".menu")) {
+                state.menuOpen = false;
+                render();
+            }
+        });
+        document.addEventListener("mouseover", (e) => {
+            const t = e.target.closest("[data-tipid]");
+            const id = t ? t.dataset.tipid : null;
+            if (id !== state.tip) {
+                state.tip = id;
+                renderHeader();
+            }
+        });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && (state.menuOpen || state.overlay)) {
+                state.menuOpen = false;
+                state.overlay = null;
+                render();
+            }
+        });
+
+        reset();
+        render();
+    })();
 </script>
