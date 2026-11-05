@@ -192,8 +192,10 @@ test("should mark all joined rooms read across spaces, filters and notification 
     const assertThreadRead = async () => {
         await app.viewRoomByName(threadRoom.name);
         await util.assertReadThread("Thread root");
-        await expect(page.getByRole("tabpanel").getByText("Thread root", { exact: true })).toBeVisible();
-        await util.closeThreadsPanel();
+        const threadsPanel = page.getByRole("tabpanel");
+        await expect(threadsPanel.getByText("Thread root", { exact: true })).toBeVisible();
+        await threadsPanel.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(threadsPanel).not.toBeVisible();
     };
 
     await assertHomeRead();
