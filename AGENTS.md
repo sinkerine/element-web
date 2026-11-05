@@ -89,6 +89,11 @@ Updated baselines are part of the diff and must be reviewed, not accepted blindl
   touch, find out why rather than committing it.
 - Never regenerate baselines to make a failing test pass. A diff you cannot explain is a bug in the change.
 
+## Feature defaults
+
+Always enable new features by default when adding them, including features with Labs flags. Set their defaults
+and any relevant shipped configuration so users can use them without manually enabling a setting.
+
 ## Writing UI code: MVVM
 
 New UI follows MVVM. Full details in [docs/MVVM.md](./docs/MVVM.md); the shape for a feature `Foo`:
