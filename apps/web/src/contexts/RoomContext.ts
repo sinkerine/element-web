@@ -23,11 +23,13 @@ export enum TimelineRenderingType {
 }
 
 // This defines the content of the mainSplit.
-// If the mainSplit does not contain the Timeline, the chat is shown in the right panel.
+// Calls and maximised widgets show the room timeline in the right panel.
 export enum MainSplitContentType {
     Timeline,
     MaximisedWidget,
     Call,
+    /** The right panel's thread card over the whole room area. */
+    Thread,
 }
 
 export interface RoomContextType extends IRoomState {

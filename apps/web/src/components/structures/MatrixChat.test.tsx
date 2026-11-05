@@ -1573,7 +1573,7 @@ describe("<MatrixChat />", () => {
                 );
                 if (!threadId) {
                     const calls = vi.mocked(defaultDispatcher.dispatch).mock.calls;
-                    const payload = calls.findLast(([payload]) => payload.action === Action.ViewRoom)![0];
+                    const payload = [...calls].reverse().find(([payload]) => payload.action === Action.ViewRoom)![0];
                     expect(payload).not.toHaveProperty("full_page_thread_id");
                 }
             });

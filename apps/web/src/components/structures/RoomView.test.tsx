@@ -73,10 +73,13 @@ import MediaDeviceHandler, { MediaDeviceKindEnum } from "../../MediaDeviceHandle
 import Modal, { type ComponentProps } from "../../Modal.tsx";
 import ErrorDialog from "../views/dialogs/ErrorDialog.tsx";
 import * as pinnedEventHooks from "../../hooks/usePinnedEvents";
-import { TimelineRenderingType } from "../../contexts/RoomContext";
+import { MainSplitContentType, TimelineRenderingType } from "../../contexts/RoomContext";
 import { ModuleApi } from "../../modules/Api";
 import MatrixClientBackedController from "../../settings/controllers/MatrixClientBackedController.ts";
 import { type ComposerInsertPayload, ComposerType } from "../../dispatcher/payloads/ComposerInsertPayload.ts";
+
+import { mkThread } from "test-utils/threads";
+import * as EventUtils from "../../utils/EventUtils";
 
 // Used by group calls
 vi.spyOn(MediaDeviceHandler, "getDevices").mockResolvedValue({
@@ -222,6 +225,326 @@ describe("RoomView", () => {
         await mountRoomView(ref);
         return ref.current!;
     };
+
+    describe("full page thread", () => {
+        let root: MatrixEvent;
+
+        beforeEach(() => {
+            vi.spyOn(room, "getMyMembership").mockReturnValue(KnownMembership.Join);
+            vi.spyOn(cli, "supportsThreads").mockReturnValue(true);
+            const result = mkThread({
+                room,
+                client: cli,
+                authorId: cli.getUserId()!,
+                participantUserIds: [cli.getUserId()!],
+                length: 3,
+            });
+            root = result.rootEvent;
+            for (const [index, event] of result.events.entries())
+                event.event.content = { msgtype: "m.text", body: `Thread message ${index}` };
+        });
+
+        afterEach(() => {
+            vi.mocked(EventUtils.fetchInitialEvent).mockRestore?.();
+        });
+
+        const expand = async (threadId = root.getId()!, eventId?: string): Promise<void> => {
+            await act(async () => {
+                await stores.roomViewStore.viewRoom({
+                    action: Action.ViewRoom,
+                    room_id: room.roomId,
+                    full_page_thread_id: threadId,
+                    event_id: eventId,
+                    highlighted: Boolean(eventId),
+                    scroll_into_view: Boolean(eventId),
+                    metricsTrigger: undefined,
+                });
+            });
+        };
+
+        it("should render the matching card exactly once in the room area and close through the panel", async () => {
+            const { container } = await mountRoomView();
+            act(() =>
+                stores.rightPanelStore.setCards(
+                    [
+                        { phase: RightPanelPhases.ThreadPanel },
+                        { phase: RightPanelPhases.ThreadView, state: { threadHeadEvent: root } },
+                    ],
+                    true,
+                    room.roomId,
+                ),
+            );
+            await expand();
+            expect(container.querySelectorAll(".mx_ThreadView")).toHaveLength(1);
+            expect(container.querySelector(".mx_MainSplit_thread .mx_ThreadView")).not.toBeNull();
+            expect(screen.queryByTestId("timeline")).toBeNull();
+            expect(screen.queryByTestId("right-panel")).toBeNull();
+            expect(container.querySelector(".mx_RoomView_immersive")).toBeNull();
+            expect(screen.getByRole("banner").querySelector(".mx_RoomHeader_infoWrapper")).toBeVisible();
+            const toggle = vi.spyOn(stores.rightPanelStore, "togglePanel");
+            fireEvent.click(screen.getByRole("button", { name: "Close" }));
+            expect(toggle).toHaveBeenCalledWith(room.roomId);
+            await waitFor(() => expect(stores.roomViewStore.getFullPageThreadId()).toBeNull());
+            expect(screen.getByTestId("timeline")).toBeVisible();
+            toggle.mockRestore();
+        });
+
+        it("should use a loaded root without a server fetch", async () => {
+            await mountRoomView();
+            const fetch = vi.spyOn(EventUtils, "fetchInitialEvent");
+            await expand();
+            expect(fetch).not.toHaveBeenCalled();
+            expect(stores.rightPanelStore.currentCardForRoom(room.roomId).state?.threadHeadEvent).toBe(root);
+        });
+
+        it("should show a spinner while fetching and ignore unrelated panel updates until the card is shown", async () => {
+            const { container } = await mountRoomView();
+            const deferred = Promise.withResolvers<MatrixEvent | null>();
+            const fetch = vi.spyOn(EventUtils, "fetchInitialEvent").mockReturnValue(deferred.promise);
+            const find = vi.spyOn(room, "findEventById").mockReturnValue(undefined);
+            await expand();
+            expect(container.querySelector(".mx_MainSplit_thread [data-testid=spinner]")).not.toBeNull();
+            expect(screen.queryByTestId("timeline")).toBeNull();
+            act(() => stores.rightPanelStore.setCard({ phase: RightPanelPhases.RoomSummary }, true, room.roomId));
+            await expand();
+            expect(stores.roomViewStore.getFullPageThreadId()).toBe(root.getId());
+            expect(fetch).toHaveBeenCalledTimes(1);
+            await act(async () => deferred.resolve(root));
+            expect(container.querySelector(".mx_MainSplit_thread .mx_ThreadView")).not.toBeNull();
+            find.mockRestore();
+        });
+
+        it("should show a persistent fetch error without retrying and return to the room on demand", async () => {
+            await mountRoomView();
+            const fetch = vi.spyOn(EventUtils, "fetchInitialEvent").mockResolvedValue(null);
+            await expand("$missing");
+            expect(screen.getByText("Couldn't load this thread.")).toBeVisible();
+            await expand("$missing");
+            expect(fetch).toHaveBeenCalledTimes(1);
+            fireEvent.click(screen.getByRole("button", { name: "Back to room" }));
+            await waitFor(() => expect(stores.roomViewStore.getFullPageThreadId()).toBeNull());
+            expect(screen.getByTestId("timeline")).toBeVisible();
+        });
+
+        it("should show a persistent error when a fetched reply's root fails and recover through Back to room", async () => {
+            await mountRoomView();
+            const reply = new MatrixEvent({
+                event_id: "$unloaded-reply",
+                room_id: room.roomId,
+                type: EventType.RoomMessage,
+                sender: cli.getUserId()!,
+                content: {
+                    "msgtype": "m.text",
+                    "body": "Unloaded reply",
+                    "m.relates_to": { rel_type: "m.thread", event_id: "$unloaded-root" },
+                },
+            });
+            cli.fetchRoomEvent.mockResolvedValueOnce(reply.event as IEvent).mockRejectedValue(new Error("Forbidden"));
+            await expand("$unloaded-root", reply.getId());
+            expect(screen.getByText("Couldn't load this thread.")).toBeVisible();
+            expect(cli.fetchRoomEvent.mock.calls).toEqual([
+                [room.roomId, reply.getId()],
+                [room.roomId, "$unloaded-root"],
+            ]);
+            await act(async () => stores.roomViewStore.emit(UPDATE_EVENT));
+            await expand("$unloaded-root", reply.getId());
+            expect(screen.getByText("Couldn't load this thread.")).toBeVisible();
+            expect(cli.fetchRoomEvent).toHaveBeenCalledTimes(2);
+            fireEvent.click(screen.getByRole("button", { name: "Back to room" }));
+            await waitFor(() => expect(stores.roomViewStore.getFullPageThreadId()).toBeNull());
+            expect(stores.roomViewStore.getInitialEventId()).toBeNull();
+            expect(screen.getByTestId("timeline")).toBeVisible();
+        });
+
+        it.each(["collapse", "unmount", "same-thread-return"])(
+            "should ignore a reply's rejected root fetch after %s",
+            async (destination) => {
+                const { unmount } = await mountRoomView();
+                const rootFetch = Promise.withResolvers<IEvent>();
+                const reply: IEvent = {
+                    origin_server_ts: 1,
+                    unsigned: {},
+                    event_id: "$unloaded-reply",
+                    room_id: room.roomId,
+                    type: EventType.RoomMessage,
+                    sender: cli.getUserId()!,
+                    content: {
+                        "msgtype": "m.text",
+                        "body": "Unloaded reply",
+                        "m.relates_to": { rel_type: "m.thread", event_id: "$unloaded-root" },
+                    },
+                };
+                cli.fetchRoomEvent.mockResolvedValueOnce(reply).mockReturnValueOnce(rootFetch.promise);
+                await expand("$unloaded-root", reply.event_id);
+                expect(cli.fetchRoomEvent).toHaveBeenCalledTimes(2);
+                await act(async () => stores.roomViewStore.emit(UPDATE_EVENT));
+                expect(cli.fetchRoomEvent).toHaveBeenCalledTimes(2);
+                if (destination === "unmount") unmount();
+                else {
+                    await act(() =>
+                        stores.roomViewStore.viewRoom({
+                            action: Action.ViewRoom,
+                            room_id: room.roomId,
+                            metricsTrigger: undefined,
+                        }),
+                    );
+                    if (destination === "same-thread-return") {
+                        cli.fetchRoomEvent.mockReturnValue(new Promise(() => {}));
+                        await expand("$unloaded-root", reply.event_id);
+                    }
+                }
+                await act(async () => rootFetch.reject(new Error("Forbidden")));
+                expect(screen.queryByText("Couldn't load this thread.")).toBeNull();
+                if (destination === "collapse") expect(screen.getByTestId("timeline")).toBeVisible();
+            },
+        );
+
+        it.each(["expanded thread", "ordinary permalink"])(
+            "should preserve an incoming unloaded reply after the old expanded view unmounts for an %s",
+            async (destination) => {
+                const next = mkThread({
+                    room,
+                    client: cli,
+                    authorId: cli.getUserId()!,
+                    participantUserIds: [cli.getUserId()!],
+                    length: 2,
+                });
+                const outgoing = room.getThread(root.getId()!)!.events.find((event) => !event.isThreadRoot)!;
+                const incoming = next.events.find((event) => !event.isThreadRoot)!;
+                const { container } = await mountRoomView();
+                await expand(root.getId()!, outgoing.getId());
+                const oldView = container.querySelector(".mx_MainSplit_thread .mx_ThreadView");
+                expect(oldView).not.toBeNull();
+                const findEvent = room.findEventById.bind(room);
+                const find = vi
+                    .spyOn(room, "findEventById")
+                    .mockImplementation((id) => (id === incoming.getId() ? undefined : findEvent(id)));
+                const deferred = Promise.withResolvers<MatrixEvent | null>();
+                vi.spyOn(EventUtils, "fetchInitialEvent").mockReturnValue(deferred.promise);
+                const dispatch = vi.spyOn(defaultDispatcher, "dispatch");
+                await act(() =>
+                    stores.roomViewStore.viewRoom({
+                        action: Action.ViewRoom,
+                        room_id: room.roomId,
+                        full_page_thread_id: destination === "expanded thread" ? next.rootEvent.getId() : undefined,
+                        event_id: incoming.getId(),
+                        highlighted: true,
+                        scroll_into_view: true,
+                        metricsTrigger: undefined,
+                    }),
+                );
+                expect(oldView).not.toBeInTheDocument();
+                expect(stores.roomViewStore.getInitialEventId()).toBe(incoming.getId());
+                expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ViewRoom }));
+                await act(async () => deferred.resolve(incoming));
+                expect(stores.roomViewStore.getInitialEventId()).toBe(incoming.getId());
+                expect(stores.roomViewStore.getFullPageThreadId()).toBe(
+                    destination === "expanded thread" ? next.rootEvent.getId() : null,
+                );
+                if (destination === "expanded thread") {
+                    expect(stores.rightPanelStore.currentCardForRoom(room.roomId).state?.initialEvent).toBe(incoming);
+                } else {
+                    expect(dispatch).toHaveBeenCalledWith(
+                        expect.objectContaining({ action: Action.ShowThread, initialEvent: incoming }),
+                    );
+                }
+                for (const [payload] of dispatch.mock.calls) {
+                    if (payload.action === Action.ViewRoom)
+                        expect((payload as ViewRoomPayload).event_id).toBe(incoming.getId());
+                }
+                dispatch.mockRestore();
+                find.mockRestore();
+            },
+        );
+
+        it.each(["collapse", "unmount", "same-thread-return"])(
+            "should drop stale root fetches after %s",
+            async (destination) => {
+                const { unmount } = await mountRoomView();
+                const first = Promise.withResolvers<MatrixEvent | null>();
+                const second = Promise.withResolvers<MatrixEvent | null>();
+                vi.spyOn(EventUtils, "fetchInitialEvent")
+                    .mockReturnValueOnce(first.promise)
+                    .mockReturnValue(second.promise);
+                const cards = vi.spyOn(stores.rightPanelStore, "setCards");
+                await expand("$missing");
+                if (destination === "unmount") unmount();
+                else
+                    await act(() =>
+                        stores.roomViewStore.viewRoom({
+                            action: Action.ViewRoom,
+                            room_id: room.roomId,
+                            metricsTrigger: undefined,
+                        }),
+                    );
+                if (destination === "same-thread-return") await expand("$missing");
+                await act(async () => first.resolve(root));
+                expect(cards).not.toHaveBeenCalled();
+                expect(screen.queryByText("Couldn't load this thread.")).toBeNull();
+                await act(async () => second.resolve(null));
+                cards.mockRestore();
+            },
+        );
+
+        it.each([RightPanelPhases.RoomSummary, RightPanelPhases.MemberList, RightPanelPhases.ThreadPanel])(
+            "should collapse when the displayed card changes to %s",
+            async (phase) => {
+                await mountRoomView();
+                await expand();
+                act(() => stores.rightPanelStore.setCard({ phase }, true, room.roomId));
+                await waitFor(() => expect(stores.roomViewStore.getFullPageThreadId()).toBeNull());
+                expect(screen.getByTestId("timeline")).toBeVisible();
+                expect(stores.rightPanelStore.currentCardForRoom(room.roomId).phase).toBe(phase);
+            },
+        );
+
+        it("should route a linked reply into the expanded card and update an already displayed reply", async () => {
+            const thread = room.getThread(root.getId()!)!;
+            const replies = thread.events.filter((event) => !event.isThreadRoot);
+            const first = replies[0];
+            const next = replies[1];
+            expect(next).toBeDefined();
+            await mountRoomView();
+            const dispatch = vi.spyOn(defaultDispatcher, "dispatch");
+            await expand(root.getId()!, first.getId());
+            expect(stores.rightPanelStore.currentCardForRoom(room.roomId).state).toMatchObject({
+                initialEvent: first,
+                isInitialEventHighlighted: true,
+            });
+            await expand(root.getId()!, next.getId());
+            expect(stores.rightPanelStore.currentCardForRoom(room.roomId).state?.initialEvent).toBe(next);
+            expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ShowThread }));
+            dispatch.mockRestore();
+        });
+
+        it("should show the load error for a redacted root", async () => {
+            await mountRoomView();
+            vi.spyOn(root, "isRedacted").mockReturnValue(true);
+            await expand();
+            expect(screen.getByText("Couldn't load this thread.")).toBeVisible();
+            expect(screen.queryByRole("button", { name: "Collapse thread" })).toBeNull();
+        });
+
+        it("should keep video rooms in the call split", async () => {
+            const ref = createRef<RoomView>();
+            room.isElementVideoRoom = () => true;
+            await SettingsStore.setValue("feature_video_rooms", null, SettingLevel.DEVICE, true);
+            await mountRoomView(ref);
+            await expand();
+            expect(ref.current!.state.mainSplitContentType).toBe(MainSplitContentType.Call);
+            expect(screen.queryByRole("button", { name: "Expand thread" })).toBeNull();
+        });
+
+        it("should give calls precedence over an expanded thread", async () => {
+            const ref = createRef<RoomView>();
+            await mountRoomView(ref);
+            const call = vi.spyOn(stores.roomViewStore, "isViewingCall").mockReturnValue(true);
+            await expand();
+            expect(ref.current!.state.mainSplitContentType).toBe(MainSplitContentType.Call);
+            expect(screen.queryByRole("button", { name: "Collapse thread" })).toBeNull();
+            call.mockRestore();
+        });
+    });
 
     it("gets a room view store from MultiRoomViewStore when given a room ID", async () => {
         stores.multiRoomViewStore.getRoomViewStoreForRoom = vi.fn().mockReturnValue(stores.roomViewStore);

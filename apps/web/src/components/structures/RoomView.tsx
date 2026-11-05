@@ -19,6 +19,7 @@ import React, {
     useEffect,
 } from "react";
 import classNames from "classnames";
+import { Button, Text } from "@vector-im/compound-web";
 import {
     type IRecommendedVersion,
     NotificationCountType,
@@ -64,6 +65,10 @@ import defaultDispatcher from "../../dispatcher/dispatcher";
 import * as Rooms from "../../Rooms";
 import MainSplit from "./MainSplit";
 import RightPanel from "./RightPanel";
+import ThreadView from "./ThreadView";
+import Spinner from "../views/elements/Spinner";
+import { getFullPageThreadCard } from "../../utils/fullPageThread";
+import { type IRightPanelCard } from "../../stores/right-panel/RightPanelStoreIPanelState";
 import RoomScrollStateStore, { type ScrollState } from "../../stores/RoomScrollStateStore";
 import WidgetEchoStore from "../../stores/WidgetEchoStore";
 import SettingsStore from "../../settings/SettingsStore";
@@ -276,6 +281,10 @@ export interface IRoomState {
     rejecting?: boolean;
     hasPinnedWidgets?: boolean;
     mainSplitContentType: MainSplitContentType;
+    /** The expanded thread's root could not be loaded. */
+    fullPageThreadError?: boolean;
+    /** A snapshot makes card changes visible to shouldComponentUpdate, even when the split mode is unchanged. */
+    fullPageThreadCard?: IRightPanelCard | null;
     // whether or not a spaces context switch brought us here,
     // if it did we don't want the room to be marked as read as soon as it is loaded.
     wasContextSwitch?: boolean;
@@ -431,6 +440,14 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
     private dispatcherRef?: string;
     private settingWatchers: string[] = [];
 
+    /** Whether a matching card has been shown since fullPageThreadId last changed. */
+    private fullPageThreadCardSeen = false;
+    /** fullPageThreadId seen at the last store update. */
+    private lastFullPageThreadId: string | null = null;
+    /** One root fetch per expanded destination; a new destination invalidates older requests. */
+    private fullPageThreadRequest?: { threadId: string };
+    /** Reply resolution can fetch its root too; keep failures and stale results scoped to that destination. */
+    private fullPageInitialEventRequest?: { eventId: string; status: "pending" | "resolved" | "failed" };
     private unmounted = false;
     private permalinkCreators: Record<string, RoomPermalinkCreator> = {};
 
@@ -604,6 +621,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         if (this.roomViewStore.isViewingCall() || isVideoRoom(room)) {
             return MainSplitContentType.Call;
         }
+        if (this.roomViewStore.getFullPageThreadId() !== null) {
+            return MainSplitContentType.Thread;
+        }
         if (this.context.widgetLayoutStore.hasMaximisedWidget(room)) {
             return MainSplitContentType.MaximisedWidget;
         }
@@ -629,6 +649,19 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             // that if the current room ID has changed from what we thought
             // it was, it means we're about to be unmounted.
             return;
+        }
+        const fullPageThreadId = this.roomViewStore.getFullPageThreadId();
+        if (fullPageThreadId !== this.lastFullPageThreadId) {
+            this.lastFullPageThreadId = fullPageThreadId;
+            this.fullPageThreadCardSeen = false;
+            this.fullPageThreadRequest = undefined;
+            this.fullPageInitialEventRequest = undefined;
+            const room = this.context.client?.getRoom(this.roomViewStore.getRoomId() ?? undefined);
+            this.setState({
+                fullPageThreadError: false,
+                fullPageThreadCard: this.getFullPageThreadCardSnapshot(),
+                mainSplitContentType: room ? this.getMainSplitContentType(room) : this.state.mainSplitContentType,
+            });
         }
         const roomViewStore = this.roomViewStore;
         const roomId = roomViewStore.getRoomId() ?? null;
@@ -675,7 +708,13 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         }
 
         const initialEventId = this.roomViewStore.getInitialEventId() ?? this.state.initialEventId;
-        if (initialEventId) {
+        if (this.fullPageInitialEventRequest?.eventId !== initialEventId) {
+            this.fullPageInitialEventRequest = undefined;
+        }
+        if (
+            initialEventId &&
+            (!this.fullPageInitialEventRequest || this.fullPageInitialEventRequest.status === "resolved")
+        ) {
             let initialEvent = room?.findEventById(initialEventId);
             // The event does not exist in the current sync data
             // We need to fetch it to know whether to route this request
@@ -686,8 +725,26 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             // The rest will be lost for now, until the aggregation API on the server
             // becomes available to fetch a whole thread
             if (!initialEvent && this.context.client && roomId) {
-                initialEvent = (await fetchInitialEvent(this.context.client, roomId, initialEventId)) ?? undefined;
-                if (this.unmounted) return;
+                const request: typeof this.fullPageInitialEventRequest = fullPageThreadId
+                    ? (this.fullPageInitialEventRequest = { eventId: initialEventId, status: "pending" })
+                    : undefined;
+                try {
+                    initialEvent = (await fetchInitialEvent(this.context.client, roomId, initialEventId)) ?? undefined;
+                    if (request) request.status = "resolved";
+                } catch (error) {
+                    if (!request) throw error;
+                    logger.warn("Couldn't fetch expanded thread reply", error);
+                    request.status = "failed";
+                }
+                if (
+                    this.unmounted ||
+                    (request && this.fullPageInitialEventRequest !== request) ||
+                    this.roomViewStore.getRoomId() !== roomId ||
+                    this.roomViewStore.getFullPageThreadId() !== fullPageThreadId ||
+                    this.roomViewStore.getInitialEventId() !== initialEventId
+                )
+                    return;
+                if (request?.status === "failed") newState.fullPageThreadError = true;
             }
 
             // If we have an initial event, we want to reset the event pixel offset to ensure it ends up visible
@@ -697,17 +754,33 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
             // Handle the use case of a link to a thread message
             // ie: #/room/roomId/eventId (eventId of a thread message)
             if (thread?.rootEvent && !initialEvent?.isThreadRoot) {
-                defaultDispatcher.dispatch<ShowThreadPayload>({
-                    action: Action.ShowThread,
-                    rootEvent: thread.rootEvent,
-                    initialEvent,
-                    highlighted: this.roomViewStore.isInitialEventHighlighted(),
-                    scroll_into_view: this.roomViewStore.initialEventScrollIntoView(),
-                });
-            } else {
+                if (room && thread.id === fullPageThreadId) {
+                    void this.showFullPageThread(room, thread.id, initialEvent);
+                } else {
+                    defaultDispatcher.dispatch<ShowThreadPayload>({
+                        action: Action.ShowThread,
+                        rootEvent: thread.rootEvent,
+                        initialEvent,
+                        highlighted: this.roomViewStore.isInitialEventHighlighted(),
+                        scroll_into_view: this.roomViewStore.initialEventScrollIntoView(),
+                    });
+                }
+            } else if (this.fullPageInitialEventRequest?.status !== "failed") {
                 newState.initialEventId = initialEventId;
                 newState.isInitialEventHighlighted = this.roomViewStore.isInitialEventHighlighted();
                 newState.initialEventScrollIntoView = this.roomViewStore.initialEventScrollIntoView();
+            }
+        }
+
+        if (
+            room &&
+            fullPageThreadId &&
+            (!this.fullPageInitialEventRequest || this.fullPageInitialEventRequest.status === "resolved")
+        ) {
+            if (getFullPageThreadCard(this.context.rightPanelStore, room.roomId, fullPageThreadId)) {
+                this.fullPageThreadCardSeen = true;
+            } else {
+                void this.showFullPageThread(room, fullPageThreadId);
             }
         }
 
@@ -789,12 +862,14 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         if (
             room &&
             this.getMainSplitContentType(room) !== MainSplitContentType.Timeline &&
+            this.getMainSplitContentType(room) !== MainSplitContentType.Thread &&
             newState.initialEventId !== this.state.initialEventId
         ) {
             // Ensure the right panel timeline is open to show the linked event
             this.context.rightPanelStore.setCard({ phase: RightPanelPhases.Timeline }, true, room.roomId);
         }
 
+        newState.fullPageThreadCard = this.getFullPageThreadCardSnapshot();
         this.setState(newState as IRoomState);
         // At this point, newState.roomId could be null (e.g. the alias might not
         // have been resolved yet) so anything called here must handle this case.
@@ -1139,9 +1214,112 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         if (this.props.roomId) this.context.multiRoomViewStore.removeRoomViewStore(this.props.roomId);
     }
 
+    /** Preserve the snapshot reference until a card value changes, since the panel mutates its card in place. */
+    private getFullPageThreadCardSnapshot(): IRightPanelCard | null {
+        const roomId = this.roomViewStore.getRoomId();
+        const card = roomId
+            ? getFullPageThreadCard(this.context.rightPanelStore, roomId, this.roomViewStore.getFullPageThreadId())
+            : null;
+        if (!card) return null;
+        const previous = this.state.fullPageThreadCard;
+        if (previous?.phase === card.phase && !objectHasDiff(previous.state ?? {}, card.state ?? {})) return previous;
+        return { ...card, state: { ...card.state } };
+    }
+
+    /** Make the room's thread card show this thread, fetching its root if needed. */
+    private async showFullPageThread(room: Room, threadId: string, initialEvent?: MatrixEvent): Promise<void> {
+        const panel = this.context.rightPanelStore;
+        const matchingCard = getFullPageThreadCard(panel, room.roomId, threadId);
+        if (matchingCard) {
+            this.fullPageThreadCardSeen = true;
+            // A new reply link can target the card already being displayed.
+            if (
+                initialEvent &&
+                (matchingCard.state?.initialEvent !== initialEvent ||
+                    matchingCard.state?.initialEventScrollIntoView !==
+                        this.roomViewStore.initialEventScrollIntoView() ||
+                    matchingCard.state?.isInitialEventHighlighted !== this.roomViewStore.isInitialEventHighlighted())
+            ) {
+                panel.setCard(
+                    {
+                        ...matchingCard,
+                        state: {
+                            ...matchingCard.state,
+                            initialEvent,
+                            isInitialEventHighlighted: this.roomViewStore.isInitialEventHighlighted(),
+                            initialEventScrollIntoView: this.roomViewStore.initialEventScrollIntoView(),
+                        },
+                    },
+                    true,
+                    room.roomId,
+                );
+            }
+            return;
+        }
+        if (this.fullPageThreadCardSeen || this.fullPageThreadRequest?.threadId === threadId) return;
+        const request = (this.fullPageThreadRequest = { threadId });
+        let threadHeadEvent = room.findEventById(threadId);
+        try {
+            threadHeadEvent ??= (await fetchInitialEvent(this.context.client!, room.roomId, threadId)) ?? undefined;
+        } catch (error) {
+            logger.warn("Couldn't fetch expanded thread", error);
+        }
+        if (
+            this.unmounted ||
+            this.fullPageThreadRequest !== request ||
+            this.roomViewStore.getRoomId() !== room.roomId ||
+            this.roomViewStore.getFullPageThreadId() !== threadId
+        )
+            return;
+        if (!threadHeadEvent || threadHeadEvent.isRedacted()) {
+            logger.warn("Couldn't load expanded thread", threadId);
+            this.setState({ fullPageThreadError: true });
+            return;
+        }
+        panel.setCards(
+            [
+                { phase: RightPanelPhases.ThreadPanel },
+                {
+                    phase: RightPanelPhases.ThreadView,
+                    state: {
+                        threadHeadEvent,
+                        initialEvent,
+                        isInitialEventHighlighted: this.roomViewStore.isInitialEventHighlighted(),
+                        initialEventScrollIntoView: this.roomViewStore.initialEventScrollIntoView(),
+                    },
+                },
+            ],
+            true,
+            room.roomId,
+        );
+        this.fullPageThreadCardSeen = true;
+    }
+
+    private onFullPageThreadClose = (): void => {
+        this.context.rightPanelStore.togglePanel(this.state.roomId ?? null);
+    };
+
+    private onFullPageThreadBackToRoom = (): void => {
+        defaultDispatcher.dispatch<ViewRoomPayload>({
+            action: Action.ViewRoom,
+            room_id: this.state.roomId,
+            metricsTrigger: undefined,
+        });
+    };
+
     private onRightPanelStoreUpdate = (): void => {
-        const { roomId } = this.state;
+        const { roomId, room } = this.state;
+        const threadId = this.roomViewStore.getFullPageThreadId();
+        if (roomId && threadId && this.roomViewStore.getRoomId() === roomId) {
+            if (getFullPageThreadCard(this.context.rightPanelStore, roomId, threadId)) {
+                this.fullPageThreadCardSeen = true;
+            } else if (this.fullPageThreadCardSeen && this.lastFullPageThreadId === threadId) {
+                this.onFullPageThreadBackToRoom();
+            }
+        }
         this.setState({
+            fullPageThreadCard: this.getFullPageThreadCardSnapshot(),
+            mainSplitContentType: room ? this.getMainSplitContentType(room) : this.state.mainSplitContentType,
             showRightPanel: roomId ? this.context.rightPanelStore.isOpenForRoom(roomId) : false,
         });
     };
@@ -1487,6 +1665,7 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
 
         if (
             this.getMainSplitContentType(room) !== MainSplitContentType.Timeline &&
+            this.getMainSplitContentType(room) !== MainSplitContentType.Thread &&
             this.context.roomNotificationStateStore.getRoomState(room).isUnread
         ) {
             // Automatically open the chat panel to make unread messages easier to discover
@@ -2637,7 +2816,11 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         }
 
         const showRightPanel =
-            !this.props.hideRightPanel && !isRoomEncryptionLoading && this.state.room && this.state.showRightPanel;
+            !this.props.hideRightPanel &&
+            !isRoomEncryptionLoading &&
+            this.state.room &&
+            this.state.showRightPanel &&
+            this.state.mainSplitContentType !== MainSplitContentType.Thread;
 
         const rightPanel = showRightPanel ? (
             <RightPanel
@@ -2656,14 +2839,16 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         });
 
         let { mainSplitContentType } = this.state;
-        if (this.state.search) {
+        if (this.state.search && mainSplitContentType !== MainSplitContentType.Thread) {
             // When in the middle of a search force the main split content type to timeline
             mainSplitContentType = MainSplitContentType.Timeline;
         }
 
         const mainClasses = classNames("mx_RoomView", {
             mx_RoomView_inCall: Boolean(activeCall),
-            mx_RoomView_immersive: mainSplitContentType !== MainSplitContentType.Timeline,
+            mx_RoomView_immersive:
+                mainSplitContentType !== MainSplitContentType.Timeline &&
+                mainSplitContentType !== MainSplitContentType.Thread,
         });
 
         const showChatEffects = SettingsStore.getValue("showChatEffects");
@@ -2692,6 +2877,36 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                     </RoomUploadContextProvider>
                 );
                 break;
+            case MainSplitContentType.Thread: {
+                mainSplitContentClassName = "mx_MainSplit_thread";
+                const threadId = this.roomViewStore.getFullPageThreadId();
+                const card = this.state.fullPageThreadCard;
+                mainSplitBody = card ? (
+                    <RoomUploadContextProvider>
+                        <ThreadView
+                            key={threadId}
+                            fullPage
+                            room={this.state.room}
+                            mxEvent={card.state!.threadHeadEvent!}
+                            initialEvent={card.state?.initialEvent}
+                            isInitialEventHighlighted={card.state?.isInitialEventHighlighted}
+                            initialEventScrollIntoView={card.state?.initialEventScrollIntoView}
+                            resizeNotifier={this.context.resizeNotifier}
+                            permalinkCreator={this.permalinkCreator}
+                            e2eStatus={this.state.e2eStatus}
+                            onClose={this.onFullPageThreadClose}
+                        />
+                    </RoomUploadContextProvider>
+                ) : this.state.fullPageThreadError ? (
+                    <div className="mx_RoomView_threadError">
+                        <Text as="p">{_t("threads|full_page_load_error")}</Text>
+                        <Button onClick={this.onFullPageThreadBackToRoom}>{_t("threads|back_to_room")}</Button>
+                    </div>
+                ) : (
+                    <Spinner />
+                );
+                break;
+            }
             case MainSplitContentType.MaximisedWidget:
                 mainSplitContentClassName = "mx_MainSplit_maximisedWidget";
                 mainSplitBody = (
@@ -2726,7 +2941,10 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
         let sizeKey: string | undefined;
         let defaultSize: number | undefined;
         let analyticsRoomType: ComponentProps<typeof MainSplit>["analyticsRoomType"] = "other_room";
-        if (this.state.mainSplitContentType !== MainSplitContentType.Timeline) {
+        if (
+            this.state.mainSplitContentType !== MainSplitContentType.Timeline &&
+            this.state.mainSplitContentType !== MainSplitContentType.Thread
+        ) {
             // Override defaults for video rooms where more space is needed for the chat timeline
             sizeKey = "wide";
             defaultSize = 420;

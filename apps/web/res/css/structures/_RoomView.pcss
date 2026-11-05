@@ -224,3 +224,16 @@ Please see LICENSE files in the repository root for full details.
         min-height: 42px;
     }
 }
+
+/* The thread card occupies the room area while its right panel is hidden. */
+.mx_MainSplit_thread .mx_ThreadView {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+.mx_RoomView_threadError {
+    margin: auto;
+    padding: var(--cpd-space-4x);
+    text-align: center;
+}

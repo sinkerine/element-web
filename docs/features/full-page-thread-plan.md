@@ -338,6 +338,12 @@ classes live) adds `.mx_MainSplit_thread .mx_ThreadView { flex: 1; min-height: 0
 `expand_thread` "Expand thread", `collapse_thread` "Collapse thread", `full_page_load_error` "Couldn't load this
 thread.", `back_to_room` "Back to room".
 
+T2 implementation ruling (supervisor, 2026-11-05): a new reply deep link also updates a matching card's initial-event
+flags. A toggle clears consumed initial-event card state so the saved viewport wins, and hands focus to the replacement
+ThreadView after mount. Root resolution is guarded per destination (including returning to the same thread) to prevent
+repeat fetches and stale results. RoomView also snapshots the matching card in state, because its shallow
+shouldComponentUpdate otherwise misses card arrival and new reply targets while the panel is already open.
+
 ### 2.5 Error handling
 
 - **Unknown, redacted or forbidden root on URL load:** an inline error with "Back to room". No automatic redirect, so

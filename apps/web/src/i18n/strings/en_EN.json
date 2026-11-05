@@ -3315,12 +3315,16 @@
     "threads": {
         "all_threads": "All threads",
         "all_threads_description": "Shows all threads from current room",
+        "back_to_room": "Back to room",
+        "collapse_thread": "Collapse thread",
         "count_of_reply": {
             "one": "%(count)s reply",
             "other": "%(count)s replies"
         },
         "empty_description": "Use “%(replyInThread)s” when hovering over a message.",
         "empty_title": "Threads help keep your conversations on-topic and easy to track.",
+        "expand_thread": "Expand thread",
+        "full_page_load_error": "Couldn't load this thread.",
         "mark_all_read": "Mark all as read",
         "my_threads": "My threads",
         "my_threads_description": "Shows all threads you've participated in",
