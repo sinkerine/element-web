@@ -5,7 +5,8 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import { JoinRule, type MatrixClient, type Room, RoomEvent, RoomType } from "matrix-js-sdk/src/matrix";
+import throttle from "lodash/throttle";
+import { ClientEvent, JoinRule, type MatrixClient, type Room, RoomEvent, RoomType } from "matrix-js-sdk/src/matrix";
 import {
     BaseViewModel,
     type RoomListHeaderViewSnapshot,
@@ -13,6 +14,10 @@ import {
     type SortOption,
 } from "@element-hq/web-shared-components";
 
+import Modal from "../../Modal";
+import ErrorDialog from "../../components/views/dialogs/ErrorDialog";
+import { _t } from "../../languageHandler";
+import { getRoomsToMarkAsRead, hasRoomsToMarkAsRead, markRoomsAsRead } from "../../utils/notifications";
 import defaultDispatcher from "../../dispatcher/dispatcher";
 import PosthogTrackers from "../../PosthogTrackers";
 import { Action } from "../../dispatcher/actions";
@@ -59,8 +64,36 @@ export class RoomListHeaderViewModel
      */
     private activeSpace: Room | null;
 
+    private readonly unreadNotificationRooms = new Map<string, Room>();
+
     public constructor(props: Props) {
         super(props, getInitialSnapshot(props.spaceStore, props.matrixClient));
+
+        // Scan all joined rooms, including muted rooms and rooms hidden by the active space or filters.
+        for (const event of [RoomEvent.Timeline, RoomEvent.Receipt, RoomEvent.AccountData, RoomEvent.MyMembership]) {
+            this.disposables.trackListener(props.matrixClient, event, this.onUnreadStateMaybeChanged);
+        }
+        // Disposables accepts untyped emitters; the SDK defines the arguments for these client events.
+        this.disposables.trackListener(
+            props.matrixClient,
+            ClientEvent.Room,
+            this.onRoomAdded as (...args: unknown[]) => void,
+        );
+        this.disposables.trackListener(
+            props.matrixClient,
+            ClientEvent.DeleteRoom,
+            this.onRoomDeleted as (...args: unknown[]) => void,
+        );
+        // The SDK emits count-only updates on rooms without forwarding them to the client.
+        for (const room of props.matrixClient.getRooms()) {
+            this.attachRoomUnreadListener(room);
+        }
+        this.disposables.track(() => {
+            for (const roomId of this.unreadNotificationRooms.keys()) {
+                this.detachRoomUnreadListener(roomId);
+            }
+        });
+        this.disposables.track(() => this.onUnreadStateMaybeChanged.cancel());
 
         // Listen for video rooms feature flag changes
         const settingsFeatureVideoRef = SettingsStore.watchSetting(
@@ -148,6 +181,62 @@ export class RoomListHeaderViewModel
             areSectionsEnabled: SettingsStore.getValue("RoomList.showSections"),
         });
     };
+
+    private attachRoomUnreadListener(room: Room): void {
+        this.detachRoomUnreadListener(room.roomId);
+        // Track the current rooms only, so replacements and deletions do not accumulate disposables.
+        room.on(RoomEvent.UnreadNotifications, this.onUnreadStateMaybeChanged);
+        this.unreadNotificationRooms.set(room.roomId, room);
+    }
+
+    private detachRoomUnreadListener(roomId: string): void {
+        this.unreadNotificationRooms.get(roomId)?.off(RoomEvent.UnreadNotifications, this.onUnreadStateMaybeChanged);
+        this.unreadNotificationRooms.delete(roomId);
+    }
+
+    private readonly onRoomAdded = (room: Room): void => {
+        this.attachRoomUnreadListener(room);
+        this.onUnreadStateMaybeChanged();
+    };
+
+    private readonly onRoomDeleted = (roomId: string): void => {
+        this.detachRoomUnreadListener(roomId);
+        this.onUnreadStateMaybeChanged();
+    };
+
+    private readonly onUnreadStateMaybeChanged = throttle(
+        (): void => {
+            this.snapshot.merge({ canMarkAllAsRead: hasRoomsToMarkAsRead(this.props.matrixClient) });
+        },
+        500,
+        { leading: true, trailing: true },
+    );
+
+    public markAllAsRead = (): void => {
+        if (this.snapshot.current.isMarkingAllAsRead) return;
+        const rooms = getRoomsToMarkAsRead(this.props.matrixClient);
+        if (rooms.length === 0) return;
+        void this.runMarkAllAsRead(rooms);
+    };
+
+    /** Mark the rooms selected at click time and report failures after all requests finish. */
+    private async runMarkAllAsRead(rooms: Room[]): Promise<void> {
+        this.snapshot.merge({ isMarkingAllAsRead: true });
+        try {
+            const result = await markRoomsAsRead(rooms, this.props.matrixClient);
+            if (result.failed.length > 0 && !this.isDisposed) {
+                Modal.createDialog(ErrorDialog, {
+                    title: _t("room_list|mark_all_read_error|title"),
+                    description: _t("room_list|mark_all_read_error|description", { count: result.failed.length }),
+                });
+            }
+        } finally {
+            this.snapshot.merge({
+                isMarkingAllAsRead: false,
+                canMarkAllAsRead: hasRoomsToMarkAsRead(this.props.matrixClient),
+            });
+        }
+    }
 
     public createChatRoom = (e: Event): void => {
         defaultDispatcher.fire(Action.CreateChat);
@@ -292,6 +381,8 @@ function getInitialSnapshot(spaceStore: SpaceStore, matrixClient: MatrixClient):
     return {
         activeSortOption,
         isMessagePreviewEnabled,
+        canMarkAllAsRead: hasRoomsToMarkAsRead(matrixClient),
+        isMarkingAllAsRead: false,
         ...computeHeaderSpaceState(spaceStore, matrixClient),
     };
 }
@@ -323,7 +414,10 @@ function getCanCreateVideoRoom(canCreateRoom: boolean): boolean {
 function computeHeaderSpaceState(
     spaceStore: SpaceStore,
     matrixClient: MatrixClient,
-): Omit<RoomListHeaderViewSnapshot, "activeSortOption" | "isMessagePreviewEnabled"> {
+): Omit<
+    RoomListHeaderViewSnapshot,
+    "activeSortOption" | "isMessagePreviewEnabled" | "canMarkAllAsRead" | "isMarkingAllAsRead"
+> {
     const displaySectionReleaseAnnouncement =
         ReleaseAnnouncementStore.instance.getReleaseAnnouncement() === "room_list_section";
     const areSectionsEnabled = SettingsStore.getValue("RoomList.showSections");

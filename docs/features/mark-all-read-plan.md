@@ -60,8 +60,8 @@ Gaps in `clearAllNotifications` that the new action must not inherit:
 6. **Effect per room.** Each selected room gets exactly what the existing per-room "Mark as read" does
    (`clearRoomNotification`): `m.marked_unread` cleared, one unthreaded receipt of the user's chosen privacy on the
    latest live event (which also clears every thread), local counts zeroed. After a successful run every room in the
-   list (all sections, all spaces) shows no badge, dot or bold name, the space panel badges clear, and the Unread filter
-   shows only invites or its empty state.
+   list (all sections, all spaces) shows no badge, dot or bold name, the space panel badges for joined-room activity
+   clear (outstanding invites retain their badges), and the Unread filter shows only invites or its empty state.
 7. **Rate.** At most 10 rooms are processed at once.
 8. **Failure.** A failed room does not stop the others. If any room fails, an error dialog titled "Couldn't mark all
    rooms as read" says "%(count)s rooms could not be marked as read. Check your connection and try again." and each
@@ -214,11 +214,15 @@ markAllAsRead: () => void;
 - Initial snapshot: `canMarkAllAsRead: hasRoomsToMarkAsRead(matrixClient)`, `isMarkingAllAsRead: false`.
   `computeHeaderSpaceState`'s `Omit<…>` grows to exclude the two new fields.
 - Keeping `canMarkAllAsRead` current: `this.disposables.trackListener(matrixClient, event, this.onUnreadStateMaybeChanged)`
-  for `RoomEvent.Timeline`, `RoomEvent.Receipt`, `RoomEvent.UnreadNotifications`, `RoomEvent.AccountData`,
-  `RoomEvent.MyMembership`, `ClientEvent.Room` and `ClientEvent.DeleteRoom`. The handler is a lodash `throttle`
-  (500 ms, leading and trailing) that runs `this.snapshot.merge({ canMarkAllAsRead: hasRoomsToMarkAsRead(cli) })`;
+  for `RoomEvent.Timeline`, `RoomEvent.Receipt`, `RoomEvent.AccountData` and `RoomEvent.MyMembership`, which the SDK
+  forwards to the client. `RoomEvent.UnreadNotifications` is emitted only on each `Room`; neither SDK sync forwarding
+  list includes it. Subscribe directly on every existing room, keep a map keyed by room ID, and attach/detach on
+  `ClientEvent.Room` / `ClientEvent.DeleteRoom`. Replacing a room detaches the old instance first; repeated additions
+  keep one listener. Track one cleanup that detaches all remaining rooms, without accumulating per-room disposables.
+  Room additions/deletions also trigger the global scan. The shared handler is a lodash `throttle` (500 ms, leading
+  and trailing) that runs `this.snapshot.merge({ canMarkAllAsRead: hasRoomsToMarkAsRead(cli) })`;
   `disposables.track(() => handler.cancel())`. `RoomNotificationStateStore`'s global summary is not used because it
-  ignores muted rooms and low-priority activity.
+  ignores muted rooms and low-priority activity. No SDK patch is needed for these subscriptions.
 - Action:
 
 ```ts
@@ -323,7 +327,10 @@ files; no `export default`; i18n via `pnpm i18n`; feature on by default with no 
 - Produces: the user-facing feature.
 - Depends on: T1, T2.
 - Tests cover: initial `canMarkAllAsRead` true/false; becomes true after a `RoomEvent.Timeline` /
-  `RoomEvent.AccountData` emit (fake timers, throttle); `markAllAsRead` calls `markRoomsAsRead` with the rooms selected
+  `RoomEvent.AccountData` emit (fake timers, throttle); real `Room` total/highlight setters for both room and thread
+  count-only updates enable and disable within 500 ms, without synthetic client unread events; room addition,
+  deletion, replacement, duplicate addition and disposal attach/detach listeners and cancel pending throttled work;
+  `markAllAsRead` calls `markRoomsAsRead` with the rooms selected
   at click time; nothing sent when no room needs marking; `isMarkingAllAsRead` true during the run and false after;
   error dialog when `failed` is non-empty, none otherwise; second call while running is ignored; listeners and
   throttle removed on dispose.
@@ -369,12 +376,16 @@ Journey:
 3. Click it. Expected: no dialog opens; the button is disabled once the run ends; no error dialog.
 4. Clear the filter. Expected: "dm room", "low prio room", "thread room", "flagged room" show no badge or dot and no
    bold name; the Low Priority section header has no badge; "invite room" still shows as an invite.
-5. Apply the **Unread** filter. Expected: only "invite room" listed.
-6. Space panel: Home and space S show no badge. Open space S. Expected: "space room" shows no badge; the header
-   button is disabled here too.
+5. Return to the Home page to deselect the current room, then apply the **Unread** filter. Expected: only "invite room"
+   listed. The list otherwise intentionally retains the current room under Unread.
+6. Space panel: Home retains a badge of 1 for the excluded invite; space S shows no badge. Open space S. Expected:
+   "space room" shows no badge; the header button is disabled here too.
 7. Open "thread room" threads panel. Expected: the thread is read.
 8. Change "muted room" notifications back to the default. Expected: it shows no badge (its receipt was sent).
 9. `saveAndReload()`. Expected: everything from steps 4–8 is still read (receipts reached the server), and
    "invite room" is still an invite.
 10. Go back to Home. BotBob sends a message in "space room" (not visible from Home). Expected: within a few seconds the
     header button is enabled again.
+
+T3 E2E clarification (supervisor approved, 2026-11-05): preserve existing invite badges and current-room filter
+retention. The journey deselects the current room before inspecting Unread and expects Home’s remaining invite badge.

@@ -2163,6 +2163,13 @@
         "failed_remove_tag": "Failed to remove tag %(tagName)s from room",
         "failed_set_dm_tag": "Failed to set direct message tag",
         "list_title": "Room list",
+        "mark_all_read_error": {
+            "description": {
+                "one": "%(count)s room could not be marked as read. Check your connection and try again.",
+                "other": "%(count)s rooms could not be marked as read. Check your connection and try again."
+            },
+            "title": "Couldn't mark all rooms as read"
+        },
         "more_options": {
             "leave_room": "Leave room"
         },
