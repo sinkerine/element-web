@@ -115,6 +115,7 @@ describe("<SpacePanel />", () => {
         getClientWellKnown: vi.fn(),
         mxcUrlToHttp: vi.fn(),
         getRoom: vi.fn(),
+        getVisibleRooms: vi.fn().mockReturnValue([]),
         isGuest: vi.fn(),
         getAccountData: vi.fn(),
         on: vi.fn(),
@@ -135,7 +136,13 @@ describe("<SpacePanel />", () => {
     });
 
     beforeEach(() => {
-        sdkContext.spaceStore.enabledMetaSpaces.push(MetaSpace.Home, MetaSpace.Orphans, MetaSpace.VideoRooms);
+        sdkContext.spaceStore.enabledMetaSpaces.splice(
+            0,
+            sdkContext.spaceStore.enabledMetaSpaces.length,
+            MetaSpace.Home,
+            MetaSpace.Orphans,
+            MetaSpace.VideoRooms,
+        );
         vi.mocked(shouldShowComponent).mockClear().mockReturnValue(true);
     });
     afterEach(() => {
