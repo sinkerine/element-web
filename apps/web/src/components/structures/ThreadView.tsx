@@ -67,6 +67,7 @@ import {
     saveThreadScrollAnchor,
 } from "../../utils/threadScrollAnchors";
 import { UPDATE_EVENT } from "../../stores/AsyncStore";
+import { getFullPageThreadCard } from "../../utils/fullPageThread";
 
 interface IProps {
     room: Room;
@@ -100,7 +101,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
     public static contextType = RoomContext;
     declare public context: React.ContextType<typeof RoomContext>;
 
-    /** One toggle's focus handoff, cancelled if navigation changes its destination before mount. */
+    /** One layout transition's focus handoff, cancelled if its destination changes before mount. */
     private static pendingFocus?: { roomId: string; threadId: string; fullPage: boolean; cancel: () => void };
 
     /** Scroll position handed over from the ThreadView this one replaces. */
@@ -186,12 +187,20 @@ export default class ThreadView extends React.Component<IProps, IState> {
         ) {
             focus.cancel();
             // setupThread can mount the composer in this update when the root was not loaded before.
-            this.setState({}, () =>
-                dis.dispatch({
-                    action: Action.FocusSendMessageComposer,
-                    context: TimelineRenderingType.Thread,
-                }),
-            );
+            this.setState({}, () => {
+                const store = this.context.roomViewStore;
+                if (
+                    !store.isViewingCall() &&
+                    store.getRoomId() === focus.roomId &&
+                    store.getFullPageThreadId() === (focus.fullPage ? focus.threadId : null) &&
+                    getFullPageThreadCard(RightPanelStore.instance, focus.roomId, focus.threadId)
+                ) {
+                    dis.dispatch({
+                        action: Action.FocusSendMessageComposer,
+                        context: TimelineRenderingType.Thread,
+                    });
+                }
+            });
         }
     }
 
@@ -202,6 +211,17 @@ export default class ThreadView extends React.Component<IProps, IState> {
         SettingsStore.unwatchSetting(this.layoutWatcherRef);
 
         const hasRoomChanged = this.props.fullWindow || this.context.roomViewStore?.getRoomId() !== roomId;
+        if (
+            !hasRoomChanged &&
+            !ThreadView.pendingFocus &&
+            this.context.mainSplitContentType !== MainSplitContentType.Call &&
+            !this.context.roomViewStore.isViewingCall() &&
+            this.context.roomViewStore.getFullPageThreadId() === (this.props.fullPage ? null : this.eventId) &&
+            getFullPageThreadCard(RightPanelStore.instance, this.props.room.roomId, this.eventId)
+        ) {
+            // History navigation replaces the view without going through the header's toggle button.
+            this.prepareFocusHandoff(!this.props.fullPage);
+        }
         if (
             this.props.initialEvent &&
             !hasRoomChanged &&
@@ -421,28 +441,40 @@ export default class ThreadView extends React.Component<IProps, IState> {
         return { eventId: state.trackedScrollToken, pixelOffset: state.pixelOffset };
     }
 
-    /** Expand or collapse this thread, handing scroll and focus to the replacement view. */
-    private onToggleFullPage = (): void => {
+    /** Focus the replacement only while the room, thread card and target layout still match. */
+    private prepareFocusHandoff(fullPage: boolean): void {
         ThreadView.pendingFocus?.cancel();
-        saveThreadScrollAnchor(this.eventId, this.getScrollAnchor());
         const store = this.context.roomViewStore;
-        const fullPage = !this.props.fullPage;
+        if (store.isViewingCall()) return;
+        const panel = RightPanelStore.instance;
+        const roomId = this.props.room.roomId;
+        const threadId = this.eventId;
         const cancel = (): void => {
             store.off(UPDATE_EVENT, onStoreUpdate);
+            panel.off(UPDATE_EVENT, onStoreUpdate);
             ThreadView.pendingFocus = undefined;
-            clearThreadScrollAnchor(this.eventId);
+            clearThreadScrollAnchor(threadId);
         };
         const onStoreUpdate = (): void => {
             if (
-                store.getRoomId() !== this.props.room.roomId ||
-                store.getFullPageThreadId() !== (fullPage ? this.eventId : null)
+                store.getRoomId() !== roomId ||
+                store.isViewingCall() ||
+                store.getFullPageThreadId() !== (fullPage ? threadId : null) ||
+                !getFullPageThreadCard(panel, roomId, threadId)
             )
                 cancel();
         };
-        ThreadView.pendingFocus = { roomId: this.props.room.roomId, threadId: this.eventId, fullPage, cancel };
-        // This listener survives the outgoing view: cancel removes it on replacement mount or navigation away.
-        // oxlint-disable-next-line element-web/no-leaked-emitter-listener
+        ThreadView.pendingFocus = { roomId, threadId, fullPage, cancel };
+        // These listeners survive the outgoing view: replacement mount or navigation removes both.
         store.on(UPDATE_EVENT, onStoreUpdate);
+        panel.on(UPDATE_EVENT, onStoreUpdate);
+    }
+
+    /** Expand or collapse this thread, handing scroll and focus to the replacement view. */
+    private onToggleFullPage = (): void => {
+        this.prepareFocusHandoff(!this.props.fullPage);
+        saveThreadScrollAnchor(this.eventId, this.getScrollAnchor());
+        const fullPage = !this.props.fullPage;
 
         // A consumed permalink target must not override the viewport handed over by this toggle.
         const card = RightPanelStore.instance.currentCardForRoom(this.props.room.roomId);

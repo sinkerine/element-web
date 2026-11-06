@@ -96,8 +96,10 @@ test.describe("Full page thread", () => {
         await expanded();
         await page.goBack();
         await collapsed();
+        await expect(composer).toBeFocused();
         await page.goForward();
         await expanded();
+        await expect(composer).toBeFocused();
         await page.reload();
         await expanded();
         await expect(tile("Release on Thursday?")).toBeInViewport();

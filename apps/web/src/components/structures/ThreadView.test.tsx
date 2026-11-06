@@ -211,6 +211,7 @@ describe("ThreadView", () => {
                 state: { threadHeadEvent: rootEvent, initialEvent: rootEvent },
             };
             const currentCard = vi.spyOn(RightPanelStore.instance, "currentCardForRoom").mockReturnValue(card);
+            const open = vi.spyOn(RightPanelStore.instance, "isOpenForRoom").mockReturnValue(true);
             const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
             fireEvent.click(first.getByRole("button", { name: expanded ? "Collapse thread" : "Expand thread" }));
             expect(peekThreadScrollAnchor(rootEvent.getId()!)).toEqual({
@@ -248,10 +249,210 @@ describe("ThreadView", () => {
             replacement.unmount();
             scroll.mockRestore();
             currentCard.mockRestore();
+            open.mockRestore();
             dispatch.mockRestore();
             panelRender.mockRestore();
             expandedId.mockRestore();
             roomId.mockRestore();
+        },
+    );
+
+    it.each([false, true])("should focus after a history layout transition (expanded: %s)", async (expanded) => {
+        fullPage = expanded;
+        const store = SDKContextClass.instance.roomViewStore;
+        const panel = RightPanelStore.instance;
+        const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+        const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(expanded ? rootEvent.getId()! : null);
+        const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+        const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+            phase: RightPanelPhases.ThreadView,
+            state: { threadHeadEvent: rootEvent },
+        });
+        const storeListeners = store.listenerCount(UPDATE_EVENT);
+        const panelListeners = panel.listenerCount(UPDATE_EVENT);
+        const first = await getComponent();
+        const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+
+        expandedId.mockReturnValue(expanded ? null : rootEvent.getId()!);
+        first.unmount();
+        expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners + 1);
+        expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners + 1);
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.FocusSendMessageComposer }));
+        fullPage = !expanded;
+        const replacement = await getComponent();
+        expect(dispatch.mock.calls.filter(([payload]) => payload.action === Action.FocusSendMessageComposer)).toEqual([
+            [{ action: Action.FocusSendMessageComposer, context: TimelineRenderingType.Thread }],
+        ]);
+        replacement.unmount();
+        expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+        expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+        // Returning later to this layout must not consume a stale focus handoff.
+        const reopened = await getComponent();
+        expect(
+            dispatch.mock.calls.filter(([payload]) => payload.action === Action.FocusSendMessageComposer),
+        ).toHaveLength(1);
+        reopened.unmount();
+        dispatch.mockRestore();
+        card.mockRestore();
+        open.mockRestore();
+        expandedId.mockRestore();
+        roomId.mockRestore();
+    });
+
+    it.each(["room", "card", "closed panel", "thread", "full window", "call"])(
+        "should not hand focus to a thread after unrelated %s navigation",
+        async (destination) => {
+            fullPage = true;
+            mainSplitContentType = MainSplitContentType.Thread;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(destination !== "closed panel");
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: destination === "card" ? RightPanelPhases.RoomSummary : RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const first = await getComponent(undefined, destination === "full window");
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            roomId.mockReturnValue(destination === "room" ? "!another:example.org" : room.roomId);
+            expandedId.mockReturnValue(destination === "thread" ? "$another" : null);
+            viewingCall.mockReturnValue(destination === "call");
+            first.unmount();
+            roomId.mockReturnValue(room.roomId);
+            expandedId.mockReturnValue(null);
+            viewingCall.mockReturnValue(false);
+            fullPage = false;
+            const replacement = await getComponent();
+            expect(dispatch).not.toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+            );
+            replacement.unmount();
+            dispatch.mockRestore();
+            viewingCall.mockRestore();
+            card.mockRestore();
+            open.mockRestore();
+            expandedId.mockRestore();
+            roomId.mockRestore();
+        },
+    );
+
+    it.each(["room", "panel", "call"])(
+        "should cancel a history handoff when the %s changes before mount",
+        async (destination) => {
+            fullPage = true;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const storeListeners = store.listenerCount(UPDATE_EVENT);
+            const panelListeners = panel.listenerCount(UPDATE_EVENT);
+            const first = await getComponent();
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            expandedId.mockReturnValue(null);
+            first.unmount();
+            if (destination === "room") {
+                roomId.mockReturnValue("!another:example.org");
+                store.emit(UPDATE_EVENT);
+            } else if (destination === "panel") {
+                card.mockReturnValue({ phase: RightPanelPhases.RoomSummary });
+                panel.emit(UPDATE_EVENT);
+            } else {
+                viewingCall.mockReturnValue(true);
+                store.emit(UPDATE_EVENT);
+            }
+            expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+            expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+            roomId.mockReturnValue(room.roomId);
+            viewingCall.mockReturnValue(false);
+            card.mockReturnValue({ phase: RightPanelPhases.ThreadView, state: { threadHeadEvent: rootEvent } });
+            fullPage = false;
+            const replacement = await getComponent();
+            expect(dispatch).not.toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+            );
+            replacement.unmount();
+            dispatch.mockRestore();
+            viewingCall.mockRestore();
+            card.mockRestore();
+            open.mockRestore();
+            expandedId.mockRestore();
+            roomId.mockRestore();
+        },
+    );
+
+    it.each(["call before mount", "call", "room", "layout", "card"])(
+        "should recheck the destination before deferred focus after %s navigation",
+        async (destination) => {
+            fullPage = true;
+            mainSplitContentType = MainSplitContentType.Thread;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const storeListeners = store.listenerCount(UPDATE_EVENT);
+            const panelListeners = panel.listenerCount(UPDATE_EVENT);
+            const first = await getComponent();
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            expandedId.mockReturnValue(null);
+            first.unmount();
+            const navigate = (): void => {
+                if (destination.startsWith("call")) viewingCall.mockReturnValue(true);
+                else if (destination === "room") roomId.mockReturnValue("!another:example.org");
+                else if (destination === "layout") expandedId.mockReturnValue(rootEvent.getId()!);
+                else card.mockReturnValue({ phase: RightPanelPhases.RoomSummary });
+            };
+            if (destination === "call before mount") navigate();
+            const setState = React.Component.prototype.setState;
+            const deferredUpdate = vi.spyOn(ThreadView.prototype, "setState").mockImplementation(function (
+                this: ThreadView,
+                state,
+                callback,
+            ) {
+                if (callback && state && typeof state === "object" && Object.keys(state).length === 0) {
+                    return setState.call(this, state, () => {
+                        navigate();
+                        callback();
+                    });
+                }
+                return setState.call(this, state, callback);
+            });
+            let replacement: RenderResult | undefined;
+            try {
+                fullPage = false;
+                replacement = await getComponent();
+                expect(dispatch).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+                );
+                // Prevent unmount from preparing a reverse handoff for the simulated layout change.
+                viewingCall.mockReturnValue(true);
+                replacement.unmount();
+                expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+                expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+            } finally {
+                deferredUpdate.mockRestore();
+                viewingCall.mockReturnValue(true);
+                replacement?.unmount();
+                dispatch.mockRestore();
+                card.mockRestore();
+                open.mockRestore();
+                viewingCall.mockRestore();
+                expandedId.mockRestore();
+                roomId.mockRestore();
+            }
         },
     );
 

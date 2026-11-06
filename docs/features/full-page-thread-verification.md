@@ -66,4 +66,8 @@ Post-integration checks passed:
 
 A reproducible resize test defect discovered during integration was fixed without changing production code: a native browser drag now hits the separator and asserts an increased width rather than relying on a synthetic pointer at `(0, 0)`. The focused suite passed repeatedly and the full shared suite passed afterwards.
 
-No deferred review findings remain. Local merge is authorized; pushing has not been requested. The workspace should be archived by the user only after the local merge is confirmed and the worktree is clean.
+## Completion audit follow-up
+
+The independent completion audit identified that browser Back collapsed the layout without focusing the thread composer. The original browser journey asserted focus for button toggles but omitted history focus. The follow-up adds explicit composer-focus assertions after both Back and Forward, and a navigation-driven focus handoff that validates the current room, thread card, layout and call state. Focus must not move into a thread when a call or unrelated panel is opened. The final repair passed independent review with no findings. The parent independently ran 240 focused tests and the complete feature browser journey, including both history-focus assertions (`/tmp/full-page-thread-call-guard-final-units.log`, `/tmp/full-page-thread-call-guard-browser.log`). Live call-state guards and tests cover calls before unmount, before replacement mount, and before deferred focus dispatch. All three web TypeScript configurations, focused lint/format and whitespace checks passed. No snapshot changes were needed.
+
+Local merge is authorized; pushing has not been requested. The workspace should be archived by the user only after the local merge is confirmed and the worktree is clean.
