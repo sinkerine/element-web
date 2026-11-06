@@ -50,4 +50,20 @@ Seven web thread screenshots were updated after explaining the new Expand contro
 - The user authorized a fourth browser repair, then explicitly expanded scope to fix remaining regression checks.
 - Regression repairs remove an obsolete FilePanel mock, supply/reset SpacePanel mock state, isolate unrelated tile content while retaining long-window navigation assertions, and allow shared/widget unit runners to connect to Docker.
 
-No deferred review findings remain. Merge and push require the user's explicit delivery decision. The workspace must remain until that decision and any requested merge are handled.
+## Integration with local develop
+
+The user explicitly approved merging into `develop`. Fetching `origin` found no newer remote commits, but local `develop` contained newer LaTeX work at `12588c8c0b`. That work was merged into the feature branch without conflicts before final verification.
+
+Post-integration checks passed:
+
+- Web units: 794 files, 8,483 tests passed, 23 skipped (`/tmp/full-page-thread-merge-web.log`).
+- Shared browser units: 129 files, 1,195 tests passed, 6 skipped (`/tmp/full-page-thread-merged-shared-final.log`).
+- Support workspaces: passed (`/tmp/full-page-thread-merge-support.log`).
+- Storybook: 110 files, 523 tests passed, 7 files skipped (`/tmp/full-page-thread-merge-stories.log`).
+- Thread Chrome journey and regressions: all 14 passed (`/tmp/full-page-thread-merge-e2e-final.log`). An earlier cross-room URL assertion passed on isolated and full reruns.
+- Types, build, format, oxlint, styles, i18n, knip and workflow validation passed.
+- Combined diff coverage versus remote `origin/develop` is 83%, including the already-existing local LaTeX changes (`/tmp/full-page-thread-merge-diff-coverage.log`); the thread feature before integration measured 98%.
+
+A reproducible resize test defect discovered during integration was fixed without changing production code: a native browser drag now hits the separator and asserts an increased width rather than relying on a synthetic pointer at `(0, 0)`. The focused suite passed repeatedly and the full shared suite passed afterwards.
+
+No deferred review findings remain. Local merge is authorized; pushing has not been requested. The workspace should be archived by the user only after the local merge is confirmed and the worktree is clean.
