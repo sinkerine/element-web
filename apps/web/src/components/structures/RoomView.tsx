@@ -1320,6 +1320,9 @@ export class RoomView extends React.Component<IRoomProps, IRoomState> {
                 this.fullPageThreadCardSeen = true;
             } else if (this.fullPageThreadCardSeen && this.lastFullPageThreadId === threadId) {
                 this.onFullPageThreadBackToRoom();
+                // Keep the thread mounted until navigation clears its URL. Unmounting a linked thread
+                // first would queue permalink cleanup with the old expanded destination and reopen it.
+                return;
             }
         }
         this.setState({

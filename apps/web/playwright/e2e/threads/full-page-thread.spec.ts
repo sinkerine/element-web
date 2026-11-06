@@ -109,7 +109,11 @@ test.describe("Full page thread", () => {
         await expect(tile("Reply 40")).toHaveClass(/stateSelected/);
 
         // Opening another room-header card returns to the room timeline.
-        await page.getByRole("banner").getByRole("button", { name: "Room info", exact: true }).click();
+        await page
+            .getByRole("banner")
+            .getByRole("button", { name: "Room info", exact: true })
+            .filter({ has: page.getByRole("heading", { name: "Full page thread", exact: true }) })
+            .click();
         await expect(page.getByTestId("right-panel")).toBeVisible();
         await expect(page.getByTestId("timeline")).toBeVisible();
         await expect.poll(() => page.url().includes("/thread/")).toBe(false);

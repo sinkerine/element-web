@@ -554,14 +554,21 @@ describe("RoomView", () => {
             },
         );
 
-        it.each([RightPanelPhases.RoomSummary, RightPanelPhases.MemberList, RightPanelPhases.ThreadPanel])(
-            "should collapse when the displayed card changes to %s",
-            async (phase) => {
-                await mountRoomView();
-                await expand();
+        it.each(
+            [RightPanelPhases.RoomSummary, RightPanelPhases.MemberList, RightPanelPhases.ThreadPanel].flatMap((phase) =>
+                ["root", "reply"].map((target) => ({ phase, target })),
+            ),
+        )(
+            "should collapse when the displayed card changes to $phase after a $target link",
+            async ({ phase, target }) => {
+                const { container } = await mountRoomView();
+                const reply = room.getThread(root.getId()!)!.events.find((event) => !event.isThreadRoot)!;
+                await expand(root.getId()!, target === "reply" ? reply.getId() : undefined);
                 act(() => stores.rightPanelStore.setCard({ phase }, true, room.roomId));
                 await waitFor(() => expect(stores.roomViewStore.getFullPageThreadId()).toBeNull());
                 expect(screen.getByTestId("timeline")).toBeVisible();
+                expect(screen.getByTestId("right-panel")).toBeVisible();
+                expect(container.querySelector(".mx_ThreadView")).toBeNull();
                 expect(stores.rightPanelStore.currentCardForRoom(room.roomId).phase).toBe(phase);
             },
         );
@@ -585,11 +592,52 @@ describe("RoomView", () => {
             dispatch.mockRestore();
         });
 
+        it("should route an unloaded reply into an already expanded thread", async () => {
+            const reply = room.getThread(root.getId()!)!.events.find((event) => !event.isThreadRoot)!;
+            reply.event.content!["m.relates_to"] = { rel_type: "m.thread", event_id: root.getId()! };
+            await mountRoomView();
+            await expand();
+            const findEvent = room.findEventById.bind(room);
+            const find = vi
+                .spyOn(room, "findEventById")
+                .mockImplementation((id) => (id === reply.getId() ? undefined : findEvent(id)));
+            cli.fetchRoomEvent.mockResolvedValue(reply.event);
+            const panelProps: React.ComponentProps<typeof TimelinePanel>[] = [];
+            const renderPanel = TimelinePanel.prototype.render;
+            const panelRender = vi.spyOn(TimelinePanel.prototype, "render").mockImplementation(function (
+                this: TimelinePanel,
+            ) {
+                panelProps.push(this.props);
+                return renderPanel.call(this);
+            });
+            try {
+                await expand(root.getId()!, reply.getId());
+
+                await waitFor(() =>
+                    expect(stores.rightPanelStore.currentCardForRoom(room.roomId).state).toMatchObject({
+                        initialEvent: expect.objectContaining({ event: reply.event }),
+                        isInitialEventHighlighted: true,
+                    }),
+                );
+                expect(panelProps).toContainEqual(
+                    expect.objectContaining({
+                        timelineSet: room.getThread(root.getId()!)!.timelineSet,
+                        eventId: reply.getId(),
+                        eventScrollIntoView: true,
+                        highlightedEventId: reply.getId(),
+                    }),
+                );
+            } finally {
+                panelRender.mockRestore();
+                find.mockRestore();
+            }
+        });
+
         it("should show the load error for a redacted root", async () => {
             await mountRoomView();
             vi.spyOn(root, "isRedacted").mockReturnValue(true);
             await expand();
-            expect(screen.getByText("Couldn't load this thread.")).toBeVisible();
+            expect(await screen.findByText("Couldn't load this thread.")).toBeVisible();
             expect(screen.queryByRole("button", { name: "Collapse thread" })).toBeNull();
         });
 
