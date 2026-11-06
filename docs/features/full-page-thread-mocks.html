@@ -396,7 +396,10 @@
             </p>
 
             <h2 id="layouts">1. Where does the expanded thread go?</h2>
-            <div class="callout"><b>Decided:</b> A (fill the room area), full width, ⤢ button in the thread header only, own URL with Back collapsing.</div>
+            <div class="callout">
+                <b>Decided:</b> A (fill the room area), full width, ⤢ button in the thread header only, own URL with
+                Back collapsing.
+            </div>
             <p class="note">
                 Pick a layout, then press the new <b>⤢ expand</b> button in the thread header. Use the browser
                 <b>←</b> to see what Back does.
@@ -461,8 +464,8 @@
 
             <h2 id="url">3. URL and Back</h2>
             <p class="note">
-                Shown in the address bar above. Proposal: the expanded state has its own URL so a reload or a shared link
-                reopens it, and browser Back collapses it.
+                Shown in the address bar above. Proposal: the expanded state has its own URL so a reload or a shared
+                link reopens it, and browser Back collapses it.
             </p>
             <table>
                 <tr>
@@ -490,7 +493,9 @@
                 <b>≡ Threads</b> in the room header, then pick another thread in the list.
             </p>
             <div class="controls" role="group" aria-label="Right panel behaviour">
-                <button class="ctl" data-side="Y" aria-pressed="true">Y · Side panel opens next to it (recommended)</button>
+                <button class="ctl" data-side="Y" aria-pressed="true">
+                    Y · Side panel opens next to it (recommended)
+                </button>
                 <button class="ctl" data-side="X" aria-pressed="false">X · Thread collapses back into the panel</button>
             </div>
             <div id="sideDesc" class="callout"></div>
@@ -507,11 +512,13 @@
             <h2 id="scroll">5. Scroll position when expanding or collapsing</h2>
             <div class="callout"><b>Decided:</b> K. Keep the same message in view.</div>
             <p class="note">
-                The thread moves to a different place in the page, so its timeline is rebuilt. Scroll the thread up to an
-                older message, then press <b>⤢</b> / <b>⤡</b>.
+                The thread moves to a different place in the page, so its timeline is rebuilt. Scroll the thread up to
+                an older message, then press <b>⤢</b> / <b>⤡</b>.
             </p>
             <div class="controls" role="group" aria-label="Scroll behaviour">
-                <button class="ctl" data-scroll="K" aria-pressed="true">K · Keep the same message in view (recommended)</button>
+                <button class="ctl" data-scroll="K" aria-pressed="true">
+                    K · Keep the same message in view (recommended)
+                </button>
                 <button class="ctl" data-scroll="L" aria-pressed="false">L · Jump to the latest message</button>
             </div>
             <div class="frame">
@@ -541,9 +548,11 @@
 
             const spaces = `<div class="spaces"><span></span><span></span><span></span></div>`;
             const rooms = (sel) =>
-                `<div class="rooms">${sel === "threads"
-                    ? `<div class="sel">Threads</div><div>#release · Should we move…</div><div>#design · New icons</div>`
-                    : `<div class="sel">#release</div><div>#design</div><div>#random</div><div>Bob</div>`}</div>`;
+                `<div class="rooms">${
+                    sel === "threads"
+                        ? `<div class="sel">Threads</div><div>#release · Should we move…</div><div>#design · New icons</div>`
+                        : `<div class="sel">#release</div><div>#design</div><div>#random</div><div>Bob</div>`
+                }</div>`;
 
             function render() {
                 document.getElementById("layoutDesc").innerHTML = desc[layout];
@@ -594,7 +603,9 @@
                     }
                     document.getElementById("close").onclick = () => {
                         expanded = false;
-                        say("✕ closes the thread entirely (room timeline, no right panel). Mock shows the panel again.");
+                        say(
+                            "✕ closes the thread entirely (room timeline, no right panel). Mock shows the panel again.",
+                        );
                         render();
                     };
                     document.getElementById("collapse2").onclick = collapse;
@@ -606,7 +617,11 @@
             }
             function expand() {
                 expanded = true;
-                say(layout === "C" ? "Navigated to Threads mode with this thread selected." : "Thread expanded. URL changed; Back collapses.");
+                say(
+                    layout === "C"
+                        ? "Navigated to Threads mode with this thread selected."
+                        : "Thread expanded. URL changed; Back collapses.",
+                );
                 render();
             }
             function collapse() {
@@ -621,7 +636,9 @@
             document.querySelectorAll("[data-layout]").forEach((b) =>
                 b.addEventListener("click", () => {
                     layout = b.dataset.layout;
-                    document.querySelectorAll("[data-layout]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                    document
+                        .querySelectorAll("[data-layout]")
+                        .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
                     expanded = false;
                     say("");
                     render();
@@ -653,7 +670,12 @@
                 const panelHtml = () => {
                     if (panel === "threads")
                         return `<div class="rp"><div class="thdr"><span class="t">Threads</span><button class="ib" data-closep>✕</button></div>
-                        <div class="tbody">${Object.keys(titles).map((k) => `<div class="msg" style="cursor:pointer" data-pick="${k}"><span class="av"></span><div class="body"><b>Alice</b>${titles[k]}${k === thread && expanded ? '<span class="tag">Expanded</span>' : ""}</div></div>`).join("")}</div></div>`;
+                        <div class="tbody">${Object.keys(titles)
+                            .map(
+                                (k) =>
+                                    `<div class="msg" style="cursor:pointer" data-pick="${k}"><span class="av"></span><div class="body"><b>Alice</b>${titles[k]}${k === thread && expanded ? '<span class="tag">Expanded</span>' : ""}</div></div>`,
+                            )
+                            .join("")}</div></div>`;
                     if (panel === "info")
                         return `<div class="rp"><div class="thdr"><span class="t">Room info</span><button class="ib" data-closep>✕</button></div><div class="tbody"><b>#release</b><span class="note">12 people · Encrypted</span></div></div>`;
                     if (panel === "people")
@@ -678,21 +700,49 @@
                         : `<div class="timeline"><div class="msg"><span class="av"></span><div class="body"><b>Alice</b>${titles.release}<br><span class="summary">3 replies</span></div></div><div class="composer">Send a message…</div></div>`;
                     app.innerHTML = `${spaces}${rooms}<div class="roomarea">${hdr}<div class="split">${main}${panelHtml()}</div></div>`;
                     app.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => open(b.dataset.open)));
-                    app.querySelectorAll("[data-closep]").forEach((b) => (b.onclick = () => { panel = null; say("Right panel closed."); render(); }));
+                    app.querySelectorAll("[data-closep]").forEach(
+                        (b) =>
+                            (b.onclick = () => {
+                                panel = null;
+                                say("Right panel closed.");
+                                render();
+                            }),
+                    );
                     app.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => pick(b.dataset.pick)));
-                    app.querySelector("[data-collapse]")?.addEventListener("click", () => { expanded = false; panel = "thread"; say("Collapsed: the thread is back in the right panel."); render(); });
-                    app.querySelector("[data-close]")?.addEventListener("click", () => { expanded = false; panel = null; say("✕ closes the thread: the room timeline returns, no right panel."); render(); });
-                    app.querySelector("[data-expand]")?.addEventListener("click", () => { expanded = true; panel = null; say("Expanded again."); render(); });
+                    app.querySelector("[data-collapse]")?.addEventListener("click", () => {
+                        expanded = false;
+                        panel = "thread";
+                        say("Collapsed: the thread is back in the right panel.");
+                        render();
+                    });
+                    app.querySelector("[data-close]")?.addEventListener("click", () => {
+                        expanded = false;
+                        panel = null;
+                        say("✕ closes the thread: the room timeline returns, no right panel.");
+                        render();
+                    });
+                    app.querySelector("[data-expand]")?.addEventListener("click", () => {
+                        expanded = true;
+                        panel = null;
+                        say("Expanded again.");
+                        render();
+                    });
                 }
-                function say(t) { log.textContent = t; }
+                function say(t) {
+                    log.textContent = t;
+                }
                 function open(p) {
                     if (expanded && mode === "X") {
                         expanded = false;
                         panel = p;
-                        say(`X: the thread collapsed and the right panel now shows ${p}. The thread is no longer visible.`);
+                        say(
+                            `X: the thread collapsed and the right panel now shows ${p}. The thread is no longer visible.`,
+                        );
                     } else {
                         panel = p;
-                        say(expanded ? `Y: ${p} opened beside the expanded thread.` : `${p} opened in the right panel.`);
+                        say(
+                            expanded ? `Y: ${p} opened beside the expanded thread.` : `${p} opened in the right panel.`,
+                        );
                     }
                     render();
                 }
@@ -707,12 +757,23 @@
                     }
                     render();
                 }
-                document.getElementById("sideReset").onclick = () => { expanded = true; panel = null; thread = "release"; say("Reset."); render(); };
+                document.getElementById("sideReset").onclick = () => {
+                    expanded = true;
+                    panel = null;
+                    thread = "release";
+                    say("Reset.");
+                    render();
+                };
                 document.querySelectorAll("[data-side]").forEach((b) =>
                     b.addEventListener("click", () => {
                         mode = b.dataset.side;
-                        document.querySelectorAll("[data-side]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-                        expanded = true; panel = null; thread = "release"; say("");
+                        document
+                            .querySelectorAll("[data-side]")
+                            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                        expanded = true;
+                        panel = null;
+                        thread = "release";
+                        say("");
                         render();
                     }),
                 );
@@ -724,8 +785,10 @@
                 const sapp = document.getElementById("scrollApp");
                 const slog = document.getElementById("scrollLog");
                 const names = ["Alice", "Bob", "You"];
-                const rows = Array.from({ length: 14 }, (_, i) =>
-                    `<div class="msg" data-i="${i}"><span class="av ${["", "b", "c"][i % 3]}"></span><div class="body"><b>${names[i % 3]}</b>Message ${i + 1}${i === 0 ? " (thread root)" : ""}: ${"lorem ipsum ".repeat(3 + (i % 4))}</div></div>`,
+                const rows = Array.from(
+                    { length: 14 },
+                    (_, i) =>
+                        `<div class="msg" data-i="${i}"><span class="av ${["", "b", "c"][i % 3]}"></span><div class="body"><b>${names[i % 3]}</b>Message ${i + 1}${i === 0 ? " (thread root)" : ""}: ${"lorem ipsum ".repeat(3 + (i % 4))}</div></div>`,
                 ).join("");
                 function topIndex(scroller) {
                     const top = scroller.getBoundingClientRect().top;
@@ -758,8 +821,11 @@
                 document.querySelectorAll("[data-scroll]").forEach((b) =>
                     b.addEventListener("click", () => {
                         smode = b.dataset.scroll;
-                        document.querySelectorAll("[data-scroll]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-                        sExpanded = false; slog.textContent = "";
+                        document
+                            .querySelectorAll("[data-scroll]")
+                            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                        sExpanded = false;
+                        slog.textContent = "";
                         srender();
                     }),
                 );
