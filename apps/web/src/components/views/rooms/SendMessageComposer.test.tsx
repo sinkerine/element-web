@@ -28,7 +28,12 @@ import { Layout } from "../../../settings/enums/Layout";
 import { doMaybeLocalRoomAction } from "../../../utils/local-room";
 import { ScopedRoomContextProvider } from "../../../contexts/ScopedRoomContext.tsx";
 import { SDKContextClass } from "../../../contexts/SDKContextClass";
-import { RoomUploadContextProvider } from "../../../viewmodels/room/RoomUploadViewModel.tsx";
+import ContentMessages from "../../../ContentMessages";
+import {
+    RoomUploadContext,
+    type RoomUploadViewModel,
+    RoomUploadContextProvider,
+} from "../../../viewmodels/room/RoomUploadViewModel.tsx";
 import { MessageComposerUrlPreviewViewModel } from "../../../viewmodels/composer/MessageComposerUrlPreviewViewModel.ts";
 import { SDKContext } from "../../../contexts/SDKContext.ts";
 import { UrlPreviewApi } from "../../../modules/UrlPreviewApi.ts";
@@ -185,6 +190,7 @@ describe("<SendMessageComposer/>", () => {
 
         beforeEach(() => {
             localStorage.clear();
+            sessionStorage.clear();
             // Note: unlike Jest, Vitest's mockReset() on a spy restores call-through to the
             // original implementation rather than stubbing it out, so re-apply a no-op
             // implementation to avoid a stray real dispatch crashing the test worker later.
@@ -201,11 +207,17 @@ describe("<SendMessageComposer/>", () => {
             room: mockRoom,
             toggleStickerPickerOpen: vi.fn(),
         };
+        let uploadVm: RoomUploadViewModel;
         const getRawComponent = (props = {}, roomContext = defaultRoomContext, client = mockClient) => (
             <MatrixClientContext.Provider value={client}>
                 <ScopedRoomContextProvider room={mockRoom} {...roomContext}>
                     <RoomUploadContextProvider>
-                        <SendMessageComposer {...defaultProps} {...props} urlPreviewVm={urlPreviewVm} />
+                        <RoomUploadContext.Consumer>
+                            {(vm) => {
+                                uploadVm = vm!;
+                                return <SendMessageComposer {...defaultProps} {...props} urlPreviewVm={urlPreviewVm} />;
+                            }}
+                        </RoomUploadContext.Consumer>
                     </RoomUploadContextProvider>
                 </ScopedRoomContextProvider>
             </MatrixClientContext.Provider>
@@ -217,6 +229,59 @@ describe("<SendMessageComposer/>", () => {
                 ),
             });
         };
+
+        it.each([false, true])("restores a failed caption only when empty (new text=%s)", async (newText) => {
+            let finish!: (sent: boolean) => void;
+            const send = vi
+                .spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom")
+                .mockImplementation(async (_files, _room, _relation, _reply, _client, _context, options) => ({
+                    queuedCount: 1,
+                    caption: {
+                        parts: options!.captionDraft!,
+                        sent: new Promise((resolve) => {
+                            finish = resolve;
+                        }),
+                    },
+                }));
+            const { container, unmount } = getComponent();
+            addTextToComposer(container, "caption");
+            await uploadVm.initiateViaInputFiles([new File(["hi"], "a.txt")]);
+            expect(container.querySelector('[contenteditable="true"]')).toHaveTextContent("");
+            expect(localStorage.getItem("mx_cider_state_" + mockRoom.roomId)).toBeNull();
+            if (newText) addTextToComposer(container, "new message");
+            finish(false);
+            await waitFor(() =>
+                expect(container.querySelector('[contenteditable="true"]')).toHaveTextContent(
+                    newText ? "new message" : "caption",
+                ),
+            );
+            unmount();
+            send.mockClear().mockResolvedValue({ queuedCount: 0 });
+            await uploadVm.initiateViaInputFiles([new File(["hi"], "a.txt")]);
+            expect(send.mock.calls.at(-1)?.[6]?.captionDraft).toBeUndefined();
+            send.mockRestore();
+        });
+
+        it.each(["", "/join #room:server", "a caption"])(
+            "offers the correct caption draft for %j and paste",
+            async (text) => {
+                const send = vi
+                    .spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom")
+                    .mockResolvedValue({ queuedCount: 0 });
+                const { container } = getComponent();
+                if (text) addTextToComposer(container, text);
+                const editor = container.querySelector('[contenteditable="true"]')!;
+                fireEvent.paste(editor, {
+                    clipboardData: { files: [new File(["hi"], "a.txt")], types: ["Files"], getData: () => "" },
+                });
+                await waitFor(() => expect(send).toHaveBeenCalled());
+                const options = send.mock.calls.at(-1)?.[6];
+                expect(options?.captionDraft).toEqual(
+                    text && !text.startsWith("/") ? [{ type: "plain", text }] : undefined,
+                );
+                send.mockRestore();
+            },
+        );
 
         it("renders text and placeholder correctly", () => {
             const { container } = getComponent({ placeholder: "placeholder string" });

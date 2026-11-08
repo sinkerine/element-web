@@ -34,6 +34,10 @@ import { removeElement } from "matrix-js-sdk/src/utils";
 import type { AttachmentSend } from "@matrix-org/analytics-events/types/typescript/AttachmentSend";
 import type { AttachmentCancel } from "@matrix-org/analytics-events/types/typescript/AttachmentCancel";
 
+import EditorModel from "./editor/model";
+import { PartCreator, type SerializedPart } from "./editor/parts";
+import { createMediaCaptionFields, withMediaCaption } from "./utils/MediaCaption";
+
 import dis from "./dispatcher/dispatcher";
 import { _t } from "./languageHandler";
 import Modal from "./Modal";
@@ -64,6 +68,25 @@ import { cacheUploadedMedia } from "./utils/UploadedMediaCache";
 // scraped out of a macOS hidpi (5660ppm) screenshot png
 //                  5669 px (x-axis)      , 5669 px (y-axis)      , per metre
 const PHYS_HIDPI = [0x00, 0x00, 0x16, 0x25, 0x00, 0x00, 0x16, 0x25, 0x01];
+
+/** Options for sending a list of attachments. */
+export interface SendContentListOptions {
+    /** Composer parts to pre-fill the caption field with. */
+    captionDraft?: SerializedPart[];
+}
+
+/** The confirmed uploads and the eventual outcome of their caption. */
+export interface SendContentListResult {
+    /** Number of files confirmed and queued for upload. */
+    queuedCount: number;
+    /** Present when a non-blank caption was queued on the last file. */
+    caption?: {
+        /** Final editor parts to restore on failure. */
+        parts: SerializedPart[];
+        /** True when the captioned event was sent; false on failure or cancellation. */
+        sent: Promise<boolean>;
+    };
+}
 
 export class UploadCanceledError extends Error {}
 export class UploadFailedError extends Error {
@@ -442,7 +465,8 @@ export default class ContentMessages {
      * @param replyToEvent - The event being replied to, if any.
      * @param matrixClient - The Matrix client to use for sending the files.
      * @param context - The context in which the files are being sent.
-     * @returns A promise that resolves when the files have been sent.
+     * @param options - Initial caption draft.
+     * @returns The files queued for upload and the outcome of their caption, if any.
      */
     public async sendContentListToRoom(
         files: File[],
@@ -451,10 +475,11 @@ export default class ContentMessages {
         replyToEvent: MatrixEvent | undefined,
         matrixClient: MatrixClient,
         context = TimelineRenderingType.Room,
-    ): Promise<void> {
+        options: SendContentListOptions = {},
+    ): Promise<SendContentListResult> {
         if (matrixClient.isGuest()) {
             dis.dispatch({ action: "require_registration" });
-            return;
+            return { queuedCount: 0 };
         }
 
         if (!this.mediaConfig) {
@@ -463,7 +488,7 @@ export default class ContentMessages {
             await Promise.race([this.ensureMediaConfigFetched(matrixClient), modal.finished]);
             if (!this.mediaConfig) {
                 // User cancelled by clicking away on the spinner
-                return;
+                return { queuedCount: 0 };
             } else {
                 modal.close();
             }
@@ -487,33 +512,44 @@ export default class ContentMessages {
                 contentMessages: this,
             });
             const [shouldContinue] = await finished;
-            if (!shouldContinue) return;
+            if (!shouldContinue) return { queuedCount: 0 };
         }
 
+        const room = matrixClient.getRoom(roomId) ?? undefined;
+        const partCreator = room ? new PartCreator(room, matrixClient) : undefined;
+        const captionModel = partCreator
+            ? new EditorModel(
+                  (options.captionDraft ?? []).flatMap((part) => partCreator.deserializePart(part) ?? []),
+                  partCreator,
+              )
+            : undefined;
         let uploadAll = false;
-        // Promise to complete before sending next file into room, used for synchronisation of file-sending
-        // to match the order the files were specified in
-        let promBefore: Promise<any> = Promise.resolve();
-        const sentFileTypes: string[] = [];
+        const confirmedFiles: File[] = [];
+        // Confirm every file before uploading so the caption can follow the last confirmed file.
         for (let i = 0; i < okFiles.length; ++i) {
             const file = okFiles[i];
-            const loopPromiseBefore = promBefore;
-
             if (!uploadAll) {
                 const { finished } = Modal.createDialog(UploadConfirmDialog, {
                     file,
                     currentIndex: i,
                     totalFiles: okFiles.length,
+                    room,
+                    captionModel,
                 });
                 const [shouldContinue, shouldUploadAll] = await finished;
                 if (!shouldContinue) break;
-                if (shouldUploadAll) {
-                    uploadAll = true;
-                }
+                uploadAll = !!shouldUploadAll;
             }
-            sentFileTypes.push(file.type.split("/")[0]);
+            confirmedFiles.push(file);
+        }
 
-            promBefore = doMaybeLocalRoomAction(
+        let promBefore: Promise<unknown> = Promise.resolve();
+        const result: SendContentListResult = { queuedCount: confirmedFiles.length };
+        const sentFileTypes = confirmedFiles.map((file) => file.type.split("/")[0]);
+        for (const [index, file] of confirmedFiles.entries()) {
+            const loopPromiseBefore = promBefore;
+            const lastCaptionModel = index === confirmedFiles.length - 1 ? captionModel : undefined;
+            const sent = doMaybeLocalRoomAction(
                 roomId,
                 (actualRoomId) =>
                     this.sendContentToRoom(
@@ -521,11 +557,16 @@ export default class ContentMessages {
                         actualRoomId,
                         relation,
                         matrixClient,
-                        replyToEvent ?? undefined,
+                        replyToEvent,
                         loopPromiseBefore,
+                        lastCaptionModel,
                     ),
                 matrixClient,
-            );
+            ).catch(() => false);
+            promBefore = sent;
+            if (lastCaptionModel && createMediaCaptionFields(lastCaptionModel)) {
+                result.caption = { parts: lastCaptionModel.serializeParts(), sent };
+            }
         }
         if (sentFileTypes.length) {
             // Find the most common type.
@@ -564,6 +605,7 @@ export default class ContentMessages {
             action: Action.FocusSendMessageComposer,
             context,
         });
+        return result;
     }
 
     public getCurrentUploads(relation?: IEventRelation): RoomUpload[] {
@@ -584,16 +626,18 @@ export default class ContentMessages {
         dis.dispatch<UploadCanceledPayload>({ action: Action.UploadCanceled, upload });
     }
 
+    /** Resolve true when the event is sent, or false on upload failure, send failure or cancellation. */
     public async sendContentToRoom(
         file: File,
         roomId: string,
         relation: IEventRelation | undefined,
         matrixClient: MatrixClient,
         replyToEvent: MatrixEvent | undefined,
-        promBefore?: Promise<any>,
-    ): Promise<void> {
+        promBefore?: Promise<unknown>,
+        captionModel?: EditorModel,
+    ): Promise<boolean> {
         const fileName = file.name || _t("common|attachment");
-        const content: Omit<MediaEventContent, "info"> & { info: Partial<MediaEventInfo> } = {
+        let content: Omit<MediaEventContent, "info"> & { info: Partial<MediaEventInfo> } = {
             body: fileName,
             info: {
                 size: file.size,
@@ -601,8 +645,9 @@ export default class ContentMessages {
             msgtype: MsgType.File, // set more specifically later
         };
 
-        // Attach mentions, which really only applies if there's a replyToEvent.
-        attachMentions(matrixClient.getSafeUserId(), content, null, replyToEvent);
+        const caption = captionModel ? createMediaCaptionFields(captionModel) : null;
+        if (caption) content = withMediaCaption(content, fileName, caption);
+        attachMentions(matrixClient.getSafeUserId(), content, caption ? captionModel! : null, replyToEvent);
         attachRelation(content, relation);
         if (replyToEvent) {
             addReplyToMessageContent(content, replyToEvent);
@@ -685,6 +730,7 @@ export default class ContentMessages {
 
             dis.dispatch<UploadFinishedPayload>({ action: Action.UploadFinished, upload });
             dis.dispatch({ action: "message_sent" });
+            return true;
         } catch (error) {
             // Unwrap UploadFailedError to get the underlying error
             const unwrappedError = error instanceof UploadFailedError && error.cause ? error.cause : error;
@@ -708,6 +754,7 @@ export default class ContentMessages {
                 });
                 dis.dispatch<UploadErrorPayload>({ action: Action.UploadFailed, upload, error });
             }
+            return false;
         } finally {
             removeElement(this.inprogress, (e) => e.promise === upload.promise);
         }

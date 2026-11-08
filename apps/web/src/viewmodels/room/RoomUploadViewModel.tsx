@@ -34,6 +34,7 @@ import {
 import type { ComposerApiFileUploadOption } from "@element-hq/element-web-module-api";
 import { useScopedRoomContext } from "../../contexts/ScopedRoomContext";
 import { useMatrixClientContext } from "../../contexts/MatrixClientContext";
+import type { SerializedPart } from "../../editor/parts";
 import ContentMessages from "../../ContentMessages";
 import { TimelineRenderingType } from "../../contexts/RoomContext";
 import { chromeFileInputFix } from "../../utils/BrowserWorkarounds";
@@ -51,6 +52,16 @@ import type { AttachmentCancel } from "@matrix-org/analytics-events/types/typesc
 
 const logger = rootLogger.getChild("RoomUploadViewModel");
 
+/** The send composer's text, offered as the attachment caption. */
+export interface CaptionDraftSource {
+    /** Current parts, or null for an empty composer or a slash command. */
+    getCaptionDraft(): SerializedPart[] | null;
+    /** Clear the composer, stored draft and undo history, and push to send history. */
+    clearCaptionDraft(): void;
+    /** Restore failed caption parts if the composer is still empty. */
+    restoreCaptionDraft(parts: SerializedPart[]): void;
+}
+
 interface RoomUploadViewSnapshot extends UploadButtonViewSnapshot {
     mayDragAndDropFile: boolean;
 }
@@ -60,6 +71,34 @@ export class RoomUploadViewModel
     implements UploadButtonViewActions
 {
     private readonly uploadSelectFns = new Map<string, ComposerApiFileUploadOption["onSelected"]>();
+    private captionDraftSource: CaptionDraftSource | null = null;
+
+    /** Register the composer supplying caption drafts, or null when it unmounts. */
+    public setCaptionDraftSource = (source: CaptionDraftSource | null): void => {
+        this.captionDraftSource = source;
+    };
+
+    private async sendFiles(files: File[]): Promise<void> {
+        const source = this.captionDraftSource;
+        const captionDraft = source?.getCaptionDraft() ?? undefined;
+        const result = await ContentMessages.sharedInstance().sendContentListToRoom(
+            files,
+            this.room.roomId,
+            this.threadRelation,
+            this.replyToEvent,
+            this.client,
+            this.timelineRenderingType,
+            { captionDraft },
+        );
+        if (captionDraft && result.caption) source?.clearCaptionDraft();
+        if (result.caption) {
+            const { parts, sent } = result.caption;
+            void sent.then((success) => {
+                if (!success) this.captionDraftSource?.restoreCaptionDraft(parts);
+            });
+        }
+    }
+
     public constructor(
         private readonly room: Room,
         private readonly client: MatrixClient,
@@ -139,14 +178,7 @@ export class RoomUploadViewModel
         logger.info("initiateViaInputFiles for", roomId);
         if (!files?.length) return;
         try {
-            await ContentMessages.sharedInstance().sendContentListToRoom(
-                Array.from(files),
-                roomId,
-                this.threadRelation,
-                this.replyToEvent,
-                this.client,
-                this.timelineRenderingType,
-            );
+            await this.sendFiles(Array.from(files));
         } catch (ex) {
             logger.warn("Failed to handle file upload transfer", ex);
         }
@@ -161,14 +193,7 @@ export class RoomUploadViewModel
         if (!dataTransfer.files?.length) return;
 
         try {
-            await ContentMessages.sharedInstance().sendContentListToRoom(
-                Array.from(dataTransfer.files),
-                roomId,
-                this.threadRelation,
-                this.replyToEvent,
-                this.client,
-                this.timelineRenderingType,
-            );
+            await this.sendFiles(Array.from(dataTransfer.files));
         } catch (ex) {
             logger.warn("Failed to handle drag and drop data transfer", ex);
         }

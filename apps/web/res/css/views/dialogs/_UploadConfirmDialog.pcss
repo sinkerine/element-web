@@ -25,3 +25,19 @@ Please see LICENSE files in the repository root for full details.
     border-radius: 4px;
     border: 1px solid $dialog-close-fg-color;
 }
+
+.mx_UploadConfirmDialog_caption {
+    margin-top: var(--cpd-space-4x);
+    padding: var(--cpd-space-3x);
+    border: 1px solid var(--cpd-color-border-interactive-secondary);
+    border-radius: var(--cpd-space-2x);
+
+    .mx_BasicMessageComposer_input {
+        min-height: var(--cpd-space-10x);
+    }
+
+    p {
+        color: var(--cpd-color-text-secondary);
+        margin-bottom: 0;
+    }
+}
