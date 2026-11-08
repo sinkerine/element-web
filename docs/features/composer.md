@@ -23,6 +23,26 @@
 - Hitting ctrl/cmd+I also marks the selected text as italic
 - Hitting ctrl/cmd+> also marks the selected text as a blockquote
 
+## Attachments and captions
+
+Use the attachment button, paste an image, or drag files into the room to open the upload dialog. The dialog shows a
+preview and a **Caption** field. Text already in the composer is copied into the caption, including Markdown formatting
+and member mentions. The caption receives focus with the caret at the end, so you can keep typing immediately.
+
+Press Enter or choose **Upload** to send the file and its caption as one message. Shift+Enter adds a line break to the
+caption. A nonempty caption clears the original composer draft after sending. Clearing the caption sends the file on
+its own and keeps the draft in the composer; closing the dialog also keeps the draft and sends nothing.
+
+When selecting several files, the shared caption is sent with the last file. Choose **Upload all** to send all selected
+files in order. Earlier files are sent without a caption.
+
+Use **Edit** on an attachment message to add, change, or remove its caption. Formatting and member mentions are
+supported just as they are in the message composer. Saving an empty caption keeps the attachment, and the message
+continues to show its edited marker.
+
+Captioned attachments also work in replies, threads, and encrypted rooms. A reply keeps the quoted message above the
+attachment; a thread attachment stays in its thread. In an encrypted room, both the caption and attachment are encrypted.
+
 ## Misc
 
 - When hitting the arrow-up button while having the caret at the start in the composer,
