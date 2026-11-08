@@ -59,6 +59,8 @@ import { getSlashCommand, isSlashCommand, runSlashCommand, shouldSendAnyway } fr
 import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
 import { PosthogAnalytics } from "../../../PosthogAnalytics";
 import { addReplyToMessageContent } from "../../../utils/Reply";
+import { resolveBotCommand } from "../../../slash-commands/bot-commands/RoomBotCommands";
+import { createBotCommandContent } from "../../../slash-commands/bot-commands/BotCommandContent";
 import { doMaybeLocalRoomAction } from "../../../utils/local-room";
 import { type Caret } from "../../../editor/caret";
 import { type IDiff } from "../../../editor/diff";
@@ -415,14 +417,23 @@ export class SendMessageComposer extends React.Component<ISendMessageComposerPro
                     shouldSend = false;
                 }
             } else {
-                const sendAnyway = await shouldSendAnyway(commandText);
-                // re-focus the composer after QuestionDialog is closed
-                dis.dispatch({
-                    action: Action.FocusAComposer,
-                    context: this.context.timelineRenderingType,
-                });
-                // if !sendAnyway bail to let the user edit the composer and try again
-                if (!sendAnyway) return;
+                const botCommand = resolveBotCommand(this.props.room, this.props.mxClient, commandText);
+                if (botCommand) {
+                    content = createBotCommandContent(botCommand);
+                    attachRelation(content, this.props.relation);
+                    if (replyToEvent) {
+                        addReplyToMessageContent(content, replyToEvent);
+                    }
+                } else {
+                    const sendAnyway = await shouldSendAnyway(commandText);
+                    // re-focus the composer after QuestionDialog is closed
+                    dis.dispatch({
+                        action: Action.FocusAComposer,
+                        context: this.context.timelineRenderingType,
+                    });
+                    // if !sendAnyway bail to let the user edit the composer and try again
+                    if (!sendAnyway) return;
+                }
             }
         }
 

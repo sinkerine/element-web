@@ -8,8 +8,8 @@ Please see LICENSE files in the repository root for full details.
 
 // @vitest-environment happy-dom
 
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { EventStatus, type IEventRelation, MsgType } from "matrix-js-sdk/src/matrix";
+import { type MockInstance, describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
+import { MatrixEvent, EventStatus, type IEventRelation, MsgType } from "matrix-js-sdk/src/matrix";
 import { type RoomMessageEventContent } from "matrix-js-sdk/src/types";
 
 import { createTestClient, getRoomContext, mkEvent, mkStubRoom } from "test-utils";
@@ -26,6 +26,9 @@ import * as Reply from "../../../../../utils/Reply";
 import { MatrixClientPeg } from "../../../../../MatrixClientPeg";
 import { Action } from "../../../../../dispatcher/actions";
 import { attachUrlPreviews } from "../../../../../utils/messages";
+import Modal from "../../../../../Modal";
+import QuestionDialog from "../../../../../components/views/dialogs/QuestionDialog";
+import SlashCommandHelpDialog from "../../../../../components/views/dialogs/SlashCommandHelpDialog";
 
 // Wrapped rather than replaced: only the cancellation test below overrides it.
 vi.mock("../../../../../utils/messages", async (importOriginal) => {
@@ -71,6 +74,176 @@ describe("message", () => {
     });
 
     describe("sendMessage", () => {
+        describe("bot commands", () => {
+            const botUserId = "@hermes:example.org";
+            let events: MatrixEvent[];
+            let restore: (() => void)[];
+            let dialogSpy: MockInstance<typeof Modal.createDialog>;
+
+            beforeEach(() => {
+                events = ["model", "help"].map(
+                    (command) =>
+                        new MatrixEvent({
+                            type: "org.matrix.msc4391.command_description",
+                            sender: botUserId,
+                            state_key: command,
+                            content: {
+                                command,
+                                parameters:
+                                    command === "model"
+                                        ? [
+                                              {
+                                                  key: "name",
+                                                  schema: { schema_type: "primitive", type: "string" },
+                                              },
+                                          ]
+                                        : [],
+                            },
+                        }),
+                );
+                const stateSpy = vi
+                    .spyOn(mockRoom.getLiveTimeline(), "getState")
+                    .mockReturnValue(mockRoom.currentState);
+                const eventsSpy = vi
+                    .spyOn(mockRoom.currentState, "getStateEvents")
+                    .mockImplementation((type, key) =>
+                        type === "org.matrix.msc4391.command_description" ? events : key === undefined ? [] : null,
+                    );
+                const member = mockRoom.getMember(botUserId)!;
+                const memberSpy = vi.spyOn(mockRoom, "getMember").mockReturnValue({ ...member, membership: "join" });
+                dialogSpy = vi.spyOn(Modal, "createDialog").mockReturnValue({
+                    finished: Promise.resolve([false]),
+                    close: vi.fn(),
+                } as ReturnType<typeof Modal.createDialog>);
+                restore = [
+                    () => stateSpy.mockRestore(),
+                    () => eventsSpy.mockRestore(),
+                    () => memberSpy.mockRestore(),
+                    () => dialogSpy.mockRestore(),
+                ];
+                vi.mocked(mockClient.sendMessage).mockClear();
+            });
+
+            afterEach(() => restore.forEach((restoreSpy) => restoreSpy()));
+
+            const send = async (text: string, props = {}, isHTML = false): Promise<void> => {
+                await sendMessage(text, isHTML, {
+                    roomContext: defaultRoomContext,
+                    mxClient: mockClient,
+                    urlPreviewSnapshot: {
+                        entries: [],
+                        content: "",
+                        contentLinks: new Set<string>(),
+                        isModified: false,
+                    },
+                    ...props,
+                });
+            };
+
+            it("should send a published command as exact plain content without a dialog", async () => {
+                await send("/model gpt-5.5 --provider openrouter");
+                await vi.waitFor(() =>
+                    expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith("myfakeroom", null, {
+                        "msgtype": "m.text",
+                        "body": "/model gpt-5.5 --provider openrouter",
+                        "m.mentions": { user_ids: [botUserId] },
+                        "org.matrix.msc4391.command": {
+                            command: "model",
+                            arguments: { name: "gpt-5.5 --provider openrouter" },
+                        },
+                    }),
+                );
+                expect(dialogSpy).not.toHaveBeenCalled();
+            });
+
+            it("should attach a thread and reply while mentioning only the bot", async () => {
+                const relation = { rel_type: "m.thread", event_id: "$root", is_falling_back: true };
+                await send("/model **plain**", { relation, replyToEvent: mockEvent });
+                await vi.waitFor(() =>
+                    expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith("myfakeroom", "$root", {
+                        "msgtype": "m.text",
+                        "body": "/model **plain**",
+                        "m.mentions": { user_ids: [botUserId] },
+                        "org.matrix.msc4391.command": { command: "model", arguments: { name: "**plain**" } },
+                        "m.relates_to": { ...relation, "m.in_reply_to": { event_id: mockEvent.getId() } },
+                    }),
+                );
+                expect(dialogSpy).not.toHaveBeenCalled();
+            });
+
+            it("should route a qualified built-in clash to the bot", async () => {
+                await send("/help@hermes");
+                await vi.waitFor(() =>
+                    expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith("myfakeroom", null, {
+                        "msgtype": "m.text",
+                        "body": "/help",
+                        "m.mentions": { user_ids: [botUserId] },
+                        "org.matrix.msc4391.command": { command: "help", arguments: {} },
+                    }),
+                );
+                expect(dialogSpy).not.toHaveBeenCalled();
+            });
+
+            it("should keep bare help as the built-in command", async () => {
+                await send("/help");
+                await vi.waitFor(() =>
+                    expect(dialogSpy).toHaveBeenCalledWith(SlashCommandHelpDialog, expect.anything()),
+                );
+                expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            });
+
+            it.each(["/unknown", "/model ambiguous"])("should keep the confirmation dialog for %s", async (text) => {
+                events.push(
+                    new MatrixEvent({
+                        type: "org.matrix.msc4391.command_description",
+                        sender: "@other:example.org",
+                        content: { command: "model", parameters: [] },
+                    }),
+                );
+                await send(text);
+                await vi.waitFor(() => expect(dialogSpy).toHaveBeenCalledWith(QuestionDialog, expect.anything()));
+                expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            });
+            it.each([
+                ["<strong>/model</strong> <em>gpt-5.5</em>", "/model gpt-5.5", "gpt-5.5"],
+                [
+                    '/model <a href="https://example.org">label</a><script>ignored()</script><style>ignored</style>',
+                    "/model label",
+                    "label",
+                ],
+                ["/model a&amp;b<br>second line", "/model a&b\nsecond line", "a&b\nsecond line"],
+                ["<p>/model first</p><p>second</p>", "/model first\nsecond", "first\nsecond"],
+                [
+                    '/model <a data-mention-type="user" href="https://matrix.to/#/@alice:example.org">Alice</a> <a data-mention-type="room" href="https://matrix.to/#/!room:example.org">Room</a>',
+                    "/model @alice:example.org !room:example.org",
+                    "@alice:example.org !room:example.org",
+                ],
+            ])("should preserve visible command text from %s", async (html, body, name) => {
+                await send(html, {}, true);
+                expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith("myfakeroom", null, {
+                    "msgtype": "m.text",
+                    body,
+                    "m.mentions": { user_ids: [botUserId] },
+                    "org.matrix.msc4391.command": { command: "model", arguments: { name } },
+                });
+                expect(dialogSpy).not.toHaveBeenCalled();
+            });
+
+            it("should convert rich-text arguments to plain text", async () => {
+                await send("/model <strong>gpt-5.5</strong> --provider openrouter", {}, true);
+                expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith("myfakeroom", null, {
+                    "msgtype": "m.text",
+                    "body": "/model gpt-5.5 --provider openrouter",
+                    "m.mentions": { user_ids: [botUserId] },
+                    "org.matrix.msc4391.command": {
+                        command: "model",
+                        arguments: { name: "gpt-5.5 --provider openrouter" },
+                    },
+                });
+                expect(dialogSpy).not.toHaveBeenCalled();
+            });
+        });
+
         it("Should not send empty html message", async () => {
             // When
             await sendMessage("", true, {
@@ -515,6 +688,25 @@ describe("message", () => {
 
             // Then
             expect(mockClient.sendMessage).toHaveBeenCalledTimes(0);
+        });
+
+        it("should keep edited slash text as an ordinary edit without structured bot content", async () => {
+            await editMessage("/model gpt-5.5", {
+                roomContext: defaultRoomContext,
+                mxClient: mockClient,
+                editorStateTransfer,
+            });
+            expect(mockClient.sendMessage).toHaveBeenCalledExactlyOnceWith(
+                "myfakeroom",
+                null,
+                expect.objectContaining({
+                    "m.new_content": expect.objectContaining({ body: "/model gpt-5.5" }),
+                    "m.relates_to": { event_id: mockEvent.getId(), rel_type: "m.replace" },
+                }),
+            );
+            const content = vi.mocked(mockClient.sendMessage).mock.calls[0][2];
+            expect(content).not.toHaveProperty("org.matrix.msc4391.command");
+            expect(content["m.new_content"]).not.toHaveProperty("org.matrix.msc4391.command");
         });
 
         it("Should send a message when the content is modified", async () => {
