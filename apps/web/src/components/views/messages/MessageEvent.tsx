@@ -7,7 +7,7 @@ Please see LICENSE files in the repository root for full details.
 */
 
 import mime from "mime";
-import React, { createRef, type JSX, useCallback, useEffect } from "react";
+import React, { createRef, type JSX, useCallback, useContext, useEffect } from "react";
 import { logger } from "matrix-js-sdk/src/logger";
 import {
     EventType,
@@ -18,7 +18,12 @@ import {
     M_POLL_START,
     type IContent,
 } from "matrix-js-sdk/src/matrix";
-import { MjolnirBodyView, UnknownBodyView, useCreateAutoDisposedViewModel } from "@element-hq/web-shared-components";
+import {
+    MjolnirBodyView,
+    TextualBodyView,
+    UnknownBodyView,
+    useCreateAutoDisposedViewModel,
+} from "@element-hq/web-shared-components";
 
 import { isCaptionableContent } from "../../../utils/MediaCaption";
 import SettingsStore from "../../../settings/SettingsStore";
@@ -48,6 +53,8 @@ import {
 import { TextualBodyFactory } from "./TextualBodyFactory";
 import { InteractiveUiBody } from "./InteractiveUiBody";
 import { INTERACTIVE_UI_KEY } from "../../../interactive-ui/protocol";
+import RoomContext from "../../../contexts/RoomContext";
+import { TextualBodyViewModel } from "../../../viewmodels/room/timeline/event-tile/body/TextualBodyViewModel";
 
 // onMessageAllowed is handled internally
 interface IProps extends Omit<IBodyProps, "onMessageAllowed" | "mediaEventHelper"> {
@@ -347,20 +354,50 @@ export default class MessageEvent extends React.Component<IProps> implements IMe
             inhibitInteraction: this.props.inhibitInteraction,
             id: this.props.id,
         };
-        if (hasCaption || (this.props.editState && isCaptionableContent(content))) {
-            return <CaptionBody {...bodyProps} WrappedBodyType={BodyType} />;
+        const needsMediaEditMarker =
+            isCaptionableContent(content) && !!(this.props.replacingEventId ?? this.props.mxEvent.replacingEventId());
+        if (hasCaption || (this.props.editState && isCaptionableContent(content)) || needsMediaEditMarker) {
+            return <CaptionBody {...bodyProps} WrappedBodyType={BodyType} hasCaption={!!hasCaption} />;
         }
 
         return BodyType ? <BodyType {...bodyProps} /> : null;
     }
 }
 
-const CaptionBody: React.FunctionComponent<IBodyProps & { WrappedBodyType: React.ComponentType<IBodyProps> }> = ({
-    WrappedBodyType,
-    ...props
-}) => (
+const CaptionBody: React.FunctionComponent<
+    IBodyProps & { WrappedBodyType: React.ComponentType<IBodyProps>; hasCaption: boolean }
+> = ({ WrappedBodyType, hasCaption, ...props }) => (
     <div className="mx_EventTile_content">
         <WrappedBodyType {...props} />
-        <TextualBodyFactory {...{ ...props, ref: undefined }} />
+        {hasCaption || props.editState ? (
+            <TextualBodyFactory {...{ ...props, ref: undefined }} />
+        ) : (
+            <MediaEditMarker {...{ ...props, ref: undefined }} />
+        )}
     </div>
 );
+
+function MediaEditMarker(props: IBodyProps): JSX.Element {
+    const { timelineRenderingType } = useContext(RoomContext);
+    const vm = useCreateAutoDisposedViewModel(() => new TextualBodyViewModel({ ...props, timelineRenderingType }));
+
+    useEffect(() => {
+        vm.setEvent(props.mxEvent);
+        vm.setId(props.id);
+        vm.setHighlightLink(props.highlightLink);
+        vm.setReplacingEventId(props.replacingEventId);
+        vm.setIsSeeingThroughMessageHiddenForModeration(props.isSeeingThroughMessageHiddenForModeration);
+        vm.setTimelineRenderingType(timelineRenderingType);
+    }, [
+        props.mxEvent,
+        props.id,
+        props.highlightLink,
+        props.replacingEventId,
+        props.isSeeingThroughMessageHiddenForModeration,
+        timelineRenderingType,
+        vm,
+    ]);
+
+    // An uncaptioned media body is the filename, so render only its edit annotation.
+    return <TextualBodyView vm={vm} body={<></>} className="mx_MTextBody mx_EventTile_caption" />;
+}
