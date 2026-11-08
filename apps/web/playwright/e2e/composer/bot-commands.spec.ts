@@ -69,7 +69,8 @@ test.describe("Bot slash commands", () => {
         const roomId = await app.client.createRoom({
             name: "Hermes Room",
             invite: [botUserId],
-            power_level_content_override: { users: { [user.userId]: 100, [botUserId]: 50 } },
+            // The room creator receives authority from the room version's rules.
+            power_level_content_override: { users: { [botUserId]: 50 } },
         });
         await bot.awaitRoomMembership(roomId);
         await app.settings.setValue("feature_wysiwyg_composer", null, SettingLevel.DEVICE, false);
@@ -139,6 +140,22 @@ test.describe("Bot slash commands", () => {
                     ),
                 )
                 .toBe("join");
+            await expect
+                .poll(() =>
+                    app.client.evaluate(
+                        (cli, { roomId, userId }) => cli.getRoom(roomId)?.getMember(userId)?.powerLevel,
+                        { roomId, userId: user.userId },
+                    ),
+                )
+                .toBeGreaterThanOrEqual(100);
+            await expect
+                .poll(() =>
+                    app.client.evaluate(
+                        (cli, { roomId, botUserId }) => cli.getRoom(roomId)?.getMember(botUserId)?.powerLevel,
+                        { roomId, botUserId },
+                    ),
+                )
+                .toBe(50);
             for (const [command, description, parameter] of [
                 ["model", "Show or change the model", "name"],
                 ["help", "Show available commands", null],
