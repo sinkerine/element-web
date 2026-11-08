@@ -155,13 +155,14 @@ Please see LICENSE in the repository root for full details.
     outline-offset: -2px;
 }
 
-.time,
 .footer,
 .context {
     color: var(--cpd-color-text-secondary);
 }
 
 .time {
+    /* Timestamps also need text contrast against the selected and hovered row surfaces. */
+    color: var(--cpd-color-text-primary);
     font-variant-numeric: tabular-nums;
 }
 
@@ -218,15 +219,18 @@ Please see LICENSE in the repository root for full details.
 .body {
     /* Reserve one line as the preview minimum; the available grid track supplies up to eight lines. */
     contain: size;
+    --body-margin-top: var(--cpd-space-2x);
     min-height: 1lh;
     max-height: 8lh;
+    /* Fit whole lines in the remaining track rather than clipping the next line's glyphs. */
+    max-height: min(8lh, round(down, calc(100% - var(--body-margin-top)), 1lh));
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 8;
     overflow: hidden;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
-    margin-top: var(--cpd-space-2x);
+    margin-top: var(--body-margin-top);
 }
 
 .context {
@@ -284,7 +288,7 @@ Please see LICENSE in the repository root for full details.
     }
 
     .body {
-        margin-top: var(--cpd-space-1x);
+        --body-margin-top: var(--cpd-space-1x);
     }
 
     .metadata {
