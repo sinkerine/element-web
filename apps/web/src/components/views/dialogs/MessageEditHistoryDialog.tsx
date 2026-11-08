@@ -38,6 +38,7 @@ interface IState {
 
 export default class MessageEditHistoryDialog extends React.PureComponent<IProps, IState> {
     private dateSeparatorVms = new Map<string, DateSeparatorViewModel>();
+    private editRequest: ReturnType<typeof Promise.withResolvers<boolean>> | null = null;
 
     public constructor(props: IProps) {
         super(props);
@@ -61,30 +62,45 @@ export default class MessageEditHistoryDialog extends React.PureComponent<IProps
         return vm;
     }
 
-    private loadMoreEdits = async (backwards?: boolean): Promise<boolean> => {
+    private loadMoreEdits = (backwards?: boolean): Promise<boolean> => {
         if (backwards || (!this.state.nextBatch && !this.state.isLoading)) {
             // bail out on backwards as we only paginate in one direction
-            return false;
+            return Promise.resolve(false);
         }
+        // Share a pending page request so mount and scroll callbacks cannot append the same page twice.
+        if (this.editRequest) return this.editRequest.promise;
+        const request = Promise.withResolvers<boolean>();
+        this.editRequest = request;
+        void this.loadEditsPage(request);
+        return request.promise;
+    };
+
+    private loadEditsPage = async (request: ReturnType<typeof Promise.withResolvers<boolean>>): Promise<void> => {
         const opts = { from: this.state.nextBatch ?? undefined };
         const roomId = this.props.mxEvent.getRoomId()!;
         const eventId = this.props.mxEvent.getId()!;
         const client = MatrixClientPeg.safeGet();
 
-        const { resolve, reject, promise } = Promise.withResolvers<boolean>();
         let result: Awaited<ReturnType<MatrixClient["relations"]>>;
 
         try {
             result = await client.relations(roomId, eventId, RelationType.Replace, EventType.RoomMessage, opts);
         } catch (error) {
+            if (this.editRequest !== request) return;
             // log if the server returned an error
             if (error instanceof MatrixError && error.errcode) {
                 logger.error("fetching /relations failed with error", error);
             }
-            this.setState({ error: error as MatrixError }, () => reject(error));
-            return promise;
+            this.setState({ error: error as MatrixError }, () => {
+                if (this.editRequest !== request) return;
+                this.editRequest = null;
+                request.reject(error);
+            });
+            return;
         }
 
+        // A closed dialog (or StrictMode's discarded mount) must not apply a late response.
+        if (this.editRequest !== request) return;
         const newEvents = result.events;
         this.locallyRedactEventsIfNeeded(newEvents);
         this.setState(
@@ -93,13 +109,14 @@ export default class MessageEditHistoryDialog extends React.PureComponent<IProps
                 events: this.state.events.concat(newEvents),
                 nextBatch: result.nextBatch ?? null,
                 isLoading: false,
+                error: null,
             },
             () => {
-                const hasMoreResults = !!this.state.nextBatch;
-                resolve(hasMoreResults);
+                if (this.editRequest !== request) return;
+                this.editRequest = null;
+                request.resolve(!!this.state.nextBatch);
             },
         );
-        return promise;
     };
 
     private locallyRedactEventsIfNeeded(newEvents: MatrixEvent[]): void {
@@ -119,10 +136,13 @@ export default class MessageEditHistoryDialog extends React.PureComponent<IProps
     }
 
     public componentDidMount(): void {
-        void this.loadMoreEdits();
+        // The dialog displays the error; handle the initial request's rejection as ScrollPanel does for pagination.
+        void this.loadMoreEdits().catch((error) => logger.error("Error loading message edit history", error));
     }
 
     public componentWillUnmount(): void {
+        this.editRequest?.resolve(false);
+        this.editRequest = null;
         for (const vm of this.dateSeparatorVms.values()) {
             vm.dispose();
         }
