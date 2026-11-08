@@ -197,7 +197,8 @@ describe("<ChangeRecoveryKeyBody />", () => {
             });
 
             const user = userEvent.setup();
-            const { getByRole, getByText, getByTitle } = renderComponent(false);
+            const onFinish = vi.fn();
+            const { getByRole, getByText, getByTitle } = renderComponent(false, onFinish);
 
             // Display the form to confirm the recovery key
             await waitFor(() => user.click(getByRole("button", { name: "Continue" })));
@@ -217,6 +218,7 @@ describe("<ChangeRecoveryKeyBody />", () => {
             await user.click(finishButton);
 
             await waitFor(() => expect(mockFn).toHaveBeenCalledTimes(1));
+            await waitFor(() => expect(onFinish).toHaveBeenCalledWith());
         });
     });
 

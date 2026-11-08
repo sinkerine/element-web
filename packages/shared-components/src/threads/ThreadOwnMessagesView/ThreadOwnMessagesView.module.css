@@ -165,6 +165,11 @@ Please see LICENSE in the repository root for full details.
     font-variant-numeric: tabular-nums;
 }
 
+/* Secondary text lacks contrast on the current row's stronger subtle background. */
+.row[aria-current="true"] .time {
+    color: var(--cpd-color-text-primary);
+}
+
 .snippet {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -218,15 +223,18 @@ Please see LICENSE in the repository root for full details.
 .body {
     /* Reserve one line as the preview minimum; the available grid track supplies up to eight lines. */
     contain: size;
+    --body-margin-top: var(--cpd-space-2x);
     min-height: 1lh;
     max-height: 8lh;
+    /* Fit whole lines in the remaining track rather than clipping the next line's glyphs. */
+    max-height: min(8lh, round(down, calc(100% - var(--body-margin-top)), 1lh));
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 8;
     overflow: hidden;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
-    margin-top: var(--cpd-space-2x);
+    margin-top: var(--body-margin-top);
 }
 
 .context {
@@ -284,7 +292,7 @@ Please see LICENSE in the repository root for full details.
     }
 
     .body {
-        margin-top: var(--cpd-space-1x);
+        --body-margin-top: var(--cpd-space-1x);
     }
 
     .metadata {

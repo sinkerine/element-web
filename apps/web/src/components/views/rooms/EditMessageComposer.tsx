@@ -46,6 +46,7 @@ import type DocumentOffset from "../../../editor/offset";
 import { attachMentions, attachRelation } from "../../../utils/messages";
 import { filterBoolean } from "../../../utils/arrays";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
+import { createMediaCaptionEditContent, isCaptionableContent } from "../../../utils/MediaCaption";
 
 // exported for tests
 export function createEditContent(
@@ -53,6 +54,10 @@ export function createEditContent(
     editedEvent: MatrixEvent,
     replyToEvent?: MatrixEvent,
 ): RoomMessageEventContent {
+    if (isCaptionableContent(editedEvent.getContent())) {
+        return createMediaCaptionEditContent(model, editedEvent, replyToEvent);
+    }
+
     const isEmote = containsEmote(model);
     if (isEmote) {
         model = stripEmoteCommand(model);
@@ -289,6 +294,7 @@ class EditMessageComposer extends React.Component<IEditMessageComposerProps, ISt
         if (this.state.saveDisabled && !this.props.isUrlPreviewsModified) return;
 
         const editedEvent = this.props.editState.getEvent();
+        const isMedia = isCaptionableContent(editedEvent.getContent());
 
         PosthogAnalytics.instance.trackEvent<ComposerEvent>({
             eventName: "Composer",
@@ -309,7 +315,7 @@ class EditMessageComposer extends React.Component<IEditMessageComposerProps, ISt
 
         let shouldSend = true;
 
-        if (newContent?.body === "") {
+        if (!isMedia && newContent?.body === "") {
             this.cancelPreviousPendingEdit();
             createRedactEventDialog({
                 mxEvent: editedEvent,
@@ -324,7 +330,7 @@ class EditMessageComposer extends React.Component<IEditMessageComposerProps, ISt
         // either text content or list of URL previews modified counts
         if (this.isContentModified(newContent) || this.props.isUrlPreviewsModified) {
             const roomId = editedEvent.getRoomId()!;
-            if (!containsEmote(this.model) && isSlashCommand(this.model)) {
+            if (!isMedia && !containsEmote(this.model) && isSlashCommand(this.model)) {
                 const [cmd, args, commandText] = getSlashCommand(roomId, this.model);
                 if (cmd) {
                     const threadId = editedEvent?.getThread()?.id || null;
@@ -363,7 +369,7 @@ class EditMessageComposer extends React.Component<IEditMessageComposerProps, ISt
 
                 // the previews are read synchronously, so the editor can be closed straight away
                 // rather than making the user wait for any preview images to upload
-                const attachingPromise = this.props.attachBundles?.(editContent["m.new_content"]!);
+                const attachingPromise = !isMedia && this.props.attachBundles?.(editContent["m.new_content"]!);
                 this.endEdit();
 
                 // the edit was cancelled while its preview images were uploading

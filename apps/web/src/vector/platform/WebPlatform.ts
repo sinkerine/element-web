@@ -61,13 +61,15 @@ export default class WebPlatform extends BasePlatform {
     }
 
     private async registerServiceWorker(): Promise<void> {
+        // An existing worker can request user info before re-registration finishes after a reload.
+        navigator.serviceWorker.addEventListener("message", this.onServiceWorkerPostMessage);
+
         // sw.js is exported by webpack, sourced from `/src/serviceworker/index.ts`
         const registration = await navigator.serviceWorker.register("sw.js");
         if (!registration) {
             throw new Error("Service worker registration failed");
         }
 
-        navigator.serviceWorker.addEventListener("message", this.onServiceWorkerPostMessage);
         await registration.update();
     }
 

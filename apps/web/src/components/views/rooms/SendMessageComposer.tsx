@@ -179,6 +179,22 @@ export class SendMessageComposer extends React.Component<ISendMessageComposerPro
     }
 
     public componentDidMount(): void {
+        this.props.uploadVm.setCaptionDraftSource({
+            getCaptionDraft: () =>
+                this.model.isEmpty || isSlashCommand(this.model) ? null : this.model.serializeParts(),
+            clearCaptionDraft: () => {
+                this.sendHistoryManager.save(this.model, this.props.replyToEvent);
+                this.model.reset([]);
+                this.editorRef.current?.clearUndoHistory();
+                this.clearStoredEditorState();
+            },
+            restoreCaptionDraft: (parts) => {
+                if (this.model.isEmpty) {
+                    this.model.reset(parts);
+                    this.saveStoredEditorState();
+                }
+            },
+        });
         window.addEventListener("beforeunload", this.saveStoredEditorState);
         this.dispatcherRef = dis.register(this.onAction);
 
@@ -531,6 +547,7 @@ export class SendMessageComposer extends React.Component<ISendMessageComposerPro
     }
 
     public componentWillUnmount(): void {
+        this.props.uploadVm.setCaptionDraftSource(null);
         dis.unregister(this.dispatcherRef);
         window.removeEventListener("beforeunload", this.saveStoredEditorState);
         this.saveStoredEditorState();

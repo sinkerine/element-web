@@ -76,6 +76,8 @@ interface State {
      * The ID of the thread currently being viewed
      */
     threadId: string | null;
+    /** The thread shown over the whole room area, if any. */
+    fullPageThreadId: string | null;
     /**
      * The ID of the room being subscribed to (in Sliding Sync)
      */
@@ -126,6 +128,7 @@ const INITIAL_STATE: State = {
     joinError: null,
     roomId: null,
     threadId: null,
+    fullPageThreadId: null,
     subscribingRoomId: null,
     initialEventId: null,
     initialEventPixelOffset: null,
@@ -237,6 +240,7 @@ export class RoomViewStore extends EventEmitter {
                 this.setState({
                     roomId: null,
                     roomAlias: null,
+                    fullPageThreadId: null,
                     viaServers: [],
                     wasContextSwitch: false,
                     viewingCall: false,
@@ -406,6 +410,7 @@ export class RoomViewStore extends EventEmitter {
                 this.setState({
                     subscribingRoomId: payload.room_id,
                     roomId: payload.room_id,
+                    fullPageThreadId: payload.full_page_thread_id ?? null,
                     initialEventId: null,
                     initialEventPixelOffset: null,
                     initialEventScrollIntoView: true,
@@ -430,6 +435,7 @@ export class RoomViewStore extends EventEmitter {
             const newState: Partial<State> = {
                 roomId: payload.room_id,
                 roomAlias: payload.room_alias ?? null,
+                fullPageThreadId: payload.full_page_thread_id ?? null,
                 initialEventId: payload.event_id ?? null,
                 isInitialEventHighlighted: payload.highlighted ?? false,
                 initialEventScrollIntoView: payload.scroll_into_view ?? true,
@@ -498,6 +504,7 @@ export class RoomViewStore extends EventEmitter {
                     isInitialEventHighlighted: false,
                     initialEventScrollIntoView: true,
                     roomAlias: payload.room_alias,
+                    fullPageThreadId: null,
                     roomLoading: true,
                     roomLoadError: null,
                     viaServers: payload.via_servers,
@@ -548,6 +555,7 @@ export class RoomViewStore extends EventEmitter {
         this.setState({
             roomId: payload.room_id,
             roomAlias: payload.room_alias,
+            fullPageThreadId: null,
             roomLoading: false,
             roomLoadError: payload.err,
         });
@@ -729,6 +737,11 @@ export class RoomViewStore extends EventEmitter {
 
     public getThreadId(): string | null {
         return this.state.threadId;
+    }
+
+    /** The root event ID of the thread shown over the whole room area, or null. */
+    public getFullPageThreadId(): string | null {
+        return this.state.fullPageThreadId;
     }
 
     // The event to scroll to when the room is first viewed

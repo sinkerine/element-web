@@ -18,6 +18,9 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 import classNames from "classnames";
+import { IconButton } from "@vector-im/compound-web";
+import ExpandIcon from "@vector-im/compound-design-tokens/assets/web/icons/expand";
+import CollapseIcon from "@vector-im/compound-design-tokens/assets/web/icons/collapse";
 import { ThreadOwnMessagesView } from "@element-hq/web-shared-components";
 
 import BaseCard from "../views/right_panel/BaseCard";
@@ -32,7 +35,7 @@ import { type ActionPayload } from "../../dispatcher/payloads";
 import { Action } from "../../dispatcher/actions";
 import { type E2EStatus } from "../../utils/ShieldUtils";
 import EditorStateTransfer from "../../utils/EditorStateTransfer";
-import RoomContext, { TimelineRenderingType } from "../../contexts/RoomContext";
+import RoomContext, { MainSplitContentType, TimelineRenderingType } from "../../contexts/RoomContext";
 import ContentMessages from "../../ContentMessages";
 import UploadBar from "./UploadBar";
 import { _t } from "../../languageHandler";
@@ -57,6 +60,15 @@ import { ThreadOwnMessagesViewModel } from "../../viewmodels/threads/ThreadOwnMe
 import { type ThreadTimelineNavigator } from "../../viewmodels/threads/ThreadTimelineNavigator";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 
+import {
+    type ThreadScrollAnchor,
+    clearThreadScrollAnchor,
+    peekThreadScrollAnchor,
+    saveThreadScrollAnchor,
+} from "../../utils/threadScrollAnchors";
+import { UPDATE_EVENT } from "../../stores/AsyncStore";
+import { getFullPageThreadCard } from "../../utils/fullPageThread";
+
 interface IProps {
     room: Room;
     onClose: () => void;
@@ -71,6 +83,8 @@ interface IProps {
     newDividerEventId?: string;
     /** The host owns navigation in the full Threads view. */
     fullWindow?: boolean;
+    /** Rendered by RoomView over the whole room area: shows Collapse instead of Expand. */
+    fullPage?: boolean;
 }
 
 interface IState {
@@ -87,6 +101,11 @@ export default class ThreadView extends React.Component<IProps, IState> {
     public static contextType = RoomContext;
     declare public context: React.ContextType<typeof RoomContext>;
 
+    /** One layout transition's focus handoff, cancelled if its destination changes before mount. */
+    private static pendingFocus?: { roomId: string; threadId: string; fullPage: boolean; cancel: () => void };
+
+    /** Scroll position handed over from the ThreadView this one replaces. */
+    private readonly scrollAnchor: { threadId: string; position: ThreadScrollAnchor | null };
     private dispatcherRef?: string;
     private layoutWatcherRef?: string;
     private timelinePanel = createRef<TimelinePanel>();
@@ -127,6 +146,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
         super(props);
 
         this.setEventId(this.props.mxEvent);
+        this.scrollAnchor = { threadId: this.eventId, position: peekThreadScrollAnchor(this.eventId) };
         const thread = this.props.room.getThread(this.eventId) ?? undefined;
 
         this.state = {
@@ -140,6 +160,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
     }
 
     public componentDidMount(): void {
+        clearThreadScrollAnchor(this.eventId);
         this.setupThreadListeners(this.state.thread);
         if (this.state.thread) {
             this.setState({ ownMessagesVm: this.createOwnMessagesViewModel(this.state.thread) });
@@ -157,6 +178,30 @@ export default class ThreadView extends React.Component<IProps, IState> {
         this.dispatcherRef = dis.register(this.onAction);
 
         this.props.room.on(ThreadEvent.New, this.onNewThread);
+
+        const focus = ThreadView.pendingFocus;
+        if (
+            focus?.roomId === this.props.room.roomId &&
+            focus.threadId === this.eventId &&
+            focus.fullPage === Boolean(this.props.fullPage)
+        ) {
+            focus.cancel();
+            // setupThread can mount the composer in this update when the root was not loaded before.
+            this.setState({}, () => {
+                const store = this.context.roomViewStore;
+                if (
+                    !store.isViewingCall() &&
+                    store.getRoomId() === focus.roomId &&
+                    store.getFullPageThreadId() === (focus.fullPage ? focus.threadId : null) &&
+                    getFullPageThreadCard(RightPanelStore.instance, focus.roomId, focus.threadId)
+                ) {
+                    dis.dispatch({
+                        action: Action.FocusSendMessageComposer,
+                        context: TimelineRenderingType.Thread,
+                    });
+                }
+            });
+        }
     }
 
     public componentWillUnmount(): void {
@@ -166,10 +211,27 @@ export default class ThreadView extends React.Component<IProps, IState> {
         SettingsStore.unwatchSetting(this.layoutWatcherRef);
 
         const hasRoomChanged = this.props.fullWindow || this.context.roomViewStore?.getRoomId() !== roomId;
-        if (this.props.initialEvent && !hasRoomChanged) {
+        if (
+            !hasRoomChanged &&
+            !ThreadView.pendingFocus &&
+            this.context.mainSplitContentType !== MainSplitContentType.Call &&
+            !this.context.roomViewStore.isViewingCall() &&
+            this.context.roomViewStore.getFullPageThreadId() === (this.props.fullPage ? null : this.eventId) &&
+            getFullPageThreadCard(RightPanelStore.instance, this.props.room.roomId, this.eventId)
+        ) {
+            // History navigation replaces the view without going through the header's toggle button.
+            this.prepareFocusHandoff(!this.props.fullPage);
+        }
+        if (
+            this.props.initialEvent &&
+            !hasRoomChanged &&
+            this.context.roomViewStore.getInitialEventId() === this.props.initialEvent.getId() &&
+            this.context.roomViewStore.getFullPageThreadId() === (this.props.fullPage ? this.eventId : null)
+        ) {
             dis.dispatch<ViewRoomPayload>({
                 action: Action.ViewRoom,
                 room_id: this.props.room.roomId,
+                full_page_thread_id: this.context.roomViewStore.getFullPageThreadId() ?? undefined,
                 metricsTrigger: undefined, // room doesn't change
             });
         }
@@ -187,6 +249,8 @@ export default class ThreadView extends React.Component<IProps, IState> {
     public componentDidUpdate(prevProps: IProps): void {
         if (prevProps.mxEvent !== this.props.mxEvent) {
             this.setEventId(this.props.mxEvent);
+            // A toggle handoff expires on navigation, even if this instance later returns to the original root.
+            if (this.scrollAnchor.threadId !== this.eventId) this.scrollAnchor.position = null;
             this.setupThread(this.props.mxEvent);
         }
 
@@ -331,7 +395,10 @@ export default class ThreadView extends React.Component<IProps, IState> {
         });
         thread.emit(ThreadEvent.ViewThread);
         this.updateThreadRelation();
-        this.timelinePanel.current?.refreshTimeline(this.props.initialEvent?.getId());
+        // A toggle's anchor belongs to the initial TimelinePanel load; refreshing would reset its pixel offset.
+        if (this.scrollAnchor.threadId !== thread.id || !this.scrollAnchor.position || this.props.initialEvent) {
+            this.timelinePanel.current?.refreshTimeline(this.props.initialEvent?.getId());
+        }
     }
 
     private setupThreadListeners(thread?: Thread, oldThread?: Thread): void {
@@ -350,7 +417,9 @@ export default class ThreadView extends React.Component<IProps, IState> {
         if (
             this.props.initialEvent &&
             this.props.initialEventScrollIntoView &&
-            event === this.props.initialEvent?.getId()
+            event === this.props.initialEvent?.getId() &&
+            // An expanded root-only URL has an implicit target, without a room permalink to reset.
+            (!this.props.fullPage || this.context.roomViewStore.getInitialEventId() === event)
         ) {
             dis.dispatch<ViewRoomPayload>({
                 action: Action.ViewRoom,
@@ -359,9 +428,67 @@ export default class ThreadView extends React.Component<IProps, IState> {
                 highlighted: this.props.isInitialEventHighlighted,
                 scroll_into_view: false,
                 replyingToEvent: this.state.replyToEvent,
+                full_page_thread_id: this.context.roomViewStore.getFullPageThreadId() ?? undefined,
                 metricsTrigger: undefined, // room doesn't change
             });
         }
+    };
+
+    /** Current scroll position, or null at the latest message. Mirrors RoomView.getScrollState. */
+    private getScrollAnchor(): ThreadScrollAnchor | null {
+        const state = this.timelinePanel.current?.getScrollState();
+        if (!state || state.stuckAtBottom || !state.trackedScrollToken) return null;
+        return { eventId: state.trackedScrollToken, pixelOffset: state.pixelOffset };
+    }
+
+    /** Focus the replacement only while the room, thread card and target layout still match. */
+    private prepareFocusHandoff(fullPage: boolean): void {
+        ThreadView.pendingFocus?.cancel();
+        const store = this.context.roomViewStore;
+        if (store.isViewingCall()) return;
+        const panel = RightPanelStore.instance;
+        const roomId = this.props.room.roomId;
+        const threadId = this.eventId;
+        const cancel = (): void => {
+            store.off(UPDATE_EVENT, onStoreUpdate);
+            panel.off(UPDATE_EVENT, onStoreUpdate);
+            ThreadView.pendingFocus = undefined;
+            clearThreadScrollAnchor(threadId);
+        };
+        const onStoreUpdate = (): void => {
+            if (
+                store.getRoomId() !== roomId ||
+                store.isViewingCall() ||
+                store.getFullPageThreadId() !== (fullPage ? threadId : null) ||
+                !getFullPageThreadCard(panel, roomId, threadId)
+            )
+                cancel();
+        };
+        ThreadView.pendingFocus = { roomId, threadId, fullPage, cancel };
+        // These listeners survive the outgoing view: replacement mount or navigation removes both.
+        store.on(UPDATE_EVENT, onStoreUpdate);
+        panel.on(UPDATE_EVENT, onStoreUpdate);
+    }
+
+    /** Expand or collapse this thread, handing scroll and focus to the replacement view. */
+    private onToggleFullPage = (): void => {
+        this.prepareFocusHandoff(!this.props.fullPage);
+        saveThreadScrollAnchor(this.eventId, this.getScrollAnchor());
+        const fullPage = !this.props.fullPage;
+
+        // A consumed permalink target must not override the viewport handed over by this toggle.
+        const card = RightPanelStore.instance.currentCardForRoom(this.props.room.roomId);
+        if (card.phase === RightPanelPhases.ThreadView && card.state?.threadHeadEvent?.getId() === this.eventId) {
+            card.state.initialEvent = undefined;
+            card.state.isInitialEventHighlighted = undefined;
+            card.state.initialEventScrollIntoView = undefined;
+        }
+        dis.dispatch<ViewRoomPayload>({
+            action: Action.ViewRoom,
+            room_id: this.props.room.roomId,
+            full_page_thread_id: fullPage ? this.eventId : undefined,
+            metricsTrigger: undefined,
+        });
     };
 
     private onMeasurement = (narrow: boolean): void => {
@@ -421,6 +548,17 @@ export default class ThreadView extends React.Component<IProps, IState> {
                 <Heading size="4" className="mx_BaseCard_header_title_heading">
                     {_t("common|thread")}
                 </Heading>
+                {(this.props.fullPage ||
+                    (!this.props.fullWindow && this.context.mainSplitContentType !== MainSplitContentType.Call)) && (
+                    <IconButton
+                        size="28px"
+                        kind="secondary"
+                        tooltip={this.props.fullPage ? _t("threads|collapse_thread") : _t("threads|expand_thread")}
+                        onClick={this.onToggleFullPage}
+                    >
+                        {this.props.fullPage ? <CollapseIcon /> : <ExpandIcon />}
+                    </IconButton>
+                )}
                 <ThreadListContextMenu mxEvent={this.props.mxEvent} permalinkCreator={this.props.permalinkCreator} />
             </div>
         );
@@ -430,6 +568,7 @@ export default class ThreadView extends React.Component<IProps, IState> {
         const highlightedEventId = this.props.isInitialEventHighlighted ? this.props.initialEvent?.getId() : undefined;
 
         const threadRelation = this.threadRelation;
+        const scrollAnchor = this.scrollAnchor.threadId === this.state.thread?.id ? this.scrollAnchor.position : null;
 
         let timeline: JSX.Element | null;
         if (this.state.thread) {
@@ -466,10 +605,13 @@ export default class ThreadView extends React.Component<IProps, IState> {
                             permalinkCreator={this.props.permalinkCreator}
                             membersLoaded={true}
                             editState={this.state.editState}
-                            eventId={this.props.initialEvent?.getId()}
+                            eventId={this.props.initialEvent?.getId() ?? scrollAnchor?.eventId}
+                            eventPixelOffset={this.props.initialEvent ? undefined : scrollAnchor?.pixelOffset}
                             highlightedEventId={highlightedEventId}
                             newDividerEventId={this.props.newDividerEventId}
-                            eventScrollIntoView={this.props.initialEventScrollIntoView}
+                            eventScrollIntoView={
+                                this.props.initialEvent ? this.props.initialEventScrollIntoView : Boolean(scrollAnchor)
+                            }
                             onEventScrolledIntoView={this.resetJumpToEvent}
                             onScroll={this.onTimelineScroll}
                             onTimelineChanged={this.onTimelineScroll}

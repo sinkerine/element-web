@@ -11,6 +11,7 @@ Please see LICENSE files in the repository root for full details.
 import { vi, describe, it, expect, afterAll, beforeEach } from "vitest";
 import fetchMock from "@fetch-mock/vitest";
 import { emitPromise } from "test-utils/utilities";
+import { createTestClient } from "test-utils";
 import "vitest-canvas-mock";
 
 import { UpdateCheckStatus } from "../../BasePlatform";
@@ -44,6 +45,66 @@ describe("WebPlatform", () => {
             new WebPlatform();
             expect(navigator.serviceWorker.register).toHaveBeenCalled();
         });
+
+        it.each(["succeeds", "fails"])(
+            "answers user-info requests while registration is pending and after it %s",
+            async (outcome) => {
+                const registration = Promise.withResolvers<ServiceWorkerRegistration>();
+                vi.mocked(navigator.serviceWorker.register).mockReturnValue(registration.promise);
+                const client = createTestClient();
+                const homeserver = "https://homeserver.example";
+                vi.mocked(client.getHomeserverUrl).mockReturnValue(homeserver);
+                vi.spyOn(MatrixClientPeg, "get").mockReturnValue(client);
+                const userId = "@alice:example.com";
+                const deviceId = "DEVICE";
+                const storage = new Map([
+                    ["mx_user_id", userId],
+                    ["mx_device_id", deviceId],
+                    ["mx_access_token", "private-access-token"],
+                ]);
+                vi.spyOn(localStorage, "getItem").mockImplementation((key) => storage.get(key) ?? null);
+                const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+                const postMessage = vi.fn();
+                const request = new MessageEvent("message", {
+                    data: { type: "userinfo", responseKey: "request-key" },
+                    source: { postMessage } as unknown as ServiceWorker,
+                });
+
+                new WebPlatform();
+                const listener = vi
+                    .mocked(navigator.serviceWorker.addEventListener)
+                    .mock.calls.find(([type]) => type === "message")?.[1] as EventListener | undefined;
+                expect(listener).toBeDefined();
+                listener!(request);
+                expect(postMessage).toHaveBeenCalledExactlyOnceWith({
+                    responseKey: "request-key",
+                    userId,
+                    deviceId,
+                    homeserver,
+                });
+
+                if (outcome === "succeeds") {
+                    const update = vi.fn();
+                    registration.resolve({ update } as unknown as ServiceWorkerRegistration);
+                    await vi.waitFor(() => expect(update).toHaveBeenCalledOnce());
+                } else {
+                    const error = new Error("Registration failed");
+                    registration.reject(error);
+                    await vi.waitFor(() =>
+                        expect(logError).toHaveBeenCalledWith("Error registering/updating service worker:", error),
+                    );
+                }
+
+                expect(navigator.serviceWorker.addEventListener).toHaveBeenCalledOnce();
+                listener!(request);
+                expect(postMessage).toHaveBeenNthCalledWith(2, {
+                    responseKey: "request-key",
+                    userId,
+                    deviceId,
+                    homeserver,
+                });
+            },
+        );
 
         it("handles errors", async () => {
             vi.spyOn(global, "navigator", "get").mockReturnValue({

@@ -50,6 +50,7 @@ import { createMessageEventContent } from "test-utils/events";
 import TimelinePanel from "./TimelinePanel";
 import { PanelTimelineWindow } from "./PanelTimelineWindow";
 import MessagePanel from "./MessagePanel";
+import { UnwrappedEventTile } from "../views/rooms/EventTile";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import SettingsStore from "../../settings/SettingsStore";
 import ScrollPanel from "./ScrollPanel";
@@ -528,7 +529,25 @@ describe("TimelinePanel", () => {
             return { ...result, panel: ref.current!, ref };
         };
 
-        it("should retain both ends of a long midpoint window and reload trimmed history when reopened", async () => {
+        it("should retain both ends of a long midpoint window and reload trimmed history when reopened", async ({
+            onTestFinished,
+        }) => {
+            // Keep the real tile instances and scroll refs, but avoid rendering 140 unrelated tile bodies
+            // on every retained-window update. MessagePanel still mounts every event in the DOM.
+            const tileRender = vi.spyOn(UnwrappedEventTile.prototype, "render").mockImplementation(function (
+                this: UnwrappedEventTile,
+            ) {
+                return (
+                    <li
+                        ref={(node) => {
+                            this.ref.current = node;
+                        }}
+                        data-event-id={this.props.mxEvent.getId()}
+                        data-scroll-tokens={this.props.mxEvent.getId()}
+                    />
+                );
+            });
+            onTestFinished(() => tileRender.mockRestore());
             client.supportsThreads.mockReturnValue(true);
             const room = new Room("!long:test", client, userId, {
                 pendingEventOrdering: PendingEventOrdering.Detached,
@@ -582,11 +601,25 @@ describe("TimelinePanel", () => {
                 },
             });
             onTimelineChanged = vm.onTimelineScrolled;
+            const waitForComplete = (): Promise<void> => {
+                if (vm.getSnapshot().complete) return Promise.resolve();
+                // Completion can span multiple React commits; observe the VM instead of a polling deadline.
+                return new Promise((resolve) => {
+                    const unsubscribe = vm.subscribe(() => {
+                        if (vm.getSnapshot().complete) {
+                            unsubscribe();
+                            resolve();
+                        }
+                    });
+                    onTestFinished(unsubscribe);
+                });
+            };
             scroll.mockClear();
             const anchor = panel.getScrollState()?.trackedScrollToken;
-            // Each page waits for a React state callback before requesting the next page.
-            await act(async () => vm.toggleList());
-            await waitFor(() => expect(vm.getSnapshot().complete).toBe(true));
+            // Opening starts background pagination; let React commit each page before the next one.
+            act(() => vm.toggleList());
+            await waitForComplete();
+            expect(vm.getSnapshot().complete).toBe(true);
             expect(panel.getLoadedEvents()).toEqual(events);
             expect(scroll).not.toHaveBeenCalled();
             expect(panel.getScrollState()?.trackedScrollToken).toBe(anchor);
@@ -605,15 +638,19 @@ describe("TimelinePanel", () => {
             act(() => scrollPanel.props.onUnfillRequest!(true, events[50].getId()!));
             expect(vm.getSnapshot().complete).toBe(false);
             expect(panel.getLoadedEvents()).toHaveLength(89);
-            await act(async () => vm.toggleList());
-            await waitFor(() => expect(vm.getSnapshot().complete).toBe(true));
+            act(() => vm.toggleList());
+            await waitForComplete();
+            expect(vm.getSnapshot().complete).toBe(true);
             expect(panel.getLoadedEvents()).toEqual(events);
             expect(vm.getSnapshot().items.at(-1)?.isRoot).toBe(true);
-            await act(async () => panel.refreshTimeline(events[70].getId()));
-            await waitFor(() => expect(vm!.getSnapshot().complete).toBe(true));
+            act(() => panel.refreshTimeline(events[70].getId()));
+            await waitForComplete();
+            expect(vm.getSnapshot().complete).toBe(true);
             expect(panel.getLoadedEvents()).toEqual(events);
             vm.dispose();
             unmount();
+            scroll.mockRestore();
+            mount.mockRestore();
         });
 
         it("should highlight a jump without reloading and restore the prop highlight on an event change", async () => {

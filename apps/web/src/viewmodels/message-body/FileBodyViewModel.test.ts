@@ -96,6 +96,18 @@ describe("FileBodyViewModel", () => {
         vi.clearAllMocks();
     });
 
+    it("does not fetch the download icon when the module is imported", async () => {
+        vi.resetModules();
+        const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+        try {
+            await import("./FileBodyViewModel");
+            expect(fetchSpy).not.toHaveBeenCalled();
+        } finally {
+            fetchSpy.mockRestore();
+        }
+    });
+
     it("shows unencrypted download snapshot in file rendering type", () => {
         const vm = createVm();
         expect(vm.getSnapshot()).toMatchObject({
@@ -155,7 +167,30 @@ describe("FileBodyViewModel", () => {
         });
     });
 
-    it("decrypts encrypted content and downloads on iframe load", async () => {
+    it("still downloads when the download icon cannot be fetched", async () => {
+        const vm = createVm({
+            mediaEventHelper: mkMediaEventHelper({ encrypted: true }),
+            mxEvent: mkMediaEvent({ file: { url: "mxc://server/file" } }),
+        });
+        const error = new Error("Icon unavailable");
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(error);
+        const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+        try {
+            await vm.onDownloadClick();
+            await vm.onDownloadIframeLoad();
+
+            expect(warnSpy).toHaveBeenCalledWith("Unable to load download icon: ", error);
+            expect(mockDownload).toHaveBeenCalledWith(
+                expect.objectContaining({ opts: expect.objectContaining({ imgSrc: "" }) }),
+            );
+        } finally {
+            fetchSpy.mockRestore();
+            warnSpy.mockRestore();
+        }
+    });
+
+    it("decrypts encrypted content and waits for the download icon on iframe load", async () => {
         const blob = new Blob(["encrypted"], { type: "application/octet-stream" });
         const vm = createVm({
             mediaEventHelper: mkMediaEventHelper({ encrypted: true, blob, fileName: "encrypted.bin" }),
@@ -166,7 +201,13 @@ describe("FileBodyViewModel", () => {
 
         expect(vm.getSnapshot().state).toBe(FileBodyViewState.ENCRYPTED);
 
-        vm.onDownloadIframeLoad();
+        const icon = Promise.withResolvers<Response>();
+        const fetchSpy = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(icon.promise);
+        const download = vm.onDownloadIframeLoad();
+        expect(mockDownload).not.toHaveBeenCalled();
+        icon.resolve(new Response("<svg />"));
+        await download;
+        fetchSpy.mockRestore();
 
         expect(mockDownload).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -174,6 +215,7 @@ describe("FileBodyViewModel", () => {
                 name: "encrypted.bin",
                 autoDownload: true,
                 opts: expect.objectContaining({
+                    imgSrc: "data:image/svg+xml;base64," + window.btoa("<svg />"),
                     textContent: expect.any(String),
                 }),
             }),

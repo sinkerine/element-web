@@ -16,10 +16,18 @@ import { getMockClientWithEventEmitter } from "test-utils";
 import katex from "katex";
 import { logger } from "matrix-js-sdk/src/logger";
 
-import { bodyToHtml, bodyToNode, formatEmojis, sanitizedHtmlNode, topicToHtml } from "./HtmlUtils";
+import {
+    bodyToHtml,
+    bodyToNode,
+    formatEmojis,
+    sanitizedHtmlNode,
+    topicToHtml,
+    type EventRenderOpts,
+} from "./HtmlUtils";
 import SettingsStore from "./settings/SettingsStore";
 import { SettingLevel } from "./settings/SettingLevel";
 import SdkConfig from "./SdkConfig";
+import Markdown from "./Markdown";
 
 describe("topicToHtml", () => {
     function getContent() {
@@ -176,15 +184,20 @@ describe("bodyToHtml", () => {
     });
 
     describe("feature_latex_maths", () => {
-        function renderMaths(formattedBody: string): HTMLElement {
+        function renderMaths(
+            formattedBody: string | undefined,
+            rawBody = "maths fallback",
+            opts: EventRenderOpts = {},
+        ): HTMLElement {
             const html = bodyToHtml(
                 {
-                    body: "maths fallback",
+                    body: rawBody,
                     msgtype: "m.text",
                     formatted_body: formattedBody,
-                    format: "org.matrix.custom.html",
+                    format: formattedBody === undefined ? undefined : "org.matrix.custom.html",
                 },
                 [],
+                opts,
             );
             return new DOMParser().parseFromString(html, "text/html").body;
         }
@@ -223,6 +236,241 @@ describe("bodyToHtml", () => {
                 [],
             );
             expect(html).toMatchSnapshot();
+        });
+
+        it.each([
+            [String.raw`Inline \(\frac{1}{n}\) formula`, false, String.raw`\frac{1}{n}`],
+            [String.raw`\[\frac{1}{n}\]`, true, String.raw`\frac{1}{n}`],
+            ["Before\n$$\\sum_{n=1}^\\infty n^{-2}$$\nAfter", true, String.raw`\sum_{n=1}^\infty n^{-2}`],
+        ])("should render explicit delimiters in plain received messages: %s", (raw, displayMode, tex) => {
+            const body = renderMaths(undefined, raw);
+
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.querySelector("annotation")?.textContent).toBe(tex);
+            expect(body.querySelector("math")?.getAttribute("display")).toBe(displayMode ? "block" : null);
+        });
+
+        it("should render delimiters in formatted messages while preserving surrounding markup", () => {
+            const body = renderMaths(
+                String.raw`<p><strong>Answer</strong>: \(x &lt; y\). <a href="https://example.org">Proof</a></p><p>\[a^2\] and $$b^2$$</p>`,
+            );
+
+            expect(body.querySelectorAll("math")).toHaveLength(3);
+            expect(Array.from(body.querySelectorAll("annotation"), (node) => node.textContent)).toEqual([
+                "x < y",
+                "a^2",
+                "b^2",
+            ]);
+            expect(body.querySelector("strong")?.textContent).toBe("Answer");
+            expect(body.querySelector("a")?.getAttribute("href")).toBe("https://example.org");
+            expect(body.textContent).toContain(". Proof");
+        });
+
+        it.each(["\n", "<br>", "<br />"])(
+            "should recover Markdown-stripped display delimiters from the raw bot body with %s breaks",
+            (lineBreak) => {
+                const body = renderMaths(
+                    `<p><strong>Bot answer</strong></p><p>[${lineBreak}\\frac{1}{n}${lineBreak}]</p><p><em>Done</em></p>`,
+                    "**Bot answer**\n\n\\[\n\\frac{1}{n}\n\\]\n\n*Done*",
+                );
+
+                expect(body.querySelectorAll("math")).toHaveLength(1);
+                expect(body.querySelector("math")?.getAttribute("display")).toBe("block");
+                expect(body.querySelector("annotation")?.textContent).toBe("\n\\frac{1}{n}\n");
+                expect(body.querySelector("strong")?.textContent).toBe("Bot answer");
+                expect(body.querySelector("em")?.textContent).toBe("Done");
+            },
+        );
+
+        it("should recover a bot message passed through ordinary Markdown", () => {
+            const raw = "**Result**\n\n\\[\n\\frac{1}{n}\n\\]\n\n[Explanation](https://example.org)";
+            const body = renderMaths(new Markdown(raw).toHTML(), raw);
+
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.querySelector("annotation")?.textContent).toBe("\n\\frac{1}{n}\n");
+            expect(body.querySelector("strong")?.textContent).toBe("Result");
+            expect(body.querySelector("a")?.textContent).toBe("Explanation");
+        });
+
+        it("should leave ambiguous repeated stripped delimiters as text", () => {
+            const body = renderMaths("<p>(x)</p><p>(x)</p>", String.raw`\(x\) and (x)`);
+
+            expect(body.querySelector("math")).toBeNull();
+            expect(body.innerHTML).toBe("<p>(x)</p><p>(x)</p>");
+        });
+
+        it.each([String.raw`<p>\(x\) and (x)</p>`, '<p><span data-mx-maths="x"><code>x</code></span> and (x)</p>'])(
+            "should not recover literal brackets when the raw formula is already represented: %s",
+            (formatted) => {
+                const body = renderMaths(formatted, String.raw`\(x\) and (x)`);
+
+                expect(body.querySelectorAll("math")).toHaveLength(1);
+                expect(body.querySelector("annotation")?.textContent).toBe("x");
+                expect(body.textContent).toContain(" and (x)");
+            },
+        );
+
+        it("should recover the remaining source formula after accounting for an explicit occurrence", () => {
+            const body = renderMaths(String.raw`<p>\(x\) and (x)</p>`, String.raw`\(x\) and \(x\)`);
+
+            expect(body.querySelectorAll("math")).toHaveLength(2);
+        });
+
+        it("should leave recovery ambiguous when multiple raw occurrences have only one destination", () => {
+            const body = renderMaths("<p>(x)</p>", String.raw`\(x\) and \(x\)`);
+
+            expect(body.querySelector("math")).toBeNull();
+            expect(body.textContent).toBe("(x)");
+        });
+
+        it("should recover only formatted messages and retain plain literal brackets", () => {
+            const body = renderMaths(undefined, String.raw`\(x\) and (x)`);
+
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.textContent).toContain(" and (x)");
+        });
+
+        it("should preserve line breaks around a received formula", () => {
+            const body = renderMaths(String.raw`<p>Before<br>\(x\)<br>After</p>`);
+
+            expect(body.querySelectorAll("br")).toHaveLength(2);
+            expect(body.querySelector("p")?.firstChild?.textContent).toBe("Before");
+            expect(body.querySelector("p")?.lastChild?.textContent).toBe("After");
+        });
+
+        it("should recover stripped inline delimiters only when the raw body retains them", () => {
+            const body = renderMaths(String.raw`<p>Answer (\alpha)!</p>`, String.raw`Answer \(\alpha\)!`);
+
+            expect(body.querySelector("annotation")?.textContent).toBe(String.raw`\alpha`);
+            expect(body.textContent).toMatch(/^Answer .*!$/);
+        });
+
+        it.each([
+            ["[\n\\frac{1}{n}\n]", "[\n\\frac{1}{n}\n]"],
+            ["(\\alpha)", "(\\alpha)"],
+            ["\\frac{1}{n}", "\\frac{1}{n}"],
+            ["[\n\\frac{1}{n}\n]", "\\[\n\\frac{1}{m}\n\\]"],
+            ["[\n\\frac{1}{n}\n]", "maths fallback"],
+            ["(x)", "Use `\\(x\\)` literally"],
+        ])("should leave non-matching or unmarked TeX as text: %s", (formatted, raw) => {
+            const body = renderMaths(`<p>${formatted}</p>`, raw);
+
+            expect(body.querySelector("math")).toBeNull();
+            expect(body.textContent).toBe(formatted);
+        });
+
+        it("should not render code or pre text or parse the fallback inside Matrix maths twice", () => {
+            const body = renderMaths(
+                String.raw`<p><code>\(x\)</code></p><pre>\[y\]</pre><pre><code>$$z$$</code></pre><span data-mx-maths="a"><code>\(a\)</code></span>`,
+                String.raw`\(x\) \[y\] $$z$$`,
+            );
+
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.querySelector("annotation")?.textContent).toBe("a");
+            expect(body.querySelector("p code")?.textContent).toBe(String.raw`\(x\)`);
+            expect(body.querySelectorAll("pre")[0].textContent).toBe(String.raw`\[y\]`);
+            expect(body.querySelectorAll("pre")[1].textContent).toBe("$$z$$");
+        });
+
+        it.each([
+            "Use `\\(x\\)` literally",
+            "```latex\n\\[x\\]\n```",
+            "~~~latex\n$$x$$\n~~~",
+            String.raw`Escaped \\(x\\) and \\[y\\]`,
+            "Tickets are $5/$10, range $5-$10, $3,$4 and $x$",
+        ])("should preserve literal plain received text: %s", (raw) => {
+            const body = renderMaths(undefined, raw);
+
+            expect(body.querySelector("math")).toBeNull();
+            expect(body.textContent).toBe(raw);
+        });
+
+        describe.each([false, true])("backtick run boundaries with linkify=%s", (linkify) => {
+            it.each([
+                "`a `` \\(x\\) b`",
+                "``a ` \\(x\\) b``",
+                "``a ``` \\(x\\) b``",
+                "Use ```a `` \\(x\\) b``` literally",
+            ])("should keep embedded runs literal and infer maths after the code span: %s", (raw) => {
+                getMockClientWithEventEmitter({});
+                const code = linkify ? raw.replace("a ", "a https://example.org ") : raw;
+                const body = renderMaths(undefined, `${code}\nOutside \\(y\\)`, { linkify });
+
+                expect(body.querySelectorAll("math")).toHaveLength(1);
+                expect(body.querySelector("annotation")?.textContent).toBe("y");
+                expect(body.textContent?.startsWith(`${code}\nOutside `)).toBe(true);
+                if (linkify) expect(body.querySelector("a")?.textContent).toBe("https://example.org");
+            });
+
+            it.each(["``a \\(x\\) b`", "`a \\(x\\) b``"])(
+                "should infer maths between unequal delimiter runs: %s",
+                (raw) => {
+                    getMockClientWithEventEmitter({});
+                    const code = linkify ? raw.replace("a ", "a https://example.org ") : raw;
+                    const body = renderMaths(undefined, `${code}\nOutside \\(y\\)`, { linkify });
+
+                    expect(Array.from(body.querySelectorAll("annotation"), (node) => node.textContent)).toEqual([
+                        "x",
+                        "y",
+                    ]);
+                    if (linkify) expect(body.querySelector("a")?.textContent).toBe("https://example.org");
+                },
+            );
+        });
+
+        it.each([
+            "`https://example.org \\(x\\)`",
+            "```latex\nhttps://example.org \\[x\\]\n```",
+            "~~~latex\nhttps://example.org $$x$$\n~~~",
+        ])("should mask complete plain code spans before linkification splits them: %s", (raw) => {
+            getMockClientWithEventEmitter({});
+            const body = renderMaths(undefined, `${raw}\nOutside \\(y\\)`, { linkify: true });
+
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.querySelector("annotation")?.textContent).toBe("y");
+            expect(body.querySelector("a")?.textContent).toBe("https://example.org");
+            expect(body.textContent).toContain(raw);
+        });
+
+        it("should sanitize HTML and use safe KaTeX options for received delimiters", () => {
+            const body = renderMaths(
+                String.raw`<p onclick="alert(1)">\(\href{javascript:alert(1)}{x}\) \(\rule{1000em}{1em}\)</p><script>alert(1)</script>`,
+            );
+
+            expect(body.querySelectorAll("math")).toHaveLength(2);
+            expect(body.querySelector("[onclick], script, a[href]")).toBeNull();
+            expect(body.querySelector<HTMLElement>(".katex-rule")?.style.borderRightWidth).toBe("20em");
+        });
+
+        it("should keep entities as TeX text without interpreting them as HTML", () => {
+            const tex = String.raw`\verb|&lt;img src=x onerror=alert(1)&gt;|`;
+            const body = renderMaths(undefined, `\\(${tex}\\)`);
+
+            expect(body.querySelector("annotation")?.textContent).toBe(tex);
+            expect(body.querySelector("img, [onerror]")).toBeNull();
+        });
+
+        it("should keep explicit source on unexpected failure and render later formulae", () => {
+            vi.spyOn(katex, "renderToString").mockImplementationOnce(() => {
+                throw new Error("Unexpected KaTeX failure");
+            });
+            vi.spyOn(logger, "warn").mockImplementation(() => {});
+            const body = renderMaths(undefined, String.raw`Before \(x\), then \(y\).`);
+
+            expect(body.querySelector("[data-mx-maths]")?.textContent).toBe(String.raw`\(x\)`);
+            expect(body.querySelector("annotation")?.textContent).toBe("y");
+            expect(body.textContent).toContain("Before \\(x\\), then ");
+        });
+
+        it("should leave ordinary received delimiters unchanged when disabled", async () => {
+            await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, false);
+            const renderToString = vi.spyOn(katex, "renderToString");
+            const raw = String.raw`\(x\) \[y\] $$z$$`;
+            const formatted = String.raw`<p><strong>Answer</strong> [\frac{1}{n}] \(x\)</p>`;
+
+            expect(renderMaths(undefined, raw).textContent).toBe(raw);
+            expect(renderMaths(formatted, String.raw`\[\frac{1}{n}\]`).innerHTML).toBe(formatted);
+            expect(renderToString).not.toHaveBeenCalled();
         });
 
         it.each([String.raw`\href{javascript:alert(1)}{x}`, String.raw`\url{https://example.org}`])(
@@ -333,6 +581,25 @@ describe("formatEmojis", () => {
 });
 
 describe("bodyToNode", () => {
+    it("should retain plain-message whitespace styling around received maths", async () => {
+        await SettingsStore.setValue("feature_latex_maths", null, SettingLevel.DEVICE, true);
+        try {
+            const { className, formattedBody } = bodyToNode(
+                { body: "Before  maths\n\\(x\\)\nAfter  maths", msgtype: "m.text" },
+                [],
+                { linkify: true },
+            );
+            const body = new DOMParser().parseFromString(formattedBody!, "text/html").body;
+
+            expect(className.split(" ")).not.toContain("markdown-body");
+            expect(body.querySelectorAll("math")).toHaveLength(1);
+            expect(body.firstChild?.textContent).toBe("Before  maths\n");
+            expect(body.lastChild?.textContent).toBe("\nAfter  maths");
+        } finally {
+            SettingsStore.reset();
+        }
+    });
+
     it("generates big emoji for emoji made of multiple characters", () => {
         const { className, emojiBodyElements } = bodyToNode(
             {

@@ -78,6 +78,8 @@ test.describe("Threads", () => {
             ThreadViewGroupSpacingStart,
         );
 
+        await expect(page.getByRole("button", { name: "Your messages in this thread" })).toBeVisible();
+
         // Take snapshots in group layout and bubble layout (IRC layout is not available on ThreadView)
         await expect(page.locator(".mx_ThreadView")).toMatchScreenshot("Initial_ThreadView_on_group_layout.png", {
             mask,
@@ -486,6 +488,8 @@ test.describe("Threads", () => {
             await expect(locator.locator(".mx_EventTile").last().getByRole("status")).toHaveAccessibleName(
                 "Your message was sent",
             );
+
+            await expect(page.getByRole("button", { name: "Your messages in this thread" })).toBeVisible();
 
             // Take a snapshot of reply to the shared location
             await page.addStyleTag({ content: css });

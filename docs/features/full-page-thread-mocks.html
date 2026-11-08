@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Full-Page Thread Mocks</title>
+        <style>
+            :root {
+                --bg: #f4f6fa;
+                --surface: #ffffff;
+                --surface-2: #f0f2f5;
+                --border: #e1e6ec;
+                --text: #1b1d22;
+                --text-2: #656d77;
+                --accent: #0bc491;
+                --accent-strong: #007a62;
+                --accent-bg: #e3f7ed;
+                --proposed: #7b3ff2;
+                --proposed-bg: #f0e9ff;
+                --shadow: 0 4px 16px rgba(27, 29, 34, 0.12);
+                --space: #e9ecf1;
+                --bubble: #f0f2f5;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root:not([data-theme="light"]) {
+                    --bg: #101317;
+                    --surface: #1b1d22;
+                    --surface-2: #26282d;
+                    --border: #34383f;
+                    --text: #ebeef2;
+                    --text-2: #a3a9b1;
+                    --accent: #1fc090;
+                    --accent-strong: #5fd8ac;
+                    --accent-bg: #0f3327;
+                    --proposed: #b496ff;
+                    --proposed-bg: #2b2240;
+                    --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+                    --space: #15181c;
+                    --bubble: #26282d;
+                }
+            }
+            :root[data-theme="dark"] {
+                --bg: #101317;
+                --surface: #1b1d22;
+                --surface-2: #26282d;
+                --border: #34383f;
+                --text: #ebeef2;
+                --text-2: #a3a9b1;
+                --accent: #1fc090;
+                --accent-strong: #5fd8ac;
+                --accent-bg: #0f3327;
+                --proposed: #b496ff;
+                --proposed-bg: #2b2240;
+                --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+                --space: #15181c;
+                --bubble: #26282d;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                padding: 24px 16px 64px;
+                background: var(--bg);
+                color: var(--text);
+                font:
+                    14px/1.45 Inter,
+                    system-ui,
+                    sans-serif;
+            }
+            main {
+                max-width: 1120px;
+                margin: 0 auto;
+            }
+            h1 {
+                font-size: 24px;
+                margin: 0 0 4px;
+            }
+            h2 {
+                font-size: 18px;
+                margin: 40px 0 6px;
+            }
+            p.lead,
+            .note {
+                color: var(--text-2);
+                max-width: 760px;
+            }
+            .controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 12px 0;
+            }
+            button.ctl {
+                border: 1px solid var(--border);
+                background: var(--surface);
+                color: var(--text);
+                border-radius: 999px;
+                padding: 6px 14px;
+                font: inherit;
+                cursor: pointer;
+            }
+            button.ctl[aria-pressed="true"] {
+                background: var(--accent-bg);
+                border-color: var(--accent);
+                color: var(--accent-strong);
+                font-weight: 600;
+            }
+            .frame {
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: var(--shadow);
+                background: var(--surface);
+            }
+            .urlbar {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                padding: 6px 10px;
+                background: var(--surface-2);
+                border-bottom: 1px solid var(--border);
+                font:
+                    12px ui-monospace,
+                    monospace;
+                color: var(--text-2);
+            }
+            .urlbar .dots {
+                letter-spacing: 2px;
+            }
+            .urlbar .url {
+                flex: 1;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 3px 8px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .urlbar button {
+                font: inherit;
+                border: 0;
+                background: none;
+                color: var(--text-2);
+                cursor: pointer;
+                padding: 2px 6px;
+            }
+            .app {
+                display: flex;
+                height: 460px;
+                position: relative;
+            }
+            .spaces {
+                width: 56px;
+                background: var(--space);
+                border-right: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+                padding-top: 12px;
+            }
+            .spaces span {
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                background: var(--border);
+            }
+            .rooms {
+                width: 200px;
+                border-right: 1px solid var(--border);
+                padding: 10px;
+                background: var(--surface);
+            }
+            .rooms div {
+                padding: 6px 8px;
+                border-radius: 6px;
+                color: var(--text-2);
+            }
+            .rooms div.sel {
+                background: var(--surface-2);
+                color: var(--text);
+                font-weight: 600;
+            }
+            .roomarea {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+            }
+            .roomhdr {
+                height: 48px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 0 14px;
+                border-bottom: 1px solid var(--border);
+                font-weight: 600;
+            }
+            .roomhdr .sp {
+                flex: 1;
+            }
+            .split {
+                flex: 1;
+                display: flex;
+                min-height: 0;
+            }
+            .timeline {
+                flex: 1;
+                padding: 12px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                min-width: 0;
+                overflow: hidden;
+            }
+            .msg {
+                display: flex;
+                gap: 8px;
+            }
+            .av {
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                flex: none;
+                background: #f5a623;
+            }
+            .av.b {
+                background: #5b8def;
+            }
+            .av.c {
+                background: #e0538f;
+            }
+            .body b {
+                display: block;
+                font-size: 13px;
+            }
+            .summary {
+                margin-top: 4px;
+                font-size: 12px;
+                color: var(--accent-strong);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 4px 8px;
+                display: inline-block;
+                cursor: pointer;
+            }
+            .composer {
+                margin-top: auto;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 8px 10px;
+                color: var(--text-2);
+            }
+            .rp {
+                width: 320px;
+                border-left: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+            }
+            .thdr {
+                height: 48px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 0 10px;
+                border-bottom: 1px solid var(--border);
+            }
+            .thdr .t {
+                font-weight: 600;
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
+            }
+            .thdr .crumb {
+                color: var(--text-2);
+                font-weight: 400;
+            }
+            .ib {
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                border: 0;
+                background: none;
+                color: var(--text-2);
+                cursor: pointer;
+                font-size: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .ib:hover {
+                background: var(--surface-2);
+                color: var(--text);
+            }
+            .ib.new {
+                outline: 2px dashed var(--proposed);
+                outline-offset: 1px;
+                color: var(--proposed);
+            }
+            .tbody {
+                flex: 1;
+                padding: 12px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                overflow: hidden;
+            }
+            .tbody.wide {
+                width: 100%;
+            }
+            .root {
+                border-bottom: 1px solid var(--border);
+                padding-bottom: 8px;
+            }
+            .tag {
+                font-size: 11px;
+                color: var(--proposed);
+                background: var(--proposed-bg);
+                border-radius: 4px;
+                padding: 1px 6px;
+                margin-left: 6px;
+                font-weight: 600;
+            }
+            .tip {
+                position: absolute;
+                background: #1b1d22;
+                color: #fff;
+                font-size: 12px;
+                border-radius: 6px;
+                padding: 4px 8px;
+                pointer-events: none;
+                white-space: nowrap;
+                z-index: 5;
+            }
+            .full {
+                position: absolute;
+                inset: 0;
+                background: var(--surface);
+                display: flex;
+                flex-direction: column;
+                z-index: 3;
+            }
+            .callout {
+                border-left: 3px solid var(--proposed);
+                background: var(--proposed-bg);
+                padding: 8px 12px;
+                border-radius: 4px;
+                margin: 12px 0;
+                max-width: 760px;
+            }
+            table {
+                border-collapse: collapse;
+                margin: 8px 0;
+                width: 100%;
+                max-width: 1120px;
+            }
+            td,
+            th {
+                border: 1px solid var(--border);
+                padding: 6px 10px;
+                text-align: left;
+                vertical-align: top;
+            }
+            th {
+                background: var(--surface-2);
+            }
+            .log {
+                font:
+                    12px ui-monospace,
+                    monospace;
+                color: var(--text-2);
+                margin-top: 6px;
+                min-height: 1.4em;
+            }
+            @media (max-width: 760px) {
+                .rooms {
+                    display: none;
+                }
+                .rp {
+                    width: 200px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Show a thread in the entire page</h1>
+            <p class="lead">
+                Today a room thread opens in the right panel (about 320–420px wide). The fork's Threads mode
+                (<code>#/threads</code>) already shows threads wide, but only from its own cross-room list. These mocks
+                show ways to give <em>any</em> thread the whole page. Purple dashed outlines mark new controls.
+            </p>
+
+            <h2 id="layouts">1. Where does the expanded thread go?</h2>
+            <div class="callout">
+                <b>Decided:</b> A (fill the room area), full width, ⤢ button in the thread header only, own URL with
+                Back collapsing.
+            </div>
+            <p class="note">
+                Pick a layout, then press the new <b>⤢ expand</b> button in the thread header. Use the browser
+                <b>←</b> to see what Back does.
+            </p>
+            <div class="controls" role="group" aria-label="Layout">
+                <button class="ctl" data-layout="A" aria-pressed="true">A · Fill the room area</button>
+                <button class="ctl" data-layout="B" aria-pressed="false">B · Fill the whole window</button>
+                <button class="ctl" data-layout="C" aria-pressed="false">C · Hand off to Threads mode</button>
+            </div>
+            <div id="layoutDesc" class="callout"></div>
+            <div class="frame">
+                <div class="urlbar">
+                    <span class="dots">●●●</span>
+                    <button id="back" title="Browser back">←</button>
+                    <span class="url" id="url"></span>
+                </div>
+                <div class="app" id="app"></div>
+            </div>
+            <div class="log" id="log" aria-live="polite"></div>
+
+            <h2 id="compare">2. Comparison</h2>
+            <table>
+                <tr>
+                    <th></th>
+                    <th>A · Room area</th>
+                    <th>B · Whole window</th>
+                    <th>C · Threads mode</th>
+                </tr>
+                <tr>
+                    <td>Still visible</td>
+                    <td>Space bar, room list, room header</td>
+                    <td>Nothing but the thread (own header with room name)</td>
+                    <td>Threads list on the left</td>
+                </tr>
+                <tr>
+                    <td>Switch rooms while expanded</td>
+                    <td>Yes, from the room list. Collapses back to normal for the new room</td>
+                    <td>Only after collapsing</td>
+                    <td>Via the Threads list, which only lists your threads</td>
+                </tr>
+                <tr>
+                    <td>Room timeline</td>
+                    <td>Hidden while expanded</td>
+                    <td>Hidden</td>
+                    <td>Hidden; "Open in room" returns</td>
+                </tr>
+                <tr>
+                    <td>Implementation</td>
+                    <td>
+                        New <code>MainSplitContentType.Thread</code> in <code>RoomView</code>, like the maximised widget
+                    </td>
+                    <td>New page type rendered by <code>LoggedInView</code> without side panels</td>
+                    <td>Small: preselect the thread in <code>ThreadsListViewModel</code></td>
+                </tr>
+                <tr>
+                    <td>Risk</td>
+                    <td>Low: reuses <code>RoomView</code> contexts, composer, call/upload plumbing</td>
+                    <td>Medium: must recreate the room contexts outside <code>RoomView</code></td>
+                    <td>Threads not in "my threads" may not appear in the list</td>
+                </tr>
+            </table>
+
+            <h2 id="url">3. URL and Back</h2>
+            <p class="note">
+                Shown in the address bar above. Proposal: the expanded state has its own URL so a reload or a shared
+                link reopens it, and browser Back collapses it.
+            </p>
+            <table>
+                <tr>
+                    <th>State</th>
+                    <th>URL</th>
+                </tr>
+                <tr>
+                    <td>Room, thread in right panel</td>
+                    <td><code>#/room/!abc:server</code> (unchanged)</td>
+                </tr>
+                <tr>
+                    <td>Thread expanded (A or B)</td>
+                    <td><code>#/room/!abc:server/thread/$rootEventId</code></td>
+                </tr>
+                <tr>
+                    <td>Thread expanded on a reply</td>
+                    <td><code>#/room/!abc:server/thread/$rootEventId/$replyEventId</code></td>
+                </tr>
+            </table>
+
+            <h2 id="sidepanel">4. Room header buttons while the thread is expanded</h2>
+            <div class="callout"><b>Decided:</b> X. The thread collapses back into the right panel.</div>
+            <p class="note">
+                The thread is expanded (layout A, full width). Click <b>ⓘ Room info</b>, <b>👥 People</b> or
+                <b>≡ Threads</b> in the room header, then pick another thread in the list.
+            </p>
+            <div class="controls" role="group" aria-label="Right panel behaviour">
+                <button class="ctl" data-side="Y" aria-pressed="true">
+                    Y · Side panel opens next to it (recommended)
+                </button>
+                <button class="ctl" data-side="X" aria-pressed="false">X · Thread collapses back into the panel</button>
+            </div>
+            <div id="sideDesc" class="callout"></div>
+            <div class="frame">
+                <div class="urlbar">
+                    <span class="dots">●●●</span>
+                    <button id="sideReset" title="Reset demo">↺</button>
+                    <span class="url" id="sideUrl"></span>
+                </div>
+                <div class="app" id="sideApp"></div>
+            </div>
+            <div class="log" id="sideLog" aria-live="polite"></div>
+
+            <h2 id="scroll">5. Scroll position when expanding or collapsing</h2>
+            <div class="callout"><b>Decided:</b> K. Keep the same message in view.</div>
+            <p class="note">
+                The thread moves to a different place in the page, so its timeline is rebuilt. Scroll the thread up to
+                an older message, then press <b>⤢</b> / <b>⤡</b>.
+            </p>
+            <div class="controls" role="group" aria-label="Scroll behaviour">
+                <button class="ctl" data-scroll="K" aria-pressed="true">
+                    K · Keep the same message in view (recommended)
+                </button>
+                <button class="ctl" data-scroll="L" aria-pressed="false">L · Jump to the latest message</button>
+            </div>
+            <div class="frame">
+                <div class="app" id="scrollApp" style="height: 340px"></div>
+            </div>
+            <div class="log" id="scrollLog" aria-live="polite"></div>
+        </main>
+
+        <script>
+            const desc = {
+                A: "<b>A · Fill the room area.</b> The thread replaces the room timeline and right panel. The space bar, room list and room header stay. The thread content uses the full width. ⤡ collapse puts it back in the right panel.",
+                B: "<b>B · Fill the whole window.</b> The thread covers the space bar, room list and room header too, like a focus mode. Its header shows the room name. ⤡ collapse or Back returns.",
+                C: "<b>C · Hand off to Threads mode.</b> Expand opens the existing <code>#/threads</code> view with this thread selected. Nothing new is built, but you leave the room and the left side becomes the Threads list.",
+            };
+            let layout = "A";
+            let expanded = false;
+            const app = document.getElementById("app");
+            const url = document.getElementById("url");
+            const log = document.getElementById("log");
+
+            const msgs = (wide) => `
+                <div class="msg root"><span class="av"></span><div class="body"><b>Alice</b>Should we move the release to Thursday? The migration isn't done.</div></div>
+                <div class="msg"><span class="av b"></span><div class="body"><b>Bob</b>Thursday works for me, I'll update the calendar.</div></div>
+                <div class="msg"><span class="av c"></span><div class="body"><b>You</b>Migration is at 80%. I can finish it Wednesday${wide ? " and post the results here with the benchmark numbers we talked about last week" : ""}.</div></div>
+                <div class="msg"><span class="av"></span><div class="body"><b>Alice</b>Great, Thursday it is.</div></div>
+                <div class="composer">Reply to thread…</div>`;
+
+            const spaces = `<div class="spaces"><span></span><span></span><span></span></div>`;
+            const rooms = (sel) =>
+                `<div class="rooms">${
+                    sel === "threads"
+                        ? `<div class="sel">Threads</div><div>#release · Should we move…</div><div>#design · New icons</div>`
+                        : `<div class="sel">#release</div><div>#design</div><div>#random</div><div>Bob</div>`
+                }</div>`;
+
+            function render() {
+                document.getElementById("layoutDesc").innerHTML = desc[layout];
+                if (!expanded) {
+                    url.textContent = "https://app.element.io/#/room/!abc:server";
+                    app.innerHTML = `${spaces}${rooms()}
+                    <div class="roomarea">
+                        <div class="roomhdr">#release<span class="sp"></span><button class="ib" title="Threads">≡</button></div>
+                        <div class="split">
+                            <div class="timeline">
+                                <div class="msg"><span class="av"></span><div class="body"><b>Alice</b>Should we move the release to Thursday? The migration isn't done.<br><span class="summary">3 replies · Alice: Great, Thursday it is.</span></div></div>
+                                <div class="msg"><span class="av b"></span><div class="body"><b>Bob</b>Lunch?</div></div>
+                                <div class="composer">Send a message…</div>
+                            </div>
+                            <div class="rp">
+                                <div class="thdr"><button class="ib" title="Back">‹</button><span class="t">Thread</span>
+                                    <button class="ib new" id="expand" title="Expand thread" aria-label="Expand thread">⤢</button>
+                                    <button class="ib" title="Options">⋯</button><button class="ib" title="Close">✕</button></div>
+                                <div class="tbody">${msgs(false)}</div>
+                            </div>
+                        </div>
+                    </div>`;
+                    document.getElementById("expand").onclick = expand;
+                    return;
+                }
+                if (layout === "C") {
+                    url.textContent = "https://app.element.io/#/threads";
+                    app.innerHTML = `${spaces}${rooms("threads")}
+                    <div class="roomarea">
+                        <div class="roomhdr">#release › Thread<span class="sp"></span><button class="ib" id="collapse" title="Open in room">↩</button></div>
+                        <div class="tbody wide">${msgs(true)}</div>
+                    </div>`;
+                } else {
+                    url.textContent = "https://app.element.io/#/room/!abc:server/thread/$root";
+                    const hdr = `<div class="thdr"><button class="ib" id="collapse2" title="Back to room">‹</button>
+                        <span class="t">${layout === "B" ? "#release" : ""} <span class="crumb">${layout === "B" ? "› " : ""}Thread</span></span>
+                        <button class="ib new" id="collapse" title="Collapse thread" aria-label="Collapse thread">⤡</button>
+                        <button class="ib" title="Options">⋯</button><button class="ib" id="close" title="Close thread">✕</button></div>`;
+                    const thread = `${hdr}<div class="tbody wide">${msgs(true)}</div>`;
+                    if (layout === "A") {
+                        app.innerHTML = `${spaces}${rooms()}
+                        <div class="roomarea">
+                            <div class="roomhdr">#release<span class="sp"></span><button class="ib" title="Threads">≡</button></div>
+                            <div class="split"><div class="roomarea">${thread}</div></div>
+                        </div>`;
+                    } else {
+                        app.innerHTML = `<div class="full">${thread}</div>`;
+                    }
+                    document.getElementById("close").onclick = () => {
+                        expanded = false;
+                        say(
+                            "✕ closes the thread entirely (room timeline, no right panel). Mock shows the panel again.",
+                        );
+                        render();
+                    };
+                    document.getElementById("collapse2").onclick = collapse;
+                }
+                document.getElementById("collapse").onclick = collapse;
+            }
+            function say(t) {
+                log.textContent = t;
+            }
+            function expand() {
+                expanded = true;
+                say(
+                    layout === "C"
+                        ? "Navigated to Threads mode with this thread selected."
+                        : "Thread expanded. URL changed; Back collapses.",
+                );
+                render();
+            }
+            function collapse() {
+                expanded = false;
+                say("Collapsed: thread back in the right panel, same scroll position and composer draft.");
+                render();
+            }
+            document.getElementById("back").onclick = () => {
+                if (expanded) collapse();
+                else say("Back from the room goes to the previous screen (unchanged).");
+            };
+            document.querySelectorAll("[data-layout]").forEach((b) =>
+                b.addEventListener("click", () => {
+                    layout = b.dataset.layout;
+                    document
+                        .querySelectorAll("[data-layout]")
+                        .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                    expanded = false;
+                    say("");
+                    render();
+                }),
+            );
+            render();
+        </script>
+        <script>
+            (() => {
+                const sdesc = {
+                    Y: "<b>Y · Side panel next to the thread.</b> The expanded thread stays in the main area. Room info, People and the Threads list open in the right panel beside it. Picking a thread in the list switches the expanded thread (URL updates). The right panel never shows a second copy of the expanded thread.",
+                    X: "<b>X · Collapse.</b> The expanded thread is the right panel's thread moved to the main area. Opening any other right-panel card moves the thread back and shows that card instead, so the expanded view closes.",
+                };
+                let mode = "Y";
+                let expanded = true;
+                let panel = null; // null | "info" | "people" | "threads"
+                let thread = "release";
+                const titles = { release: "Should we move the release to Thursday?", icons: "New icon set review" };
+                const app = document.getElementById("sideApp");
+                const log = document.getElementById("sideLog");
+                const url = document.getElementById("sideUrl");
+                const spaces = `<div class="spaces"><span></span><span></span><span></span></div>`;
+                const rooms = `<div class="rooms"><div class="sel">#release</div><div>#design</div><div>#random</div></div>`;
+                const threadBody = (t, wide) => `
+                    <div class="msg root"><span class="av"></span><div class="body"><b>Alice</b>${titles[t]}</div></div>
+                    <div class="msg"><span class="av b"></span><div class="body"><b>Bob</b>${t === "release" ? "Thursday works for me." : "The new icons look great."}</div></div>
+                    <div class="msg"><span class="av c"></span><div class="body"><b>You</b>${t === "release" ? "Migration is at 80%, done by Wednesday." : "Can we get a dark-mode variant too?"}</div></div>
+                    <div class="composer">Reply to thread…</div>`;
+                const panelHtml = () => {
+                    if (panel === "threads")
+                        return `<div class="rp"><div class="thdr"><span class="t">Threads</span><button class="ib" data-closep>✕</button></div>
+                        <div class="tbody">${Object.keys(titles)
+                            .map(
+                                (k) =>
+                                    `<div class="msg" style="cursor:pointer" data-pick="${k}"><span class="av"></span><div class="body"><b>Alice</b>${titles[k]}${k === thread && expanded ? '<span class="tag">Expanded</span>' : ""}</div></div>`,
+                            )
+                            .join("")}</div></div>`;
+                    if (panel === "info")
+                        return `<div class="rp"><div class="thdr"><span class="t">Room info</span><button class="ib" data-closep>✕</button></div><div class="tbody"><b>#release</b><span class="note">12 people · Encrypted</span></div></div>`;
+                    if (panel === "people")
+                        return `<div class="rp"><div class="thdr"><span class="t">People</span><button class="ib" data-closep>✕</button></div><div class="tbody"><div>Alice</div><div>Bob</div><div>You</div></div></div>`;
+                    if (panel === "thread")
+                        return `<div class="rp"><div class="thdr"><span class="t">Thread</span><button class="ib new" data-expand title="Expand thread">⤢</button><button class="ib" data-closep>✕</button></div><div class="tbody">${threadBody(thread)}</div></div>`;
+                    return "";
+                };
+                function render() {
+                    document.getElementById("sideDesc").innerHTML = sdesc[mode];
+                    url.textContent = expanded
+                        ? `https://app.element.io/#/room/!abc:server/thread/$${thread}`
+                        : "https://app.element.io/#/room/!abc:server";
+                    const hdr = `<div class="roomhdr">#release<span class="sp"></span>
+                        <button class="ib" data-open="info" title="Room info">ⓘ</button>
+                        <button class="ib" data-open="people" title="People">👥</button>
+                        <button class="ib" data-open="threads" title="Threads">≡</button></div>`;
+                    const main = expanded
+                        ? `<div class="roomarea"><div class="thdr"><span class="t">Thread</span>
+                            <button class="ib new" data-collapse title="Collapse thread">⤡</button><button class="ib" title="Options">⋯</button><button class="ib" data-close title="Close thread">✕</button></div>
+                            <div class="tbody">${threadBody(thread, true)}</div></div>`
+                        : `<div class="timeline"><div class="msg"><span class="av"></span><div class="body"><b>Alice</b>${titles.release}<br><span class="summary">3 replies</span></div></div><div class="composer">Send a message…</div></div>`;
+                    app.innerHTML = `${spaces}${rooms}<div class="roomarea">${hdr}<div class="split">${main}${panelHtml()}</div></div>`;
+                    app.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => open(b.dataset.open)));
+                    app.querySelectorAll("[data-closep]").forEach(
+                        (b) =>
+                            (b.onclick = () => {
+                                panel = null;
+                                say("Right panel closed.");
+                                render();
+                            }),
+                    );
+                    app.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => pick(b.dataset.pick)));
+                    app.querySelector("[data-collapse]")?.addEventListener("click", () => {
+                        expanded = false;
+                        panel = "thread";
+                        say("Collapsed: the thread is back in the right panel.");
+                        render();
+                    });
+                    app.querySelector("[data-close]")?.addEventListener("click", () => {
+                        expanded = false;
+                        panel = null;
+                        say("✕ closes the thread: the room timeline returns, no right panel.");
+                        render();
+                    });
+                    app.querySelector("[data-expand]")?.addEventListener("click", () => {
+                        expanded = true;
+                        panel = null;
+                        say("Expanded again.");
+                        render();
+                    });
+                }
+                function say(t) {
+                    log.textContent = t;
+                }
+                function open(p) {
+                    if (expanded && mode === "X") {
+                        expanded = false;
+                        panel = p;
+                        say(
+                            `X: the thread collapsed and the right panel now shows ${p}. The thread is no longer visible.`,
+                        );
+                    } else {
+                        panel = p;
+                        say(
+                            expanded ? `Y: ${p} opened beside the expanded thread.` : `${p} opened in the right panel.`,
+                        );
+                    }
+                    render();
+                }
+                function pick(t) {
+                    if (expanded && mode === "Y") {
+                        thread = t;
+                        say(`Y: the expanded thread switched to "${titles[t]}". The list stays open.`);
+                    } else {
+                        thread = t;
+                        panel = "thread";
+                        say(`Opened "${titles[t]}" in the right panel.`);
+                    }
+                    render();
+                }
+                document.getElementById("sideReset").onclick = () => {
+                    expanded = true;
+                    panel = null;
+                    thread = "release";
+                    say("Reset.");
+                    render();
+                };
+                document.querySelectorAll("[data-side]").forEach((b) =>
+                    b.addEventListener("click", () => {
+                        mode = b.dataset.side;
+                        document
+                            .querySelectorAll("[data-side]")
+                            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                        expanded = true;
+                        panel = null;
+                        thread = "release";
+                        say("");
+                        render();
+                    }),
+                );
+                render();
+
+                // Section 5: scroll behaviour
+                let smode = "K";
+                let sExpanded = false;
+                const sapp = document.getElementById("scrollApp");
+                const slog = document.getElementById("scrollLog");
+                const names = ["Alice", "Bob", "You"];
+                const rows = Array.from(
+                    { length: 14 },
+                    (_, i) =>
+                        `<div class="msg" data-i="${i}"><span class="av ${["", "b", "c"][i % 3]}"></span><div class="body"><b>${names[i % 3]}</b>Message ${i + 1}${i === 0 ? " (thread root)" : ""}: ${"lorem ipsum ".repeat(3 + (i % 4))}</div></div>`,
+                ).join("");
+                function topIndex(scroller) {
+                    const top = scroller.getBoundingClientRect().top;
+                    for (const el of scroller.querySelectorAll("[data-i]")) {
+                        if (el.getBoundingClientRect().bottom > top + 4) return Number(el.dataset.i);
+                    }
+                    return 0;
+                }
+                function srender(anchor) {
+                    const thdr = `<div class="thdr"><span class="t">Thread</span><button class="ib new" id="stoggle" title="${sExpanded ? "Collapse thread" : "Expand thread"}">${sExpanded ? "⤡" : "⤢"}</button></div>`;
+                    const scroller = `<div class="tbody" id="sscroll" style="overflow:auto">${rows}</div>`;
+                    sapp.innerHTML = sExpanded
+                        ? `${spaces}<div class="roomarea"><div class="roomhdr">#release</div>${thdr}${scroller}</div>`
+                        : `${spaces}<div class="roomarea"><div class="roomhdr">#release</div><div class="split"><div class="timeline"><div class="composer" style="margin-top:auto">Send a message…</div></div><div class="rp">${thdr}${scroller}</div></div></div>`;
+                    const sc = document.getElementById("sscroll");
+                    if (anchor === undefined || smode === "L") sc.scrollTop = sc.scrollHeight;
+                    else sc.querySelector(`[data-i="${anchor}"]`).scrollIntoView({ block: "start" });
+                    document.getElementById("stoggle").onclick = () => {
+                        const a = topIndex(sc);
+                        const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4;
+                        sExpanded = !sExpanded;
+                        srender(atBottom ? undefined : a);
+                        slog.textContent = atBottom
+                            ? "Was at the latest message, so it stays at the latest message."
+                            : smode === "K"
+                              ? `K: message ${a + 1} is still the first one in view.`
+                              : `L: jumped to the latest message (you were reading message ${a + 1}).`;
+                    };
+                }
+                document.querySelectorAll("[data-scroll]").forEach((b) =>
+                    b.addEventListener("click", () => {
+                        smode = b.dataset.scroll;
+                        document
+                            .querySelectorAll("[data-scroll]")
+                            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+                        sExpanded = false;
+                        slog.textContent = "";
+                        srender();
+                    }),
+                );
+                srender();
+            })();
+        </script>
+    </body>
+</html>

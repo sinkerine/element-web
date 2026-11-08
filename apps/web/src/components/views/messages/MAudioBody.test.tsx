@@ -9,17 +9,20 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EventType, MatrixEvent } from "matrix-js-sdk/src/matrix";
+import { EventType, MatrixEvent, type MatrixClient } from "matrix-js-sdk/src/matrix";
 import { render, screen, act } from "test-utils-rtl";
+import { clientAndSDKContextRenderOptions, createTestClient } from "test-utils";
 
 import { MockedPlayback } from "../../../audio/__mocks__";
 import { type Playback, PlaybackState } from "../../../audio/Playback";
 import MAudioBody from "./MAudioBody";
 import { PlaybackManager } from "../../../audio/PlaybackManager";
 import { type MediaEventHelper } from "../../../utils/MediaEventHelper";
+import { SDKContextClass } from "../../../contexts/SDKContextClass";
 
 describe("<MAudioBody />", () => {
     let event: MatrixEvent;
+    let client: MatrixClient;
 
     const mediaEventHelper = {
         sourceBlob: {
@@ -30,6 +33,7 @@ describe("<MAudioBody />", () => {
     } as unknown as MediaEventHelper;
 
     beforeEach(() => {
+        client = createTestClient();
         const playback = new MockedPlayback(PlaybackState.Decoding, 50, 10) as unknown as Playback;
         vi.spyOn(PlaybackManager.instance, "createPlaybackInstance").mockReturnValue(playback);
 
@@ -46,12 +50,22 @@ describe("<MAudioBody />", () => {
     });
 
     it("should render", async () => {
-        await act(() => render(<MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />));
+        await act(() =>
+            render(
+                <MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />,
+                clientAndSDKContextRenderOptions(client, SDKContextClass.instance),
+            ),
+        );
         expect(await screen.findByRole("region", { name: "Audio player" })).toBeInTheDocument();
     });
 
     it("should show the body as the title when there is no filename", async () => {
-        await act(() => render(<MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />));
+        await act(() =>
+            render(
+                <MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />,
+                clientAndSDKContextRenderOptions(client, SDKContextClass.instance),
+            ),
+        );
         expect(await screen.findByRole("region", { name: "Audio player" })).toBeInTheDocument();
         expect(screen.getByText("audio name")).toBeInTheDocument();
     });
@@ -61,7 +75,12 @@ describe("<MAudioBody />", () => {
         event.getContent().filename = "recording.ogg";
         event.getContent().body = "Listen to this!";
 
-        await act(() => render(<MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />));
+        await act(() =>
+            render(
+                <MAudioBody mxEvent={event} mediaEventHelper={mediaEventHelper} />,
+                clientAndSDKContextRenderOptions(client, SDKContextClass.instance),
+            ),
+        );
         expect(await screen.findByRole("region", { name: "Audio player" })).toBeInTheDocument();
         expect(screen.getByText("recording.ogg")).toBeInTheDocument();
         expect(screen.queryByText("Listen to this!")).not.toBeInTheDocument();

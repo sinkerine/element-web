@@ -17,6 +17,7 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { render } from "test-utils-rtl";
 import { vi, describe, it, expect, beforeEach, afterEach, afterAll, type MockedObject } from "vitest";
+import { type SerializedPart, Type } from "../../editor/parts";
 import { getRoomContext, mkEvent, mkStubRoom, stubClient } from "test-utils";
 
 import { RoomUploadContextProvider, RoomUploadViewModel } from "./RoomUploadViewModel";
@@ -46,6 +47,81 @@ describe("RoomUploadViewModel", () => {
     });
     afterAll(() => {
         vi.restoreAllMocks();
+    });
+
+    it.each(["input", "transfer"])("passes a draft and restores a failed caption via %s", async (method) => {
+        const vm = new RoomUploadViewModel(
+            room,
+            client,
+            TimelineRenderingType.Room,
+            dis,
+            undefined,
+            undefined,
+            vi.fn(),
+        );
+        const parts: SerializedPart[] = [{ type: Type.Plain, text: "caption" }];
+        const source = {
+            getCaptionDraft: vi.fn(() => parts),
+            clearCaptionDraft: vi.fn(),
+            restoreCaptionDraft: vi.fn(),
+        };
+        vm.setCaptionDraftSource(source);
+        let finish!: (sent: boolean) => void;
+        sendContentListToRoomSpy.mockResolvedValue({
+            queuedCount: 1,
+            caption: {
+                parts,
+                sent: new Promise((resolve) => {
+                    finish = resolve;
+                }),
+            },
+        });
+        const files = [new File(["hi"], "a.txt")];
+        if (method === "input") await vm.initiateViaInputFiles(files);
+        else await vm.initiateViaDataTransfer({ files } as unknown as DataTransfer);
+        expect(sendContentListToRoomSpy).toHaveBeenLastCalledWith(
+            files,
+            room.roomId,
+            undefined,
+            undefined,
+            client,
+            TimelineRenderingType.Room,
+            { captionDraft: parts },
+        );
+        expect(source.clearCaptionDraft).toHaveBeenCalledOnce();
+        const currentSource = { ...source, restoreCaptionDraft: vi.fn() };
+        vm.setCaptionDraftSource(currentSource);
+        finish(false);
+        await Promise.resolve();
+        expect(currentSource.restoreCaptionDraft).toHaveBeenCalledWith(parts);
+        expect(source.restoreCaptionDraft).not.toHaveBeenCalled();
+        vm.dispose();
+    });
+
+    it.each([true, false])("leaves draft alone on empty caption or dismissal (queued=%s)", async (queued) => {
+        const vm = new RoomUploadViewModel(
+            room,
+            client,
+            TimelineRenderingType.Room,
+            dis,
+            undefined,
+            undefined,
+            vi.fn(),
+        );
+        const source = {
+            getCaptionDraft: vi.fn(() => [{ type: Type.Plain, text: "caption" }]),
+            clearCaptionDraft: vi.fn(),
+            restoreCaptionDraft: vi.fn(),
+        };
+        vm.setCaptionDraftSource(source);
+        sendContentListToRoomSpy.mockResolvedValue({ queuedCount: queued ? 1 : 0 });
+        await vm.initiateViaInputFiles([new File(["hi"], "a.txt")]);
+        expect(source.clearCaptionDraft).not.toHaveBeenCalled();
+        expect(source.restoreCaptionDraft).not.toHaveBeenCalled();
+        vm.setCaptionDraftSource(null);
+        await vm.initiateViaInputFiles([new File(["hi"], "a.txt")]);
+        expect(source.getCaptionDraft).toHaveBeenCalledOnce();
+        vm.dispose();
     });
 
     it.each([true, false])("handles state when room.maySendMessage = %s", (maySendMessage) => {
@@ -133,7 +209,7 @@ describe("RoomUploadViewModel", () => {
             expect(dis.dispatch).not.toHaveBeenCalled();
         });
         it("uploads with correct context", async () => {
-            sendContentListToRoomSpy.mockResolvedValue(undefined);
+            sendContentListToRoomSpy.mockResolvedValue({ queuedCount: 0 });
             const vm = new RoomUploadViewModel(
                 room,
                 client,
@@ -162,6 +238,7 @@ describe("RoomUploadViewModel", () => {
                 replyEvent,
                 client,
                 TimelineRenderingType.Thread,
+                { captionDraft: undefined },
             );
         });
     });
@@ -195,7 +272,7 @@ describe("RoomUploadViewModel", () => {
             expect(dis.dispatch).not.toHaveBeenCalled();
         });
         it("uploads with correct context", async () => {
-            sendContentListToRoomSpy.mockResolvedValue(undefined);
+            sendContentListToRoomSpy.mockResolvedValue({ queuedCount: 0 });
             const vm = new RoomUploadViewModel(
                 room,
                 client,
@@ -224,13 +301,14 @@ describe("RoomUploadViewModel", () => {
                 replyEvent,
                 client,
                 TimelineRenderingType.Thread,
+                { captionDraft: undefined },
             );
         });
     });
 
     describe("RoomUploadContextProvider", () => {
         it("uploads when called via module API", async () => {
-            sendContentListToRoomSpy.mockResolvedValue(undefined);
+            sendContentListToRoomSpy.mockResolvedValue({ queuedCount: 0 });
             render(
                 <MatrixClientContext.Provider value={client}>
                     <ScopedRoomContextProvider {...getRoomContext(room, {})}>
@@ -262,6 +340,7 @@ describe("RoomUploadViewModel", () => {
                 undefined,
                 client,
                 TimelineRenderingType.Room,
+                { captionDraft: undefined },
             );
         });
     });

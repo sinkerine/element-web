@@ -9,12 +9,13 @@ Please see LICENSE files in the repository root for full details.
 // @vitest-environment jsdom
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
+import { MatrixEvent } from "matrix-js-sdk/src/matrix";
 
 import { parseEvent } from "./deserialize";
 import { type Part } from "./parts";
 import { createPartCreator } from "./__mocks__";
 import SettingsStore from "../settings/SettingsStore";
+import { textToHtmlRainbow } from "../utils/colour";
 import * as maths from "./maths";
 
 const FOUR_SPACES = " ".repeat(4);
@@ -76,6 +77,63 @@ function normalize(parts: Part[]) {
 }
 
 describe("editor/deserialize", function () {
+    describe("media captions", () => {
+        const media = (content: object): MatrixEvent =>
+            new MatrixEvent({
+                type: "m.room.message",
+                content: { msgtype: "m.image", body: "photo.png", url: "mxc://server/media", ...content },
+            });
+
+        it("should return an empty model for an uncaptioned image", () => {
+            expect(parseEvent(media({}), createPartCreator())).toEqual([]);
+        });
+
+        it("should parse a plain caption without the filename", () => {
+            const parts = parseEvent(media({ filename: "photo.png", body: "a caption" }), createPartCreator());
+            expect(normalize(parts)).toEqual(normalize(parseEvent(textMessage("a caption"), createPartCreator())));
+        });
+
+        it("should parse formatted HTML captions", () => {
+            const html = "a <strong>caption</strong>";
+            const parts = parseEvent(
+                media({
+                    filename: "photo.png",
+                    body: "a caption",
+                    format: "org.matrix.custom.html",
+                    formatted_body: html,
+                }),
+                createPartCreator(),
+            );
+            expect(normalize(parts)).toEqual(normalize(parseEvent(htmlMessage(html), createPartCreator())));
+        });
+
+        it("should parse HTML captions without command prefixes", () => {
+            const html = textToHtmlRainbow("caption");
+            const parts = parseEvent(
+                media({
+                    filename: "photo.png",
+                    body: "caption",
+                    format: "org.matrix.custom.html",
+                    formatted_body: html,
+                }),
+                createPartCreator(),
+            );
+            expect(parts.map((part) => part.text).join("")).not.toMatch(/^\/(me|rainbow)/);
+            expect(parts.map((part) => part.text).join("")).toBe("caption");
+        });
+
+        it("should strip plain reply fallbacks from captions", () => {
+            const event = media({
+                "filename": "photo.png",
+                "body": "> <@alice:server> original\n\ncaption",
+                "m.relates_to": { "m.in_reply_to": { event_id: "$original" } },
+            });
+            expect(normalize(parseEvent(event, createPartCreator()))).toEqual(
+                normalize(parseEvent(textMessage("caption"), createPartCreator())),
+            );
+        });
+    });
+
     describe("maths editing", () => {
         beforeEach(() => {
             vi.spyOn(SettingsStore, "getValue").mockImplementation((name) => name === "feature_latex_maths");

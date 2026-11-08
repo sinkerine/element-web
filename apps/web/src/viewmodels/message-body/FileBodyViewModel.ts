@@ -51,9 +51,6 @@ async function cacheDownloadIcon(): Promise<string> {
     return downloadIconCache.url;
 }
 
-// Cache the asset immediately
-void cacheDownloadIcon();
-
 // User supplied content can contain scripts, we have to be careful that
 // we don't accidentally run those script within the same origin as the
 // client. Otherwise those scripts written by remote users can read
@@ -239,15 +236,22 @@ export class FileBodyViewModel
         return downloadLabelForFile(this.content, true);
     }
 
-    private downloadFile(fileName: string, text: string): void {
+    private async downloadFile(fileName: string, text: string): Promise<void> {
         if (!this.decryptedBlob) return;
 
-        void this.fileDownloader.download({
+        // Fetch only when needed and keep the work within the download's lifetime.
+        let iconUrl = "";
+        try {
+            iconUrl = await cacheDownloadIcon();
+        } catch (error) {
+            logger.warn("Unable to load download icon: ", error);
+        }
+        await this.fileDownloader.download({
             blob: this.decryptedBlob,
             name: fileName,
             autoDownload: this.userDidClick,
             opts: {
-                imgSrc: downloadIconCache.url,
+                imgSrc: iconUrl,
                 imgStyle: null,
                 style: computedStyle(this.refLink.current),
                 textContent: text,
@@ -279,7 +283,7 @@ export class FileBodyViewModel
 
         if (this.props.mediaEventHelper.media.isEncrypted) {
             await this.decryptFile();
-            this.downloadFile(this.fileName, this.linkText);
+            await this.downloadFile(this.fileName, this.linkText);
             return;
         }
 
@@ -313,8 +317,8 @@ export class FileBodyViewModel
         });
     };
 
-    public onDownloadIframeLoad = (): void => {
-        this.downloadFile(this.fileName, this.linkText);
+    public onDownloadIframeLoad = async (): Promise<void> => {
+        await this.downloadFile(this.fileName, this.linkText);
     };
 
     public setProps(newProps: Partial<FileBodyViewModelProps>): void {

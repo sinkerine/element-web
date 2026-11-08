@@ -3317,12 +3317,16 @@
     "threads": {
         "all_threads": "All threads",
         "all_threads_description": "Shows all threads from current room",
+        "back_to_room": "Back to room",
+        "collapse_thread": "Collapse thread",
         "count_of_reply": {
             "one": "%(count)s reply",
             "other": "%(count)s replies"
         },
         "empty_description": "Use “%(replyInThread)s” when hovering over a message.",
         "empty_title": "Threads help keep your conversations on-topic and easy to track.",
+        "expand_thread": "Expand thread",
+        "full_page_load_error": "Couldn't load this thread.",
         "mark_all_read": "Mark all as read",
         "my_threads": "My threads",
         "my_threads_description": "Shows all threads you've participated in",
@@ -3854,6 +3858,9 @@
     "upload_failed_title": "Upload Failed",
     "upload_file": {
         "cancel_all_button": "Cancel All",
+        "caption_label": "Caption",
+        "caption_last_file": "The caption is sent with the last file",
+        "caption_placeholder": "Add a caption…",
         "error_file_too_large": "This file is <b>too large</b> to upload. The file size limit is %(limit)s but this file is %(sizeOfThisFile)s.",
         "error_files_too_large": "These files are <b>too large</b> to upload. The file size limit is %(limit)s.",
         "error_some_files_too_large": "Some files are <b>too large</b> to be uploaded. The file size limit is %(limit)s.",

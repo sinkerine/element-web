@@ -35,7 +35,7 @@ vi.mock("../../../contexts/SDKContextClass", () => ({
 describe("DateSeparatorViewModel", () => {
     const HOUR_MS = 3600000;
     const DAY_MS = HOUR_MS * 24;
-    // Use local time so subtracting one hour stays on Friday in every timezone.
+    // Use local morning so the one-hour-earlier fixture stays on the same calendar day in every timezone.
     const nowDate = new Date(2021, 11, 17, 9, 9);
     const roomId = "!room:example.org";
     const defaultProps = {

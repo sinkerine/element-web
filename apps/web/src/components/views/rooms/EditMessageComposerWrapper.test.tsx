@@ -151,6 +151,17 @@ describe("<EditMessageComposerWrapper />", () => {
         expect(lastProps(wysiwygComposerProps).isUrlPreviewsModified).toBe(false);
     });
 
+    it.each([false, true])("should use CIDER without URL preview wiring for media (rich text: %s)", (richText) => {
+        if (richText) enabledSettings.push("feature_wysiwyg_composer");
+        renderWrapper({ msgtype: "m.image", body: "photo.png", url: "mxc://server/media" });
+        expect(screen.getByRole("textbox", { name: PLAIN_COMPOSER_LABEL })).toBeInTheDocument();
+        expect(screen.queryByRole("textbox", { name: WYSIWYG_COMPOSER_LABEL })).not.toBeInTheDocument();
+        expect(lastProps(plainComposerProps).updateUrlPreviews).toBeUndefined();
+        expect(lastProps(plainComposerProps).attachBundles).toBeUndefined();
+        expect(lastProps(plainComposerProps).isUrlPreviewsModified).toBeUndefined();
+        expect(client.getUrlPreview).not.toHaveBeenCalled();
+    });
+
     it("should preview links the plain composer reports", async () => {
         renderWrapper();
         act(() => {

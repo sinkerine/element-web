@@ -9,7 +9,7 @@ import React from "react";
 import { render, screen } from "@test-utils";
 import { composeStories } from "@storybook/react-vite";
 import { describe, it, expect, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
+import { userEvent } from "vitest/browser";
 
 import * as stories from "./LeftResizablePanelView.stories";
 import { BaseViewModel } from "../../core/viewmodel";
@@ -42,8 +42,8 @@ function renderPanel(initialSnapshot?: Partial<ResizerViewSnapshot>): MockViewMo
     render(
         <ResizableGroup style={{ width: 600, height: 200 }}>
             <LeftResizablePanelView vm={vm}>Left</LeftResizablePanelView>
-            <Separator style={{ width: 4 }} />
-            <Panel>Test</Panel>
+            <Separator style={{ width: 8 }} />
+            <Panel id="right-panel">Test</Panel>
         </ResizableGroup>,
     );
     return vm;
@@ -64,19 +64,19 @@ describe("<LeftResizablePanelView />", () => {
         const vm = renderPanel();
         const separator = screen.getByRole("separator");
         const panel = screen.getByTestId(LEFT_PANEL_ID);
-        // ResizeObserver reports the initial layout before it reports a user resize.
-        await expect.poll(() => vm.onLeftPanelResize).toHaveBeenCalled();
-        vi.mocked(vm.onLeftPanelResize).mockClear();
+        // Use the real pointer so the resize library can hit-test and capture it.
+        await userEvent.hover(separator);
         const initialWidth = panel.getBoundingClientRect().width;
-        const rect = separator.getBoundingClientRect();
-        const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-        const user = userEvent.setup();
-        await user.pointer([
-            { target: separator, coords: start, keys: "[MouseLeft>]" },
-            { coords: { x: start.x + 100, y: start.y } },
-            { keys: "[/MouseLeft]" },
-        ]);
-        await expect.poll(() => vm.onLeftPanelResize).toHaveBeenCalled();
+        vi.mocked(vm.onLeftPanelResize).mockClear();
+
+        await userEvent.dragAndDrop(separator, screen.getByTestId("right-panel"), {
+            targetPosition: { x: 100, y: 50 },
+        });
+
+        // Panel resize notifications are delivered asynchronously by ResizeObserver.
+        await expect
+            .poll(() => vi.mocked(vm.onLeftPanelResize).mock.lastCall?.[0].inPixels)
+            .toBeGreaterThan(initialWidth);
         expect(panel.getBoundingClientRect().width).toBeGreaterThan(initialWidth);
         expect(vi.mocked(vm.onLeftPanelResize).mock.lastCall![0].inPixels).toBeCloseTo(
             panel.getBoundingClientRect().width,

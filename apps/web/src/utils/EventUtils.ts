@@ -22,6 +22,7 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
+import { isCaptionableContent } from "./MediaCaption";
 import shouldHideEvent from "../shouldHideEvent";
 import { type GetRelationsForEvent } from "../components/views/rooms/EventTile";
 import SettingsStore from "../settings/SettingsStore";
@@ -87,6 +88,7 @@ export function canEditContent(matrixClient: MatrixClient, mxEvent: MatrixEvent)
     const { msgtype, body } = mxEvent.getOriginalContent();
     return (
         M_POLL_START.matches(mxEvent.getType()) ||
+        isCaptionableContent(mxEvent.getOriginalContent()) ||
         ((msgtype === MsgType.Text || msgtype === MsgType.Emote) && !!body && typeof body === "string")
     );
 }
@@ -238,7 +240,8 @@ export async function fetchInitialEvent(
         const mapper = client.getEventMapper();
         const rootEvent = room?.findEventById(threadId) ?? mapper(await client.fetchRoomEvent(roomId, threadId));
         try {
-            room?.createThread(threadId, rootEvent, [initialEvent], true);
+            // createThread returns an existing thread without attaching the fetched event to it.
+            initialEvent.setThread(room?.createThread(threadId, rootEvent, [initialEvent], true));
         } catch {
             logger.warn("Could not find root event: " + threadId);
         }

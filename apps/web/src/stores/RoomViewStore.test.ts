@@ -212,6 +212,78 @@ describe("RoomViewStore", function () {
         stores._RoomViewStore = roomViewStore;
     });
 
+    describe("full page thread", () => {
+        const threadId = "$expanded-root";
+
+        it("should initialize empty and set the thread with its highlighted event", async () => {
+            expect(roomViewStore.getFullPageThreadId()).toBeNull();
+            await roomViewStore.viewRoom({
+                action: Action.ViewRoom,
+                room_id: roomId,
+                full_page_thread_id: threadId,
+                event_id: "$reply",
+                highlighted: true,
+                metricsTrigger: undefined,
+            });
+            expect(roomViewStore.getFullPageThreadId()).toBe(threadId);
+            expect(roomViewStore.getInitialEventId()).toBe("$reply");
+            expect(roomViewStore.isInitialEventHighlighted()).toBe(true);
+
+            await roomViewStore.viewRoom({ action: Action.ViewRoom, room_id: roomId, metricsTrigger: undefined });
+            expect(roomViewStore.getFullPageThreadId()).toBeNull();
+        });
+
+        it.each([Action.ViewHomePage, Action.ViewThreads, "view_welcome_page", Action.ViewRoomError])(
+            "should clear the thread on %s",
+            async (action) => {
+                await roomViewStore.viewRoom({
+                    action: Action.ViewRoom,
+                    room_id: roomId,
+                    full_page_thread_id: threadId,
+                    metricsTrigger: undefined,
+                });
+                dis.dispatch({ action, room_id: roomId, err: new MatrixError({ error: "Room failed" }) }, true);
+                expect(roomViewStore.getFullPageThreadId()).toBeNull();
+            },
+        );
+
+        it.each([false, true])("should preserve the thread through alias resolution (cached: %s)", async (cached) => {
+            const threadAlias = cached ? "#expanded-cached:server" : "#expanded-uncached:server";
+            if (cached) storeRoomAliasInCache(threadAlias, roomId, []);
+            else mockClient.getRoomIdForAlias.mockResolvedValue({ room_id: roomId, servers: [] });
+
+            await roomViewStore.viewRoom({
+                action: Action.ViewRoom,
+                room_id: roomId,
+                full_page_thread_id: "$previous-root",
+                metricsTrigger: undefined,
+            });
+            const pending = roomViewStore.viewRoom({
+                action: Action.ViewRoom,
+                room_alias: threadAlias,
+                full_page_thread_id: threadId,
+                metricsTrigger: undefined,
+            });
+            if (!cached) expect(roomViewStore.getFullPageThreadId()).toBeNull();
+            await pending;
+            await untilDispatch((payload) => payload.action === Action.ViewRoom && payload.room_id === roomId, dis);
+            expect(roomViewStore.getFullPageThreadId()).toBe(threadId);
+        });
+
+        it("should clear the thread when alias resolution fails", async () => {
+            await roomViewStore.viewRoom({
+                action: Action.ViewRoom,
+                room_id: roomId,
+                full_page_thread_id: threadId,
+                metricsTrigger: undefined,
+            });
+            mockClient.getRoomIdForAlias.mockRejectedValue(new MatrixError({ error: "Unknown alias" }));
+            dis.dispatch({ action: Action.ViewRoom, room_alias: "#expanded-failed:server" });
+            await untilDispatch(Action.ViewRoomError, dis);
+            expect(roomViewStore.getFullPageThreadId()).toBeNull();
+        });
+    });
+
     it.each([
         ["$original-thread", "$reply"],
         ["$other-thread", null],
@@ -697,6 +769,39 @@ describe("RoomViewStore", function () {
             expect(roomViewStore.getRoomId()).toBe(subscribedRoomId);
             expect(setRoomVisible).toHaveBeenCalledWith(subscribedRoomId);
         });
+
+        it.each([undefined, "$root-in-b"])(
+            "updates the expanded thread before the room subscription resolves (thread: %s)",
+            async (threadId) => {
+                const setRoomVisible = vi.spyOn(slidingSyncManager, "setRoomVisible").mockResolvedValue(undefined);
+                dis.dispatch({ action: Action.ViewRoom, room_id: roomId, full_page_thread_id: "$root-in-a" });
+                await untilDispatch(Action.ActiveRoomChanged, dis);
+                await flushPromises();
+                expect(roomViewStore.getFullPageThreadId()).toBe("$root-in-a");
+
+                const subscription = Promise.withResolvers<void>();
+                setRoomVisible.mockReturnValueOnce(subscription.promise);
+                const pending = roomViewStore.viewRoom({
+                    action: Action.ViewRoom,
+                    room_id: roomId2,
+                    full_page_thread_id: threadId,
+                    metricsTrigger: undefined,
+                });
+
+                expect(setRoomVisible).toHaveBeenLastCalledWith(roomId2);
+                expect(roomViewStore.getRoomId()).toBe(roomId2);
+                expect(roomViewStore.getFullPageThreadId()).toBe(threadId ?? null);
+
+                const redispatched = untilDispatch(
+                    (payload) => payload.action === Action.ViewRoom && payload.room_id === roomId2,
+                    dis,
+                );
+                subscription.resolve();
+                await pending;
+                await redispatched;
+                expect(roomViewStore.getFullPageThreadId()).toBe(threadId ?? null);
+            },
+        );
 
         // Previously a regression test for an in-the-wild bug where rooms would rapidly switch forever in sliding sync mode
         // although that was before the complexity was removed with similified mode. I've removed the complexity but kept the

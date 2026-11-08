@@ -10,8 +10,15 @@ Please see LICENSE files in the repository root for full details.
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, type RenderResult } from "test-utils-rtl";
-import { type MatrixClient, type MatrixEvent, EventType, type Room, MsgType } from "matrix-js-sdk/src/matrix";
+import { act, fireEvent, render, type RenderResult } from "test-utils-rtl";
+import {
+    type IContent,
+    type MatrixClient,
+    type MatrixEvent,
+    EventType,
+    type Room,
+    MsgType,
+} from "matrix-js-sdk/src/matrix";
 import fetchMock from "@fetch-mock/vitest";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,6 +33,10 @@ import { INTERACTIVE_UI_KEY } from "../../../interactive-ui/protocol";
 import EditorStateTransfer from "../../../utils/EditorStateTransfer";
 import { type IBodyProps } from "./IBodyProps";
 import knowledge from "../../../interactive-ui/fixtures/valid/knowledge-map.en.json";
+import Modal from "../../../Modal";
+import MessageEditHistoryDialog from "../dialogs/MessageEditHistoryDialog";
+
+const textualBodyMock = vi.hoisted(() => ({ useActual: false }));
 
 vi.mock("./MBodyFactory", () => ({
     __esModule: true,
@@ -41,7 +52,11 @@ vi.mock("./TextualBodyFactory", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./TextualBodyFactory")>();
     return {
         TextualBodyFactory: (props: IBodyProps) =>
-            props.editState ? <actual.TextualBodyFactory {...props} /> : <div data-testid="textual-body" />,
+            props.editState || textualBodyMock.useActual ? (
+                <actual.TextualBodyFactory {...props} />
+            ) : (
+                <div data-testid="textual-body" />
+            ),
     };
 });
 
@@ -59,6 +74,10 @@ vi.mock("./MImageReplyBody", () => ({
 vi.mock("../../../hooks/useMediaVisible", () => ({
     __esModule: true,
     useMediaVisible: () => [true, vi.fn()],
+}));
+
+vi.mock("./MVoiceOrAudioBody", () => ({
+    default: () => <audio data-testid="audio-body" />,
 }));
 
 vi.mock("./MStickerBody", () => ({
@@ -91,6 +110,7 @@ describe("MessageEvent", () => {
     };
 
     beforeEach(() => {
+        textualBodyMock.useActual = false;
         localStorage.clear();
         client = stubClient();
         room = mkRoom(client, "!room:example.com");
@@ -282,6 +302,183 @@ describe("MessageEvent", () => {
                 expect(result.queryAllByText("Couldn’t show interactive content.")).toHaveLength(version === 1 ? 1 : 0);
             },
         );
+    });
+
+    it("should keep an uncaptioned image visible alongside its edit composer", () => {
+        event = mkEvent({
+            event: true,
+            type: EventType.RoomMessage,
+            user: client.getUserId()!,
+            room: room.roomId,
+            content: {
+                msgtype: MsgType.Image,
+                body: "photo.png",
+                url: "mxc://server/image",
+                info: { mimetype: "image/png" },
+            },
+        });
+        const result = render(
+            <MatrixClientContext.Provider value={client}>
+                <MessageEvent mxEvent={event} editState={new EditorStateTransfer(event)} />
+            </MatrixClientContext.Provider>,
+        );
+        expect(result.getByTestId("image-body")).toBeVisible();
+        expect(result.getByRole("textbox", { name: "Edit message" })).toBeVisible();
+    });
+
+    describe("media caption edit markers", () => {
+        const mediaTypes = [
+            [MsgType.Image, "photo.png", "image-body"],
+            [MsgType.File, "document.pdf", "file-body"],
+            [MsgType.Audio, "audio.ogg", "audio-body"],
+            [MsgType.Video, "video.mp4", "video-body"],
+        ] as const;
+
+        const renderBody = (editState?: EditorStateTransfer, replacingEventId?: string) => (
+            <MatrixClientContext.Provider value={client}>
+                <MessageEvent mxEvent={event} editState={editState} replacingEventId={replacingEventId} />
+            </MatrixClientContext.Provider>
+        );
+
+        const createMediaEvent = (msgtype: MsgType, filename: string, caption?: string): MatrixEvent =>
+            mkEvent({
+                event: true,
+                id: "$media:example.com",
+                type: EventType.RoomMessage,
+                user: client.getUserId()!,
+                room: room.roomId,
+                content: {
+                    msgtype,
+                    body: caption ?? filename,
+                    filename,
+                    url: "mxc://server/media",
+                },
+            });
+
+        const replaceCaption = (body: string, formattedBody?: string): void => {
+            const content: IContent = { ...event.getContent(), body };
+            delete content.format;
+            delete content.formatted_body;
+            if (formattedBody) {
+                content.format = "org.matrix.custom.html";
+                content.formatted_body = formattedBody;
+            }
+            event.makeReplaced(
+                mkEvent({
+                    event: true,
+                    id: `$edit-${body}:example.com`,
+                    ts: Date.UTC(2026, 10, 8, 12),
+                    type: EventType.RoomMessage,
+                    user: client.getUserId()!,
+                    room: room.roomId,
+                    content: {
+                        "msgtype": content.msgtype,
+                        "body": `* ${body}`,
+                        "m.new_content": content,
+                        "m.relates_to": { rel_type: "m.replace", event_id: event.getId() },
+                    },
+                }),
+            );
+        };
+
+        beforeEach(() => {
+            textualBodyMock.useActual = true;
+        });
+
+        it.each(mediaTypes)(
+            "should retain one edited marker without a filename caption after removing a %s caption",
+            (msgtype, filename, bodyTestId) => {
+                event = createMediaEvent(msgtype, filename, "Original caption");
+                const result = render(renderBody());
+                expect(result.getByText("Original caption")).toBeVisible();
+                expect(result.queryByText("(edited)")).not.toBeInTheDocument();
+
+                act(() => {
+                    replaceCaption(filename);
+                    result.rerender(renderBody());
+                });
+
+                expect(result.getByTestId(bodyTestId)).toBeInTheDocument();
+                expect(result.getAllByText("(edited)")).toHaveLength(1);
+                expect(result.queryByText("Original caption")).not.toBeInTheDocument();
+                expect(result.queryByText(filename)).not.toBeInTheDocument();
+                expect(result.container.querySelector(".mx_EventTile_caption")).toHaveTextContent("(edited)");
+            },
+        );
+
+        it.each(mediaTypes)(
+            "should leave unedited uncaptioned %s rendering unchanged",
+            (msgtype, filename, bodyTestId) => {
+                event = createMediaEvent(msgtype, filename);
+                const result = render(renderBody());
+
+                expect(result.getByTestId(bodyTestId)).toBeInTheDocument();
+                expect(result.queryByText("(edited)")).not.toBeInTheDocument();
+                expect(result.queryByText(filename)).not.toBeInTheDocument();
+                expect(result.container.querySelector(".mx_EventTile_caption")).toBeNull();
+            },
+        );
+
+        it("should keep the original event for edit history after removing its caption", () => {
+            event = createMediaEvent(MsgType.Image, "photo.png", "Original caption");
+            replaceCaption("photo.png");
+            const createDialog = vi.spyOn(Modal, "createDialog").mockImplementation(vi.fn());
+            const result = render(renderBody());
+
+            fireEvent.click(result.getByText("(edited)"));
+
+            expect(createDialog).toHaveBeenCalledWith(MessageEditHistoryDialog, { mxEvent: event });
+        });
+
+        it("should use the supplied replacement id for uncaptioned media", () => {
+            event = createMediaEvent(MsgType.Image, "photo.png");
+            vi.spyOn(event, "replacingEventDate").mockReturnValue(new Date(Date.UTC(2026, 10, 8, 12)));
+            const result = render(renderBody(undefined, "$server-edit:example.com"));
+
+            expect(result.getAllByText("(edited)")).toHaveLength(1);
+            expect(result.queryByText("photo.png")).not.toBeInTheDocument();
+        });
+
+        it("should reopen the caption editor and render a subsequently added formatted caption once", () => {
+            event = createMediaEvent(MsgType.Image, "photo.png", "Original caption");
+            replaceCaption("photo.png");
+            const result = render(renderBody());
+            expect(result.getAllByText("(edited)")).toHaveLength(1);
+
+            result.rerender(renderBody(new EditorStateTransfer(event)));
+            expect(result.getByTestId("image-body")).toBeVisible();
+            expect(result.getByRole("textbox", { name: "Edit message" })).toBeVisible();
+            expect(result.queryByText("(edited)")).not.toBeInTheDocument();
+
+            act(() => {
+                replaceCaption("A formatted caption", "<strong>A formatted caption</strong>");
+                result.rerender(renderBody());
+            });
+            expect(result.getByText("A formatted caption").tagName).toBe("STRONG");
+            expect(result.getAllByText("(edited)")).toHaveLength(1);
+            expect(result.queryByText("photo.png")).not.toBeInTheDocument();
+        });
+
+        it("should preserve formatted captions on already edited media", () => {
+            event = createMediaEvent(MsgType.Image, "photo.png", "Original caption");
+            replaceCaption("A formatted caption", "<em>A formatted caption</em>");
+            const result = render(renderBody());
+
+            expect(result.getByText("A formatted caption").tagName).toBe("EM");
+            expect(result.getAllByText("(edited)")).toHaveLength(1);
+        });
+
+        it("should exclude uncaptioned voice messages from the media caption marker and editor", () => {
+            event = createMediaEvent(MsgType.Audio, "audio.ogg");
+            event.getContent()["org.matrix.msc3245.voice"] = {};
+            replaceCaption("audio.ogg");
+            const result = render(renderBody(new EditorStateTransfer(event)));
+
+            expect(result.getByTestId("audio-body")).toBeInTheDocument();
+            expect(result.queryByText("(edited)")).not.toBeInTheDocument();
+            expect(result.queryByRole("textbox")).not.toBeInTheDocument();
+            expect(result.container.querySelector(".mx_EventTile_caption")).toBeNull();
+        });
     });
 
     describe("when an image with a caption is sent", () => {

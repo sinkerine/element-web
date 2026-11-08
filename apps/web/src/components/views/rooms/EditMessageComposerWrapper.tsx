@@ -20,6 +20,7 @@ import { type RoomMessageEventContent } from "../../../../@types/url-preview";
 import { attachUrlPreviews } from "../../../utils/messages";
 import { linksIn } from "../../../utils/UrlUtils";
 import { ModuleApi } from "../../../modules/Api";
+import { isCaptionableContent } from "../../../utils/MediaCaption";
 
 interface IEditMessageComposerProps extends MatrixClientProps {
     showUrlPreview: boolean;
@@ -28,6 +29,18 @@ interface IEditMessageComposerProps extends MatrixClientProps {
 }
 
 export function EditMessageComposerWrapper(props: IEditMessageComposerProps): JSX.Element {
+    if (isCaptionableContent(props.editState.getEvent().getContent())) {
+        return (
+            <div className="mx_EditMessageComposerWrapper">
+                <EditMessageComposer editState={props.editState} className={props.className} />
+            </div>
+        );
+    }
+
+    return <TextEditMessageComposerWrapper {...props} />;
+}
+
+function TextEditMessageComposerWrapper(props: IEditMessageComposerProps): JSX.Element {
     const vm = useCreateAutoDisposedViewModel(() =>
         MessageComposerUrlPreviewViewModel.restoreFromMessage({
             client: props.mxClient,

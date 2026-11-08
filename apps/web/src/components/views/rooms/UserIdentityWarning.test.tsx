@@ -446,9 +446,11 @@ describe("UserIdentityWarning", () => {
 
             await act(async () => {
                 renderComponent(client, room);
-                await sleep(10);
             });
-            expect(() => getWarningByText("@alice:example.org's digital identity was reset.")).toThrow();
+            await waitFor(() => {
+                expect(hasLeft).toBe(true);
+                expect(() => getWarningByText("@alice:example.org's digital identity was reset.")).toThrow();
+            });
         });
 
         it("when member leaves immediately after joining", async () => {

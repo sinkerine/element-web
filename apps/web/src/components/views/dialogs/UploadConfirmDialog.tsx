@@ -7,7 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, type JSX } from "react";
+import React, { useCallback, useEffect, useRef, type JSX } from "react";
+
+import type { Room } from "matrix-js-sdk/src/matrix";
+import type EditorModel from "../../../editor/model";
+import { setCaretPosition } from "../../../editor/caret";
+import BasicMessageComposer from "../rooms/BasicMessageComposer";
+import { getKeyBindingsManager } from "../../../KeyBindingsManager";
+import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
 
 import { _t } from "../../../languageHandler";
 import BaseDialog from "./BaseDialog";
@@ -28,6 +35,10 @@ interface IProps {
     currentIndex?: number;
     /** Defaults to 1. */
     totalFiles?: number;
+    /** Room receiving the files; required for the caption editor. */
+    room?: Room;
+    /** Caption model shared between confirmation steps. */
+    captionModel?: EditorModel;
     onFinished: (uploadConfirmed: boolean, uploadAll?: boolean) => void;
 }
 
@@ -101,9 +112,27 @@ export default function UploadConfirmDialog({
     file,
     currentIndex = 0,
     totalFiles = 1,
+    room,
+    captionModel,
     onFinished,
 }: IProps): JSX.Element {
     const vm = useCreateAutoDisposedViewModel(() => new UploadPreviewViewModel(file));
+    const captionComposer = useRef<BasicMessageComposer>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        // StrictMode makes FocusLock restore the original composer in a microtask, then trap focus
+        // back in the caption, resetting Chromium's selection. Place the initial caret afterwards.
+        void Promise.resolve().then(() => {
+            const editor = captionComposer.current?.editorRef.current;
+            if (cancelled || !editor || !captionModel) return;
+            editor.focus();
+            setCaretPosition(editor, captionModel, captionModel.getPositionAtEnd());
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [captionModel, room]);
 
     let title: string;
     if (totalFiles > 1 && currentIndex !== undefined) {
@@ -150,13 +179,38 @@ export default function UploadConfirmDialog({
                         <MediaPreviewGroupPreview vm={vm} />
                     </div>
                 </div>
+                {room && captionModel && (
+                    <div
+                        className="mx_UploadConfirmDialog_caption"
+                        onKeyDown={(event) => {
+                            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                            if (captionModel.autoComplete?.hasCompletions()) return;
+                            if (
+                                getKeyBindingsManager().getMessageComposerAction(event) === KeyBindingAction.SendMessage
+                            ) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onUploadClick();
+                            }
+                        }}
+                    >
+                        <BasicMessageComposer
+                            ref={captionComposer}
+                            model={captionModel}
+                            room={room}
+                            label={_t("upload_file|caption_label")}
+                            placeholder={_t("upload_file|caption_placeholder")}
+                        />
+                        {totalFiles > 1 && <p>{_t("upload_file|caption_last_file")}</p>}
+                    </div>
+                )}
             </div>
 
             <DialogButtons
                 primaryButton={_t("action|upload")}
                 hasCancel={false}
                 onPrimaryButtonClick={onUploadClick}
-                focus={true}
+                focus={!room || !captionModel}
             >
                 {uploadAllButton}
             </DialogButtons>

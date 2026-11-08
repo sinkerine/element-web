@@ -13,8 +13,21 @@ import { type ISendEventResponse } from "matrix-js-sdk/src/matrix";
 // function to avoid importing from "@vector-im/matrix-wysiwyg"
 import { type SendMessageParams } from "./utils/message";
 
-const SendComposer = lazy(() => import("./SendWysiwygComposer"));
-const EditComposer = lazy(() => import("./EditWysiwygComposer"));
+async function initializeWysiwyg(): Promise<void> {
+    const { initOnce } = await import("@vector-im/matrix-wysiwyg");
+    // Finish WASM initialization before mounting the hooks. Otherwise StrictMode can start two model
+    // initializations, and the later one can replace a ready model after the user has started typing.
+    await initOnce();
+}
+
+const SendComposer = lazy(async () => {
+    await initializeWysiwyg();
+    return import("./SendWysiwygComposer");
+});
+const EditComposer = lazy(async () => {
+    await initializeWysiwyg();
+    return import("./EditWysiwygComposer");
+});
 
 export const dynamicImportSendMessage = async (
     message: string,

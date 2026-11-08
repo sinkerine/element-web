@@ -116,6 +116,12 @@ export default defineConfig({
                             // but let's pass these options everywhere for consistency
                             contextOptions: commonContextOptions,
                             launchOptions: commonLaunchOptions,
+                            connectOptions: process.env.PW_TEST_CONNECT_WS_ENDPOINT
+                                ? {
+                                      wsEndpoint: process.env.PW_TEST_CONNECT_WS_ENDPOINT,
+                                      exposeNetwork: "<loopback>",
+                                  }
+                                : undefined,
                         }),
                         instances: [{ browser: "chromium" }],
                         commands: { parkPointer },

@@ -15,6 +15,9 @@ import {
     type ISendEventResponse,
     type MatrixClient,
     MatrixError,
+    Room,
+    RoomMember,
+    HTTPError,
     RelationType,
     type UploadResponse,
 } from "matrix-js-sdk/src/matrix";
@@ -22,6 +25,10 @@ import { type ImageInfo } from "matrix-js-sdk/src/types";
 import encrypt, { type IEncryptedFile } from "matrix-encrypt-attachment";
 import { createTestClient, flushPromises, mkEvent } from "test-utils";
 
+import EditorModel from "./editor/model";
+import { createPartCreator } from "./editor/__mocks__";
+import { PartCreator, Type } from "./editor/parts";
+import SettingsStore from "./settings/SettingsStore";
 import ContentMessages, { UploadCanceledError, uploadFile } from "./ContentMessages";
 import { clearUploadedMediaCache, queryUploadedMediaCache } from "./utils/UploadedMediaCache";
 import { doMaybeLocalRoomAction } from "./utils/local-room";
@@ -107,6 +114,80 @@ describe("ContentMessages", () => {
                 <T>(roomId: string, fn: (actualRoomId: string) => Promise<T>) => fn(roomId),
             );
             vi.mocked(BlurhashEncoder.instance.getBlurhash).mockResolvedValue("blurhashstring");
+        });
+
+        it.each([false, true])("sends caption fields and mentions with encrypted=%s", async (encrypted) => {
+            const settingsSpy = vi
+                .spyOn(SettingsStore, "getValue")
+                .mockImplementation((key) => key === "MessageComposerInput.useMarkdown");
+            vi.mocked(client.uploadContent).mockResolvedValue({ content_uri: "mxc://server/file" });
+            const cryptoSpy = vi.spyOn(client.getCrypto()!, "isEncryptionEnabledInRoom").mockResolvedValue(encrypted);
+            vi.mocked(encrypt.encryptAttachment).mockResolvedValue({
+                data: new ArrayBuffer(0),
+                info: {} as IEncryptedFile,
+            });
+            const pc = createPartCreator();
+            const member = new RoomMember(roomId, "@bob:server");
+            const model = new EditorModel([pc.plain("**hello** "), pc.userPill("Bob", member.userId)], pc);
+            const sent = await contentMessages.sendContentToRoom(
+                new File(["hi"], "notes.txt"),
+                roomId,
+                undefined,
+                client,
+                undefined,
+                undefined,
+                model,
+            );
+            expect(sent).toBe(true);
+            expect(client.sendMessage).toHaveBeenCalledWith(
+                roomId,
+                null,
+                expect.objectContaining({
+                    "filename": "notes.txt",
+                    "body": "**hello** Bob",
+                    "format": "org.matrix.custom.html",
+                    "formatted_body": expect.stringContaining("<strong>hello</strong>"),
+                    "m.mentions": { user_ids: [member.userId] },
+                    ...(encrypted ? { file: { url: "mxc://server/file" } } : { url: "mxc://server/file" }),
+                }),
+            );
+            settingsSpy.mockRestore();
+            cryptoSpy.mockRestore();
+        });
+
+        it("returns false when the captioned upload fails", async () => {
+            vi.mocked(client.uploadContent).mockRejectedValue(new HTTPError("failure", 500));
+            const pc = createPartCreator();
+            expect(
+                await contentMessages.sendContentToRoom(
+                    new File(["hi"], "notes.txt"),
+                    roomId,
+                    undefined,
+                    client,
+                    undefined,
+                    undefined,
+                    new EditorModel([pc.plain("caption")], pc),
+                ),
+            ).toBe(false);
+        });
+
+        it("returns false when the captioned upload is cancelled", async () => {
+            vi.mocked(client.uploadContent).mockImplementation(async () => {
+                contentMessages.cancelUpload(contentMessages.getCurrentUploads()[0]);
+                return { content_uri: "mxc://server/file" };
+            });
+            const pc = createPartCreator();
+            expect(
+                await contentMessages.sendContentToRoom(
+                    new File(["hi"], "notes.txt"),
+                    roomId,
+                    undefined,
+                    client,
+                    undefined,
+                    undefined,
+                    new EditorModel([pc.plain("caption")], pc),
+                ),
+            ).toBe(false);
         });
 
         it("should use m.image for image files", async () => {
@@ -492,7 +573,7 @@ describe("sendContentListToRoom analytics", () => {
             <T>(roomId: string, fn: (actualRoomId: string) => Promise<T>) => fn(roomId),
         );
         contentMessages = new ContentMessages();
-        vi.spyOn(contentMessages, "sendContentToRoom").mockResolvedValue(undefined);
+        vi.spyOn(contentMessages, "sendContentToRoom").mockResolvedValue(true);
         trackEvent = vi.spyOn(PosthogAnalytics.instance, "trackEvent").mockImplementation(() => {});
         // Automatically continue through the per-file confirmation dialog.
         vi.spyOn(Modal, "createDialog").mockImplementation((component: unknown, ...rest: any[]) => {
@@ -558,5 +639,142 @@ describe("sendContentListToRoom analytics", () => {
             }),
         );
         expect(contentMessages.sendContentToRoom).not.toHaveBeenCalled();
+    });
+});
+
+describe("sendContentListToRoom captions", () => {
+    const roomId = "!caption:server";
+    let client: MatrixClient;
+    let messages: ContentMessages;
+    beforeEach(() => {
+        client = createTestClient();
+        vi.mocked(client.getRoom).mockReturnValue(new Room(roomId, client, client.getSafeUserId()));
+        vi.mocked(client.getMediaConfig).mockResolvedValue({});
+        vi.mocked(client.uploadContent).mockResolvedValue({ content_uri: "mxc://server/file" });
+        vi.mocked(doMaybeLocalRoomAction).mockImplementation(
+            <T>(id: string, fn: (actualRoomId: string) => Promise<T>) => fn(id),
+        );
+        messages = new ContentMessages();
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it.each([
+        { count: 1, cancelAt: -1, all: false, queued: 1 },
+        { count: 3, cancelAt: -1, all: false, queued: 3 },
+        { count: 3, cancelAt: 2, all: false, queued: 2 },
+        { count: 3, cancelAt: -1, all: true, queued: 3 },
+        { count: 3, cancelAt: 0, all: false, queued: 0 },
+    ])("puts the shared caption on the last confirmed file: %j", async ({ count, cancelAt, all, queued }) => {
+        let confirmations = 0;
+        let sharedModel: EditorModel | undefined;
+        vi.spyOn(Modal, "createDialog").mockImplementation((component, props) => {
+            if (component !== UploadConfirmDialog) {
+                return { finished: new Promise(() => {}), close: vi.fn() } as any;
+            }
+            // No uploads start during any of the confirmation steps.
+            expect(client.uploadContent).not.toHaveBeenCalled();
+            const { captionModel } = props as { captionModel: EditorModel };
+            if (sharedModel) expect(captionModel).toBe(sharedModel);
+            sharedModel = captionModel;
+            return { finished: Promise.resolve([confirmations++ !== cancelAt, all]) } as any;
+        });
+        const result = await messages.sendContentListToRoom(
+            Array.from({ length: count }, (_, i) => new File(["hi"], `${i}.txt`)),
+            roomId,
+            undefined,
+            undefined,
+            client,
+            undefined,
+            { captionDraft: [{ type: Type.Plain, text: "/caption" }] },
+        );
+        expect(result.queuedCount).toBe(queued);
+        if (!queued) {
+            expect(result.caption).toBeUndefined();
+            return;
+        }
+        expect(await result.caption?.sent).toBe(true);
+        const contents = vi.mocked(client.sendMessage).mock.calls.map((call) => call[2]);
+        expect(contents).toHaveLength(queued);
+        contents.forEach((content, i) => {
+            expect(content.body).toBe(i === queued - 1 ? "/caption" : `${i}.txt`);
+            expect("filename" in content ? content.filename : undefined).toBe(
+                i === queued - 1 ? `${i}.txt` : undefined,
+            );
+        });
+    });
+
+    it.each(["", "   "])("omits caption fields for blank text %j", async (text) => {
+        const room = client.getRoom(roomId)!;
+        const pc = new PartCreator(room, client);
+        const model = new EditorModel([pc.plain(text)], pc);
+        expect(
+            await messages.sendContentToRoom(
+                new File(["hi"], "a.txt"),
+                roomId,
+                undefined,
+                client,
+                undefined,
+                undefined,
+                model,
+            ),
+        ).toBe(true);
+        expect(client.sendMessage).toHaveBeenCalledWith(
+            roomId,
+            null,
+            expect.not.objectContaining({ filename: expect.anything() }),
+        );
+    });
+
+    it.each([true, false])(
+        "queues without a caption when the field is emptied or room missing (room=%s)",
+        async (hasRoom) => {
+            if (!hasRoom) vi.mocked(client.getRoom).mockReturnValue(null);
+            vi.spyOn(Modal, "createDialog").mockImplementation((component, props) => {
+                if (component !== UploadConfirmDialog)
+                    return { finished: new Promise(() => {}), close: vi.fn() } as any;
+                const { room, captionModel } = props as { room?: Room; captionModel?: EditorModel };
+                if (hasRoom) captionModel!.reset([]);
+                else {
+                    expect(room).toBeUndefined();
+                    expect(captionModel).toBeUndefined();
+                }
+                return { finished: Promise.resolve([true]) } as any;
+            });
+            const send = vi.spyOn(messages, "sendContentToRoom");
+            const result = await messages.sendContentListToRoom(
+                [new File(["hi"], "a.txt")],
+                roomId,
+                undefined,
+                undefined,
+                client,
+                undefined,
+                { captionDraft: [{ type: Type.Plain, text: "caption" }] },
+            );
+            expect(result).toEqual({ queuedCount: 1 });
+            await send.mock.results[0].value;
+            expect(client.sendMessage).toHaveBeenCalledWith(roomId, null, expect.objectContaining({ body: "a.txt" }));
+        },
+    );
+
+    it("exposes a false caption outcome on HTTP failure", async () => {
+        vi.spyOn(Modal, "createDialog").mockImplementation(
+            (component) =>
+                ({
+                    finished: component === UploadConfirmDialog ? Promise.resolve([true]) : new Promise(() => {}),
+                    close: vi.fn(),
+                }) as any,
+        );
+        vi.mocked(client.uploadContent).mockRejectedValue(new HTTPError("failure", 500));
+        const result = await messages.sendContentListToRoom(
+            [new File(["hi"], "a.txt")],
+            roomId,
+            undefined,
+            undefined,
+            client,
+            undefined,
+            { captionDraft: [{ type: Type.Plain, text: "caption" }] },
+        );
+        expect(result.queuedCount).toBe(1);
+        expect(await result.caption?.sent).toBe(false);
     });
 });

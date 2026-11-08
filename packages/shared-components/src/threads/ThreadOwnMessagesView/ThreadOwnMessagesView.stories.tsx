@@ -7,7 +7,7 @@ Please see LICENSE in the repository root for full details.
 
 import React from "react";
 import { type Meta, type StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
+import { expect, fn } from "storybook/test";
 
 import { ThreadOwnMessagesView, type ThreadOwnMessagesViewSnapshot } from "./ThreadOwnMessagesView";
 import { useMockedViewModel } from "../../core/viewmodel";
@@ -108,5 +108,15 @@ export const LongPreviewWithNotice: Story = {
             isCurrent: false,
             context: { senderName: "Alice", snippet: "A long context message before this reply. ".repeat(5) },
         })),
+    },
+    play: async ({ canvas }) => {
+        const body = canvas.getByText(/^Long preview line 0:/);
+        const lineHeight = Number.parseFloat(getComputedStyle(body).lineHeight);
+        const visibleLines = body.getBoundingClientRect().height / lineHeight;
+
+        // The remaining preview space must fit whole lines even when the notice is present.
+        await expect(visibleLines).toBeGreaterThanOrEqual(1);
+        await expect(visibleLines).toBeLessThanOrEqual(8);
+        await expect(visibleLines).toBeCloseTo(Math.floor(visibleLines), 2);
     },
 };

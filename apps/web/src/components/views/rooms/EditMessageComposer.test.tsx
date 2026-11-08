@@ -37,6 +37,10 @@ import type { RoomContextType } from "../../../contexts/RoomContext.ts";
 import { SDKContext } from "../../../contexts/SDKContext.ts";
 import { SDKContextClass } from "../../../contexts/SDKContextClass.ts";
 
+import { createRedactEventDialog } from "../dialogs/ConfirmRedactDialog";
+
+vi.mock("../dialogs/ConfirmRedactDialog", () => ({ createRedactEventDialog: vi.fn() }));
+
 describe("<EditMessageComposer/>", () => {
     const userId = "@alice:server.org";
     const roomId = "!room:server.org";
@@ -100,6 +104,7 @@ describe("<EditMessageComposer/>", () => {
     beforeEach(() => {
         mockClient.getRoom.mockReturnValue(room);
         mockClient.sendMessage.mockClear();
+        vi.mocked(createRedactEventDialog).mockClear();
 
         userEvent.setup();
 
@@ -156,6 +161,92 @@ describe("<EditMessageComposer/>", () => {
         await waitFor(() =>
             expect(mockClient.sendMessage).toHaveBeenCalledWith(editedEvent.getRoomId()!, null, expectedBody),
         );
+    });
+
+    describe("media captions", () => {
+        const media = (caption?: string) =>
+            mkEvent({
+                type: "m.room.message",
+                user: userId,
+                room: roomId,
+                event: true,
+                content: {
+                    msgtype: "m.image",
+                    body: caption ?? "photo.png",
+                    url: "mxc://server/image",
+                    info: { mimetype: "image/png", w: 20, h: 30 },
+                    ...(caption
+                        ? {
+                              filename: "photo.png",
+                              format: "org.matrix.custom.html",
+                              formatted_body: `<strong>${caption}</strong>`,
+                          }
+                        : {}),
+                },
+            });
+
+        it.each([
+            ["add", undefined, "a caption"],
+            ["change", "old caption", "new caption"],
+            ["remove", "old caption", ""],
+            ["literal emote", undefined, "/me caption"],
+            ["literal command", undefined, "/join #room:server.org"],
+            ["unknown command", undefined, "/unknown caption"],
+            ["formatted", undefined, "a **caption**"],
+        ])("should send a media caption edit: %s", async (_name, oldCaption, caption) => {
+            const event = media(oldCaption);
+            const attachBundles = vi.fn();
+            getComponent(new EditorStateTransfer(event), defaultRoomContext, { attachBundles });
+            await userEvent.clear(screen.getByRole("textbox"));
+            if (caption) await editText(caption);
+            fireEvent.click(screen.getByText("Save"));
+            await waitFor(() => expect(mockClient.sendMessage).toHaveBeenCalledTimes(1));
+            const content = mockClient.sendMessage.mock.calls[0][2];
+            expect(content).toMatchObject({
+                "msgtype": "m.image",
+                "body": `* ${caption || "photo.png"}`,
+                "url": "mxc://server/image",
+                "m.relates_to": { rel_type: "m.replace", event_id: event.getId() },
+                "m.new_content": {
+                    msgtype: "m.image",
+                    body: caption || "photo.png",
+                    filename: "photo.png",
+                    url: "mxc://server/image",
+                    info: event.getContent().info,
+                },
+            });
+            if (caption === "a **caption**") {
+                expect(content).toMatchObject({
+                    "format": "org.matrix.custom.html",
+                    "formatted_body": "* a <strong>caption</strong>",
+                    "m.new_content": { format: "org.matrix.custom.html", formatted_body: "a <strong>caption</strong>" },
+                });
+            } else {
+                expect(content["m.new_content"]).not.toHaveProperty("format");
+                expect(content["m.new_content"]).not.toHaveProperty("formatted_body");
+            }
+            expect(createRedactEventDialog).not.toHaveBeenCalled();
+            expect(attachBundles).not.toHaveBeenCalled();
+        });
+
+        it.each([undefined, "caption"])("should keep Save disabled for unchanged captions: %s", (caption) => {
+            const event = media(caption);
+            // Use plain text so serializing the unchanged caption preserves its original format.
+            delete event.getContent().format;
+            delete event.getContent().formatted_body;
+            getComponent(new EditorStateTransfer(event));
+            expect(screen.getByText("Save")).toHaveAttribute("disabled");
+            fireEvent.click(screen.getByText("Save"));
+            expect(mockClient.sendMessage).not.toHaveBeenCalled();
+        });
+    });
+
+    it("should still open the redact dialog for an empty text edit", async () => {
+        getComponent(new EditorStateTransfer(editedEvent));
+        await userEvent.clear(screen.getByRole("textbox"));
+        fireEvent.click(screen.getByText("Save"));
+        expect(createRedactEventDialog).toHaveBeenCalledWith(expect.objectContaining({ mxEvent: editedEvent }));
+        expect(mockClient.sendMessage).not.toHaveBeenCalled();
     });
 
     it("should throw when room for message is not found", () => {
