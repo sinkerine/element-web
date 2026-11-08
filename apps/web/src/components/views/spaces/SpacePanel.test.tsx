@@ -115,6 +115,7 @@ describe("<SpacePanel />", () => {
         getClientWellKnown: vi.fn(),
         mxcUrlToHttp: vi.fn(),
         getRoom: vi.fn(),
+        getVisibleRooms: vi.fn().mockReturnValue([]),
         isGuest: vi.fn(),
         getAccountData: vi.fn(),
         on: vi.fn(),

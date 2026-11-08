@@ -69,7 +69,8 @@ describe("<LeftResizablePanelView />", () => {
             { coords: { x: 400, y: 200 } },
             { keys: "[/MouseLeft]" },
         ]);
-        expect(vm.onLeftPanelResize).toHaveBeenCalled();
+        // The panel reports its measured size through ResizeObserver after the pointer events finish.
+        await expect.poll(() => vm.onLeftPanelResize).toHaveBeenCalled();
     });
 
     it("should be inert when collapsed", () => {

@@ -35,8 +35,8 @@ vi.mock("../../../contexts/SDKContextClass", () => ({
 describe("DateSeparatorViewModel", () => {
     const HOUR_MS = 3600000;
     const DAY_MS = HOUR_MS * 24;
-    // Friday Dec 17 2021, 9:09am
-    const nowDate = new Date("2021-12-17T08:09:00.000Z");
+    // Use local morning so the one-hour-earlier fixture stays on the same calendar day in every timezone.
+    const nowDate = new Date(2021, 11, 17, 9, 9);
     const roomId = "!room:example.org";
     const defaultProps = {
         roomId,
@@ -49,11 +49,7 @@ describe("DateSeparatorViewModel", () => {
         ["day before the current day", nowDate.getTime() - HOUR_MS * 12, "yesterday"],
         ["2 days ago", nowDate.getTime() - DAY_MS * 2, "Wednesday"],
         ["144 hours ago", nowDate.getTime() - HOUR_MS * 144, "Sat, Dec 11, 2021"],
-        [
-            "6 days ago, but less than 144h",
-            new Date("Saturday Dec 11 2021 23:59:00 GMT+0100 (Central European Standard Time)").getTime(),
-            "Saturday",
-        ],
+        ["6 days ago, but less than 144h", new Date(2021, 11, 11, 23, 59).getTime(), "Saturday"],
     ];
 
     const watchCallbacks = new Map<string, (...args: any[]) => void>();
