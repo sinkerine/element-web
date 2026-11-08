@@ -47,6 +47,7 @@ import { attachMentions, attachRelation } from "../../../utils/messages";
 import { filterBoolean } from "../../../utils/arrays";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import { createMediaCaptionEditContent, isCaptionableContent } from "../../../utils/MediaCaption";
+import { getMediaCaption } from "../../../utils/MediaCaptionContent";
 
 // exported for tests
 export function createEditContent(
@@ -291,10 +292,15 @@ class EditMessageComposer extends React.Component<IEditMessageComposerProps, ISt
     }
 
     private sendEdit = async (): Promise<void> => {
-        if (this.state.saveDisabled && !this.props.isUrlPreviewsModified) return;
-
         const editedEvent = this.props.editState.getEvent();
         const isMedia = isCaptionableContent(editedEvent.getContent());
+
+        // An empty caption on uncaptioned media closes editing even while Save is disabled.
+        if (isMedia && !getMediaCaption(editedEvent.getContent()) && !textSerialize(this.model).trim()) {
+            this.endEdit();
+            return;
+        }
+        if (this.state.saveDisabled && !this.props.isUrlPreviewsModified) return;
 
         PosthogAnalytics.instance.trackEvent<ComposerEvent>({
             eventName: "Composer",

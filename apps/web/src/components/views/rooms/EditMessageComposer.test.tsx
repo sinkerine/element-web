@@ -38,6 +38,9 @@ import { SDKContext } from "../../../contexts/SDKContext.ts";
 import { SDKContextClass } from "../../../contexts/SDKContextClass.ts";
 
 import { createRedactEventDialog } from "../dialogs/ConfirmRedactDialog";
+import dis from "../../../dispatcher/dispatcher";
+import { Action } from "../../../dispatcher/actions";
+import { editorRoomKey, editorStateKey } from "../../../Editing";
 
 vi.mock("../dialogs/ConfirmRedactDialog", () => ({ createRedactEventDialog: vi.fn() }));
 
@@ -50,6 +53,7 @@ describe("<EditMessageComposer/>", () => {
         sendMessage: vi.fn(),
     });
     const room = new Room(roomId, mockClient, userId);
+    const dispatchSpy = vi.spyOn(dis, "dispatch");
 
     const editedEvent = mkEvent({
         type: "m.room.message",
@@ -104,6 +108,7 @@ describe("<EditMessageComposer/>", () => {
     beforeEach(() => {
         mockClient.getRoom.mockReturnValue(room);
         mockClient.sendMessage.mockClear();
+        dispatchSpy.mockClear();
         vi.mocked(createRedactEventDialog).mockClear();
 
         userEvent.setup();
@@ -229,7 +234,31 @@ describe("<EditMessageComposer/>", () => {
             expect(attachBundles).not.toHaveBeenCalled();
         });
 
-        it.each([undefined, "caption"])("should keep Save disabled for unchanged captions: %s", (caption) => {
+        it.each(["", "   "])("should close an empty uncaptioned media edit on Enter: %j", async (text) => {
+            const event = media();
+            getComponent(new EditorStateTransfer(event));
+            expect(screen.getByRole("textbox").textContent).toBe("");
+            expect(screen.getByText("Save")).toHaveAttribute("disabled");
+            if (text) await editText(text);
+
+            await userEvent.type(screen.getByRole("textbox"), "{enter}");
+
+            expect(dispatchSpy).toHaveBeenCalledWith({
+                action: Action.EditEvent,
+                event: null,
+                timelineRenderingType: defaultRoomContext.timelineRenderingType,
+            });
+            expect(dispatchSpy).toHaveBeenCalledWith({
+                action: Action.FocusSendMessageComposer,
+                context: defaultRoomContext.timelineRenderingType,
+            });
+            expect(localStorage.getItem(editorRoomKey(roomId, defaultRoomContext.timelineRenderingType))).toBeNull();
+            expect(localStorage.getItem(editorStateKey(event.getId()!))).toBeNull();
+            expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            expect(createRedactEventDialog).not.toHaveBeenCalled();
+        });
+
+        it.each([undefined, "caption"])("should keep Save disabled for unchanged captions: %s", async (caption) => {
             const event = media(caption);
             // Use plain text so serializing the unchanged caption preserves its original format.
             delete event.getContent().format;
@@ -238,13 +267,23 @@ describe("<EditMessageComposer/>", () => {
             expect(screen.getByText("Save")).toHaveAttribute("disabled");
             fireEvent.click(screen.getByText("Save"));
             expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            if (caption) {
+                await userEvent.type(screen.getByRole("textbox"), "{enter}");
+                expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.EditEvent }));
+                expect(mockClient.sendMessage).not.toHaveBeenCalled();
+                expect(createRedactEventDialog).not.toHaveBeenCalled();
+            }
         });
     });
 
-    it("should still open the redact dialog for an empty text edit", async () => {
+    it.each(["Save", "Enter"])("should still open the redact dialog for an empty text edit via %s", async (submit) => {
         getComponent(new EditorStateTransfer(editedEvent));
         await userEvent.clear(screen.getByRole("textbox"));
-        fireEvent.click(screen.getByText("Save"));
+        if (submit === "Save") {
+            fireEvent.click(screen.getByText("Save"));
+        } else {
+            await userEvent.type(screen.getByRole("textbox"), "{enter}");
+        }
         expect(createRedactEventDialog).toHaveBeenCalledWith(expect.objectContaining({ mxEvent: editedEvent }));
         expect(mockClient.sendMessage).not.toHaveBeenCalled();
     });
@@ -673,10 +712,14 @@ describe("<EditMessageComposer/>", () => {
             expect(screen.getByText("Save")).not.toHaveAttribute("disabled");
         });
 
-        it("should keep Save disabled when nothing is modified", () => {
+        it("should keep Save disabled and ignore Enter when nothing is modified", async () => {
             getComponent(new EditorStateTransfer(editedEvent));
 
             expect(screen.getByText("Save")).toHaveAttribute("disabled");
+            await userEvent.type(screen.getByRole("textbox"), "{enter}");
+            expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.EditEvent }));
+            expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            expect(createRedactEventDialog).not.toHaveBeenCalled();
         });
 
         it("should send the edit when only the preview list is modified", async () => {

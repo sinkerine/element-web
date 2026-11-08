@@ -251,10 +251,30 @@ test.describe("Attachment captions", () => {
             await expectOriginalImage();
         });
         await test.step("9. Add a caption to an uncaptioned file", async () => {
+            const ownEventIds = () =>
+                app.client.evaluate(
+                    (client, id) =>
+                        client
+                            .getRoom(id)!
+                            .getLiveTimeline()
+                            .getEvents()
+                            .filter((event) => event.getSender() === client.getUserId())
+                            .map((event) => event.getId()),
+                    roomId,
+                );
+            const eventsBefore = await ownEventIds();
             const editor = await edit(eventTile(batchFirstId));
             await expect(editor).toBeEmpty();
-            await editor.fill("Added later");
+            await expect(eventTile(batchFirstId).getByRole("button", { name: "Save", exact: true })).toBeDisabled();
             await editor.press("Enter");
+            await expect(editor).not.toBeVisible();
+            await expect(page.getByRole("dialog", { name: "Remove message?" })).not.toBeVisible();
+            expect(await ownEventIds()).toEqual(eventsBefore);
+            await expect(eventTile(batchFirstId)).not.toContainText("(edited)");
+            const reopenedEditor = await edit(eventTile(batchFirstId));
+            await expect(reopenedEditor).toBeEmpty();
+            await reopenedEditor.fill("Added later");
+            await reopenedEditor.press("Enter");
             await expect(eventTile(batchFirstId)).toContainText("Added later");
         });
         await test.step("10. Reply with a captioned attachment", async () => {
