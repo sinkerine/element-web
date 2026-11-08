@@ -84,7 +84,7 @@ test.describe("Bot slash commands", () => {
         const modelOption = options.filter({ has: page.getByText("/model", { exact: true }) });
         const arxivOption = options.filter({ has: page.getByText("/arxiv", { exact: true }) });
         const richComposer = page.getByRole("textbox", { name: "Message composer", exact: true });
-        const unknownDialog = page.getByRole("dialog", { name: "Unknown command", exact: true });
+        const unknownDialog = page.getByRole("dialog", { name: "Unknown Command", exact: true });
         const modelBody = "/model gpt-5.5 --provider openrouter";
         let modelEventId: string;
 
