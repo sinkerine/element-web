@@ -7,10 +7,11 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, type JSX } from "react";
+import React, { useCallback, useEffect, useRef, type JSX } from "react";
 
 import type { Room } from "matrix-js-sdk/src/matrix";
 import type EditorModel from "../../../editor/model";
+import { setCaretPosition } from "../../../editor/caret";
 import BasicMessageComposer from "../rooms/BasicMessageComposer";
 import { getKeyBindingsManager } from "../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
@@ -116,6 +117,22 @@ export default function UploadConfirmDialog({
     onFinished,
 }: IProps): JSX.Element {
     const vm = useCreateAutoDisposedViewModel(() => new UploadPreviewViewModel(file));
+    const captionComposer = useRef<BasicMessageComposer>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        // StrictMode makes FocusLock restore the original composer in a microtask, then trap focus
+        // back in the caption, resetting Chromium's selection. Place the initial caret afterwards.
+        void Promise.resolve().then(() => {
+            const editor = captionComposer.current?.editorRef.current;
+            if (cancelled || !editor || !captionModel) return;
+            editor.focus();
+            setCaretPosition(editor, captionModel, captionModel.getPositionAtEnd());
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [captionModel, room]);
 
     let title: string;
     if (totalFiles > 1 && currentIndex !== undefined) {
@@ -178,6 +195,7 @@ export default function UploadConfirmDialog({
                         }}
                     >
                         <BasicMessageComposer
+                            ref={captionComposer}
                             model={captionModel}
                             room={room}
                             label={_t("upload_file|caption_label")}
