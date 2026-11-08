@@ -20,8 +20,14 @@ import { type ICompletion, type ISelectionRange } from "./Autocompleter";
 import { type Command, Commands, CommandMap } from "../slash-commands/SlashCommands";
 import { type TimelineRenderingType } from "../contexts/RoomContext";
 import { MatrixClientPeg } from "../MatrixClientPeg";
+import {
+    getRoomBotCommands,
+    resolveBotCommand,
+    formatBotCommandUsage,
+    type RoomBotCommand,
+} from "../slash-commands/bot-commands/RoomBotCommands";
 
-const COMMAND_RE = /(^\/\w*)(?: .*)?/g;
+const COMMAND_RE = /(^\/[\w-]*(?:@\S*)?)(?: .*)?/g;
 
 export default class CommandProvider extends AutocompleteProvider {
     public matcher: QueryMatcher<Command>;
@@ -47,6 +53,13 @@ export default class CommandProvider extends AutocompleteProvider {
 
         const cli = MatrixClientPeg.get();
 
+        const botCommands = cli ? getRoomBotCommands(this.room, cli) : [];
+        const botMatcher = new QueryMatcher<RoomBotCommand>(botCommands, {
+            keys: ["command", "description", "botName"],
+            funcs: [({ aliases }) => aliases.join(" ")],
+            context: this.renderingType,
+        });
+        let botMatches: RoomBotCommand[] = [];
         let matches: Command[] = [];
         // check if the full match differs from the first word (i.e. returns false if the command has args)
         if (command[0] !== command[1]) {
@@ -56,19 +69,33 @@ export default class CommandProvider extends AutocompleteProvider {
                 // some commands, namely `me` don't suit having the usage shown whilst typing their arguments
                 if (CommandMap.get(name)!.hideCompletionAfterSpace) return [];
                 matches = [CommandMap.get(name)!];
+            } else if (cli) {
+                const resolved = resolveBotCommand(this.room, cli, command[0]);
+                if (resolved?.command.parameters.length) botMatches = [resolved.command];
             }
         } else {
             if (query === "/") {
                 // If they have just entered `/` show everything
                 // We exclude the limit on purpose to have a comprehensive list
                 matches = Commands;
+                botMatches = botCommands;
             } else {
                 // otherwise fuzzy match against all of the fields
                 matches = this.matcher.match(command[1], limit);
+                // Match the name separately so qualified commands can still use fuzzy name matching.
+                const [name, qualifier] = command[1].slice(1).split("@");
+                botMatches = botMatcher.match(name).filter((cmd) => {
+                    return (
+                        qualifier === undefined ||
+                        cmd.qualifier.toLowerCase().startsWith(qualifier.toLowerCase()) ||
+                        cmd.botUserId.slice(1).toLowerCase().startsWith(qualifier.toLowerCase())
+                    );
+                });
+                if (limit !== -1) botMatches = botMatches.slice(0, limit);
             }
         }
 
-        return matches
+        const builtInCompletions: ICompletion[] = matches
             .filter((cmd) => {
                 const display = !cmd.renderingTypes || cmd.renderingTypes.includes(this.renderingType);
                 return cmd.isEnabled(cli, this.room.roomId) && display;
@@ -94,6 +121,33 @@ export default class CommandProvider extends AutocompleteProvider {
                     range: range!,
                 };
             });
+
+        return builtInCompletions.concat(
+            botMatches.map((result) => {
+                const insertedCommand = `/${result.command}${result.requiresQualifier ? `@${result.qualifier}` : ""}`;
+                return {
+                    completion: insertedCommand === command[1] ? command[0] : insertedCommand + " ",
+                    type: "command",
+                    component: (
+                        <TextualCompletion
+                            title={insertedCommand}
+                            subtitle={formatBotCommandUsage(result.parameters)}
+                            description={
+                                result.description
+                                    ? _t("composer|autocomplete|bot_command_description", {
+                                          description: result.description,
+                                          botName: result.botName,
+                                      })
+                                    : _t("composer|autocomplete|bot_command_no_description", {
+                                          botName: result.botName,
+                                      })
+                            }
+                        />
+                    ),
+                    range: range!,
+                };
+            }),
+        );
     }
 
     public getName(): string {

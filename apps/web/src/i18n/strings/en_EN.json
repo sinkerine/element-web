@@ -595,6 +595,8 @@
     "composer": {
         "autocomplete": {
             "@room_description": "Notify the whole room",
+            "bot_command_description": "%(description)s (from %(botName)s)",
+            "bot_command_no_description": "Command from %(botName)s",
             "command_a11y": "Command Autocomplete",
             "command_description": "Commands",
             "emoji_a11y": "Emoji Autocomplete",
