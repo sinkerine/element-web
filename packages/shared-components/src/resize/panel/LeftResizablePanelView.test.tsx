@@ -40,9 +40,9 @@ function renderPanel(initialSnapshot?: Partial<ResizerViewSnapshot>): MockViewMo
     const snapshot = { isCollapsed: false, isFocusedViaKeyboard: false, initialSize: 20, ...initialSnapshot };
     const vm = new MockViewModel(snapshot);
     render(
-        <ResizableGroup>
+        <ResizableGroup style={{ width: 600, height: 200 }}>
             <LeftResizablePanelView vm={vm}>Left</LeftResizablePanelView>
-            <Separator />
+            <Separator style={{ width: 4 }} />
             <Panel>Test</Panel>
         </ResizableGroup>,
     );
@@ -63,13 +63,25 @@ describe("<LeftResizablePanelView />", () => {
     it("should call onLeftPanelResize", async () => {
         const vm = renderPanel();
         const separator = screen.getByRole("separator");
+        const panel = screen.getByTestId(LEFT_PANEL_ID);
+        // ResizeObserver reports the initial layout before it reports a user resize.
+        await expect.poll(() => vm.onLeftPanelResize).toHaveBeenCalled();
+        vi.mocked(vm.onLeftPanelResize).mockClear();
+        const initialWidth = panel.getBoundingClientRect().width;
+        const rect = separator.getBoundingClientRect();
+        const start = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
         const user = userEvent.setup();
         await user.pointer([
-            { target: separator, keys: "[MouseLeft>]" },
-            { coords: { x: 400, y: 200 } },
+            { target: separator, coords: start, keys: "[MouseLeft>]" },
+            { coords: { x: start.x + 100, y: start.y } },
             { keys: "[/MouseLeft]" },
         ]);
-        expect(vm.onLeftPanelResize).toHaveBeenCalled();
+        await expect.poll(() => vm.onLeftPanelResize).toHaveBeenCalled();
+        expect(panel.getBoundingClientRect().width).toBeGreaterThan(initialWidth);
+        expect(vi.mocked(vm.onLeftPanelResize).mock.lastCall![0].inPixels).toBeCloseTo(
+            panel.getBoundingClientRect().width,
+            0,
+        );
     });
 
     it("should be inert when collapsed", () => {
