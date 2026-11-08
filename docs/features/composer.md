@@ -36,3 +36,17 @@
 - Choosing "Quote" in the context menu of an event inserts a quote of the event body in the composer.
 - Choosing "Reply" in the context menu of an event shows a preview above the composer to reply to.
 - Pressing alt+arrow up/arrow down navigates in previously sent messages, putting them in the composer.
+
+## Bot commands
+
+Bot command discovery is always enabled. Joined bots can advertise commands using the unstable MSC4391 state event
+`org.matrix.msc4391.command_description`. The bot needs permission to send this state event in the room; room
+administrators may need to adjust the room's power levels. Empty or invalid descriptions are ignored.
+
+Element's enabled built-in commands take precedence over bot commands with the same name. Use `/name@bot` to
+address a specific bot, for example `/help@hermes`. If bots share a localpart, use the full qualifier, for example
+`/help@hermes:example.org`. Commands offered by multiple bots also require qualification.
+
+Messages use the bot's published command name without the qualifier, mention that bot, and include the unstable
+`org.matrix.msc4391.command` block when the arguments can be mapped to its published schema. Otherwise the bot can
+parse the plain-text message body.
