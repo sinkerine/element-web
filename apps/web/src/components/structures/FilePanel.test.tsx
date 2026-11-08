@@ -10,7 +10,15 @@ Please see LICENSE files in the repository root for full details.
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import React from "react";
-import { EventStatus, EventTimelineSet, Filter, PendingEventOrdering, Room, RoomEvent } from "matrix-js-sdk/src/matrix";
+import {
+    EventStatus,
+    EventTimelineSet,
+    Filter,
+    PendingEventOrdering,
+    Room,
+    RoomEvent,
+    type TimelineWindow,
+} from "matrix-js-sdk/src/matrix";
 import { screen, render, waitFor } from "test-utils-rtl";
 import { clientAndSDKContextRenderOptions, mkEvent, stubClient } from "test-utils";
 
@@ -20,12 +28,11 @@ import { SDKContextClass } from "../../contexts/SDKContextClass.ts";
 
 vi.mock("matrix-js-sdk/src/matrix", async () => ({
     ...(await vi.importActual("matrix-js-sdk/src/matrix")),
-    TimelineWindow: vi.fn().mockImplementation(function () {
-        return {
-            load: vi.fn().mockResolvedValue(null),
-            getEvents: vi.fn().mockReturnValue([]),
-            canPaginate: vi.fn().mockReturnValue(false),
-        };
+    TimelineWindow: vi.fn().mockImplementation(function (this: TimelineWindow) {
+        // Keep the subclass instance so PanelTimelineWindow can release its owner during cleanup.
+        this.load = vi.fn().mockResolvedValue(null);
+        this.getEvents = vi.fn().mockReturnValue([]);
+        this.canPaginate = vi.fn().mockReturnValue(false);
     }),
 }));
 
