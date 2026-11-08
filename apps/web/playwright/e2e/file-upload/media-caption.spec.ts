@@ -249,6 +249,32 @@ test.describe("Attachment captions", () => {
             await expect(eventTile(firstId)).not.toContainText("Edited caption");
             await expect(eventTile(firstId)).toContainText("(edited)");
             await expectOriginalImage();
+            // Await this edit's server echo before the next step checks that no event was sent.
+            await expect
+                .poll(() =>
+                    app.client.evaluate(
+                        (client, { roomId, eventId }) =>
+                            client
+                                .getRoom(roomId)!
+                                .getLiveTimeline()
+                                .getEvents()
+                                .some((event) => {
+                                    const content = event.getOriginalContent();
+                                    return (
+                                        event.getSender() === client.getUserId() &&
+                                        event.getType() === "m.room.message" &&
+                                        event.getId()?.startsWith("$") &&
+                                        event.status === null &&
+                                        content["m.relates_to"]?.rel_type === "m.replace" &&
+                                        content["m.relates_to"].event_id === eventId &&
+                                        content.body === "* riot.png" &&
+                                        content["m.new_content"]?.body === "riot.png"
+                                    );
+                                }),
+                        { roomId, eventId: firstId },
+                    ),
+                )
+                .toBe(true);
         });
         await test.step("9. Add a caption to an uncaptioned file", async () => {
             const ownEventIds = () =>
