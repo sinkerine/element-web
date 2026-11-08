@@ -434,6 +434,41 @@ describe("EventUtils", () => {
         });
     });
 
+    describe("media editing", () => {
+        const mediaEvent = (msgtype = MsgType.Image): MatrixEvent =>
+            new MatrixEvent({
+                event_id: "$media",
+                type: EventType.RoomMessage,
+                sender: userId,
+                content: { msgtype, body: "photo.png", url: "mxc://server/media" },
+            });
+
+        it.each([MsgType.Image, MsgType.Video, MsgType.Audio, MsgType.File])("should allow own %s", (msgtype) => {
+            expect(canEditContent(mockClient, mediaEvent(msgtype))).toBe(true);
+        });
+
+        it.each(["voice", "sticker", "other sender", "local echo", "redacted", "replacement"])(
+            "should reject %s media",
+            (kind) => {
+                const event = mediaEvent(kind === "voice" ? MsgType.Audio : MsgType.Image);
+                if (kind === "voice") event.getContent()["org.matrix.msc3245.voice"] = {};
+                if (kind === "sticker") event.event.type = EventType.Sticker;
+                if (kind === "other sender") event.event.sender = "@other:server";
+                if (kind === "local echo") event.status = EventStatus.SENDING;
+                if (kind === "redacted") vi.spyOn(event, "isRedacted").mockReturnValue(true);
+                if (kind === "replacement") {
+                    event.getContent()["m.relates_to"] = { rel_type: RelationType.Replace, event_id: "$original" };
+                }
+                expect(canEditContent(mockClient, event)).toBe(false);
+            },
+        );
+
+        it("should find media when searching backwards for an editable event", () => {
+            const event = mediaEvent();
+            expect(findEditableEvent({ events: [event], isForward: false, matrixClient: mockClient })).toBe(event);
+        });
+    });
+
     describe("findEditableEvent", () => {
         it("should not explode when given empty events array", () => {
             expect(

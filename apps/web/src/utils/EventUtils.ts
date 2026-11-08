@@ -22,6 +22,7 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 
+import { isCaptionableContent } from "./MediaCaption";
 import shouldHideEvent from "../shouldHideEvent";
 import { type GetRelationsForEvent } from "../components/views/rooms/EventTile";
 import SettingsStore from "../settings/SettingsStore";
@@ -87,6 +88,7 @@ export function canEditContent(matrixClient: MatrixClient, mxEvent: MatrixEvent)
     const { msgtype, body } = mxEvent.getOriginalContent();
     return (
         M_POLL_START.matches(mxEvent.getType()) ||
+        isCaptionableContent(mxEvent.getOriginalContent()) ||
         ((msgtype === MsgType.Text || msgtype === MsgType.Emote) && !!body && typeof body === "string")
     );
 }

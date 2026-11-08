@@ -20,6 +20,7 @@ import {
 } from "matrix-js-sdk/src/matrix";
 import { MjolnirBodyView, UnknownBodyView, useCreateAutoDisposedViewModel } from "@element-hq/web-shared-components";
 
+import { isCaptionableContent } from "../../../utils/MediaCaption";
 import SettingsStore from "../../../settings/SettingsStore";
 import { Mjolnir } from "../../../mjolnir/Mjolnir";
 import { type IMediaBody } from "./IMediaBody";
@@ -346,7 +347,7 @@ export default class MessageEvent extends React.Component<IProps> implements IMe
             inhibitInteraction: this.props.inhibitInteraction,
             id: this.props.id,
         };
-        if (hasCaption) {
+        if (hasCaption || (this.props.editState && isCaptionableContent(content))) {
             return <CaptionBody {...bodyProps} WrappedBodyType={BodyType} />;
         }
 

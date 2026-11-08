@@ -284,6 +284,28 @@ describe("MessageEvent", () => {
         );
     });
 
+    it("should keep an uncaptioned image visible alongside its edit composer", () => {
+        event = mkEvent({
+            event: true,
+            type: EventType.RoomMessage,
+            user: client.getUserId()!,
+            room: room.roomId,
+            content: {
+                msgtype: MsgType.Image,
+                body: "photo.png",
+                url: "mxc://server/image",
+                info: { mimetype: "image/png" },
+            },
+        });
+        const result = render(
+            <MatrixClientContext.Provider value={client}>
+                <MessageEvent mxEvent={event} editState={new EditorStateTransfer(event)} />
+            </MatrixClientContext.Provider>,
+        );
+        expect(result.getByTestId("image-body")).toBeVisible();
+        expect(result.getByRole("textbox", { name: "Edit message" })).toBeVisible();
+    });
+
     describe("when an image with a caption is sent", () => {
         let result: RenderResult;
 

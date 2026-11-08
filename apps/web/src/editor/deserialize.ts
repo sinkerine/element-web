@@ -16,6 +16,7 @@ import SettingsStore from "../settings/SettingsStore";
 import { escapeMathsDelimiters, mathsToComposerText } from "./maths";
 import Markdown from "../Markdown";
 import { textToHtmlRainbow } from "../utils/colour";
+import { getMediaCaption, isCaptionableContent } from "../utils/MediaCaption";
 import { stripPlainReply } from "../utils/Reply";
 
 const LIST_TYPES = ["UL", "OL", "LI"];
@@ -395,14 +396,23 @@ export function parsePlainTextMessage(body: string, pc: PartCreator, opts: IPars
 }
 
 export function parseEvent(event: MatrixEvent, pc: PartCreator, opts: IParseOptions = { shouldEscape: true }): Part[] {
-    const content = event.getContent();
+    const eventContent = event.getContent();
+    const isMedia = isCaptionableContent(eventContent);
+    const content = isMedia ? getMediaCaption(eventContent) : eventContent;
+    if (!content) return [];
+
     let parts: Part[];
-    const isEmote = content.msgtype === MsgType.Emote;
+    const isEmote = !isMedia && eventContent.msgtype === MsgType.Emote;
     let isRainbow = false;
 
     if (content.format === "org.matrix.custom.html") {
         parts = parseHtmlMessage(content.formatted_body || "", pc, opts);
-        if (content.body && content.formatted_body && textToHtmlRainbow(content.body) === content.formatted_body) {
+        if (
+            !isMedia &&
+            content.body &&
+            content.formatted_body &&
+            textToHtmlRainbow(content.body) === content.formatted_body
+        ) {
             isRainbow = true;
         }
     } else {
