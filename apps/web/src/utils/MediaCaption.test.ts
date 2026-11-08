@@ -15,14 +15,12 @@ import { createPartCreator } from "../editor/__mocks__";
 import SettingsStore from "../settings/SettingsStore";
 import { _t } from "../languageHandler";
 import {
-    CAPTIONABLE_MSGTYPES,
     createMediaCaptionEditContent,
     createMediaCaptionFields,
-    getMediaCaption,
-    getMediaFileName,
     isCaptionableContent,
     withMediaCaption,
 } from "./MediaCaption";
+import { CAPTIONABLE_MSGTYPES, getMediaCaption, getMediaFileName } from "./MediaCaptionContent";
 
 const pc = createPartCreator();
 const textModel = (text: string): EditorModel => new EditorModel([pc.plain(text)], pc);

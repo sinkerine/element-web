@@ -16,7 +16,7 @@ import SettingsStore from "../settings/SettingsStore";
 import { escapeMathsDelimiters, mathsToComposerText } from "./maths";
 import Markdown from "../Markdown";
 import { textToHtmlRainbow } from "../utils/colour";
-import { getMediaCaption, isCaptionableContent } from "../utils/MediaCaption";
+import { getMediaCaption, isCaptionableContent } from "../utils/MediaCaptionContent";
 import { stripPlainReply } from "../utils/Reply";
 
 const LIST_TYPES = ["UL", "OL", "LI"];
