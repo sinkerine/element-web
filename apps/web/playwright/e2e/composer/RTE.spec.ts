@@ -237,9 +237,10 @@ test.describe("Composer", () => {
             });
 
             test("renders in narrow viewports", { tag: "@screenshot" }, async ({ page, bot, app }) => {
-                // Shrink the viewport
+                await expect(page.getByTestId("WysiwygComposer").getByRole("textbox")).toBeEditable();
+                // Shrink the viewport and wait for the responsive panel collapse before dragging its separator.
                 await page.setViewportSize({ width: 750, height: 1080 });
-                // Shrinking the viewport will collapse the left-panel, so manually expand it.
+                await expect(page.getByTestId("left-panel")).toHaveJSProperty("clientWidth", 0);
                 await app.resizeLeftPanel(150);
                 // Now take the screenshot
                 await expect(page.locator(".mx_MessageComposer_wrapper")).toMatchScreenshot("narrow.png");
