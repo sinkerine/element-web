@@ -11,6 +11,7 @@ import { type RoomMessageEventContent } from "matrix-js-sdk/src/types";
 import {
     BOT_COMMAND_CONTENT_KEY,
     type BotCommandArgumentValue,
+    type BotCommandInvocation,
     type BotCommandLiteralValue,
     type BotCommandParameter,
     type BotCommandSchema,
@@ -102,7 +103,10 @@ export function createBotCommandContent(resolved: ResolvedBotCommand): RoomMessa
         ...(args === null
             ? {}
             : {
-                  [BOT_COMMAND_CONTENT_KEY]: { command: resolved.command.command, arguments: args },
+                  [BOT_COMMAND_CONTENT_KEY]: {
+                      command: resolved.command.command,
+                      arguments: args,
+                  } satisfies BotCommandInvocation,
               }),
     };
 }
