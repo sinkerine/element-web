@@ -18,18 +18,6 @@ import FilePanel from "./FilePanel";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import { SDKContextClass } from "../../contexts/SDKContextClass.ts";
 
-vi.mock("matrix-js-sdk/src/matrix", async () => ({
-    ...(await vi.importActual("matrix-js-sdk/src/matrix")),
-    // Initialise the subclass instance so PanelTimelineWindow retains its owner lifecycle methods.
-    TimelineWindow: vi.fn().mockImplementation(function (this: object) {
-        Object.assign(this, {
-            load: vi.fn().mockResolvedValue(null),
-            getEvents: vi.fn().mockReturnValue([]),
-            canPaginate: vi.fn().mockReturnValue(false),
-        });
-    }),
-}));
-
 describe("FilePanel", () => {
     beforeEach(() => {
         stubClient();

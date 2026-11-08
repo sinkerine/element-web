@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 
 // @vitest-environment happy-dom
 
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, getByTestId, render, type RenderResult, waitFor } from "test-utils-rtl";
 import userEvent from "@testing-library/user-event";
 import {
@@ -38,9 +38,18 @@ import { MatrixClientPeg } from "../../MatrixClientPeg";
 import DMRoomMap from "../../utils/DMRoomMap";
 import ResizeNotifier from "../../utils/ResizeNotifier";
 import { ScopedRoomContextProvider } from "../../contexts/ScopedRoomContext.tsx";
-import { TimelineRenderingType } from "../../contexts/RoomContext.ts";
+import { MainSplitContentType, TimelineRenderingType } from "../../contexts/RoomContext.ts";
 import { type ComposerInsertPayload, ComposerType } from "../../dispatcher/payloads/ComposerInsertPayload.ts";
 import { SDKContext } from "../../contexts/SDKContext.ts";
+
+import {
+    saveThreadScrollAnchor,
+    peekThreadScrollAnchor,
+    clearThreadScrollAnchor,
+} from "../../utils/threadScrollAnchors";
+import RightPanelStore from "../../stores/right-panel/RightPanelStore";
+import { RightPanelPhases } from "../../stores/right-panel/RightPanelStorePhases";
+import { UPDATE_EVENT } from "../../stores/AsyncStore";
 
 describe("ThreadView", () => {
     const ROOM_ID = "!roomId:example.org";
@@ -54,6 +63,10 @@ describe("ThreadView", () => {
 
     let changeEvent: (event: MatrixEvent) => void;
 
+    let fullPage = false;
+    let mainSplitContentType = MainSplitContentType.Timeline;
+    let initialEventScrollIntoView = false;
+
     function TestThreadView({ initialEvent, fullWindow }: { initialEvent?: MatrixEvent; fullWindow?: boolean }) {
         const [event, setEvent] = useState(rootEvent);
         changeEvent = setEvent;
@@ -63,6 +76,7 @@ describe("ThreadView", () => {
                 <ScopedRoomContextProvider
                     {...getRoomContext(room, {
                         canSendMessages: true,
+                        mainSplitContentType,
                     })}
                 >
                     <ThreadView
@@ -71,7 +85,9 @@ describe("ThreadView", () => {
                         onClose={vi.fn()}
                         mxEvent={event}
                         initialEvent={initialEvent}
+                        initialEventScrollIntoView={initialEventScrollIntoView}
                         fullWindow={fullWindow}
+                        fullPage={fullPage}
                         resizeNotifier={new ResizeNotifier()}
                     />
                 </ScopedRoomContextProvider>
@@ -125,6 +141,9 @@ describe("ThreadView", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        fullPage = false;
+        initialEventScrollIntoView = false;
+        mainSplitContentType = MainSplitContentType.Timeline;
 
         stubClient();
         mockPlatformPeg();
@@ -146,6 +165,447 @@ describe("ThreadView", () => {
 
         DMRoomMap.makeShared(mockClient);
         vi.spyOn(DMRoomMap.shared(), "getUserIdForRoomId").mockReturnValue(SENDER);
+    });
+
+    afterEach(async () => {
+        clearThreadScrollAnchor(rootEvent.getId()!);
+        document.getSelection()?.removeAllRanges();
+        // Drain toggle and unmount housekeeping before the next test installs a new room's mocks.
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+    });
+
+    it.each([
+        [false, false, MainSplitContentType.Timeline, "Expand thread"],
+        [true, false, MainSplitContentType.Thread, "Collapse thread"],
+        [false, true, MainSplitContentType.Timeline, null],
+        [false, false, MainSplitContentType.Call, null],
+    ] as const)("should show the toggle for its host (%s, %s, %s)", async (expanded, fullWindow, split, name) => {
+        fullPage = expanded;
+        mainSplitContentType = split;
+        const view = await getComponent(undefined, fullWindow);
+        if (name) expect(view.getByRole("button", { name })).toBeVisible();
+        else expect(view.queryByRole("button", { name: /^(Expand|Collapse) thread$/ })).toBeNull();
+    });
+
+    it.each([false, true])(
+        "should hand scroll and focus to the mounted replacement (expanded: %s)",
+        async (expanded) => {
+            fullPage = expanded;
+            const store = SDKContextClass.instance.roomViewStore;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi
+                .spyOn(store, "getFullPageThreadId")
+                .mockReturnValue(expanded ? rootEvent.getId()! : null);
+            const panelRender = vi.spyOn(TimelinePanel.prototype, "render");
+            const first = await getComponent(rootEvent);
+            const panel = panelRender.mock.contexts.at(-1) as TimelinePanel;
+            const scroll = vi.spyOn(panel, "getScrollState").mockReturnValue({
+                stuckAtBottom: false,
+                trackedScrollToken: rootEvent.getId()!,
+                pixelOffset: 37,
+            });
+            const card = {
+                phase: RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent, initialEvent: rootEvent },
+            };
+            const currentCard = vi.spyOn(RightPanelStore.instance, "currentCardForRoom").mockReturnValue(card);
+            const open = vi.spyOn(RightPanelStore.instance, "isOpenForRoom").mockReturnValue(true);
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            fireEvent.click(first.getByRole("button", { name: expanded ? "Collapse thread" : "Expand thread" }));
+            expect(peekThreadScrollAnchor(rootEvent.getId()!)).toEqual({
+                eventId: rootEvent.getId()!,
+                pixelOffset: 37,
+            });
+            expect(card.state.initialEvent).toBeUndefined();
+            expect(dispatch).toHaveBeenCalledWith({
+                action: Action.ViewRoom,
+                room_id: room.roomId,
+                full_page_thread_id: expanded ? undefined : rootEvent.getId(),
+                metricsTrigger: undefined,
+            });
+            expect(dispatch).not.toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+            );
+            expandedId.mockReturnValue(expanded ? null : rootEvent.getId()!);
+            first.unmount();
+            fullPage = !expanded;
+            const replacement = await getComponent();
+            await waitFor(() =>
+                expect(dispatch).toHaveBeenCalledWith({
+                    action: Action.FocusSendMessageComposer,
+                    context: TimelineRenderingType.Thread,
+                }),
+            );
+            const replacementPanel = panelRender.mock.contexts.at(-1) as TimelinePanel;
+            expect(replacementPanel.props).toMatchObject({
+                eventId: rootEvent.getId()!,
+                eventPixelOffset: 37,
+                eventScrollIntoView: true,
+            });
+            expect(replacementPanel.props.highlightedEventId).toBeUndefined();
+            expect(peekThreadScrollAnchor(rootEvent.getId()!)).toBeNull();
+            replacement.unmount();
+            scroll.mockRestore();
+            currentCard.mockRestore();
+            open.mockRestore();
+            dispatch.mockRestore();
+            panelRender.mockRestore();
+            expandedId.mockRestore();
+            roomId.mockRestore();
+        },
+    );
+
+    it.each([false, true])("should focus after a history layout transition (expanded: %s)", async (expanded) => {
+        fullPage = expanded;
+        const store = SDKContextClass.instance.roomViewStore;
+        const panel = RightPanelStore.instance;
+        const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+        const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(expanded ? rootEvent.getId()! : null);
+        const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+        const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+            phase: RightPanelPhases.ThreadView,
+            state: { threadHeadEvent: rootEvent },
+        });
+        const storeListeners = store.listenerCount(UPDATE_EVENT);
+        const panelListeners = panel.listenerCount(UPDATE_EVENT);
+        const first = await getComponent();
+        const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+
+        expandedId.mockReturnValue(expanded ? null : rootEvent.getId()!);
+        first.unmount();
+        expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners + 1);
+        expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners + 1);
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.FocusSendMessageComposer }));
+        fullPage = !expanded;
+        const replacement = await getComponent();
+        expect(dispatch.mock.calls.filter(([payload]) => payload.action === Action.FocusSendMessageComposer)).toEqual([
+            [{ action: Action.FocusSendMessageComposer, context: TimelineRenderingType.Thread }],
+        ]);
+        replacement.unmount();
+        expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+        expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+        // Returning later to this layout must not consume a stale focus handoff.
+        const reopened = await getComponent();
+        expect(
+            dispatch.mock.calls.filter(([payload]) => payload.action === Action.FocusSendMessageComposer),
+        ).toHaveLength(1);
+        reopened.unmount();
+        dispatch.mockRestore();
+        card.mockRestore();
+        open.mockRestore();
+        expandedId.mockRestore();
+        roomId.mockRestore();
+    });
+
+    it.each(["room", "card", "closed panel", "thread", "full window", "call"])(
+        "should not hand focus to a thread after unrelated %s navigation",
+        async (destination) => {
+            fullPage = true;
+            mainSplitContentType = MainSplitContentType.Thread;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(destination !== "closed panel");
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: destination === "card" ? RightPanelPhases.RoomSummary : RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const first = await getComponent(undefined, destination === "full window");
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            roomId.mockReturnValue(destination === "room" ? "!another:example.org" : room.roomId);
+            expandedId.mockReturnValue(destination === "thread" ? "$another" : null);
+            viewingCall.mockReturnValue(destination === "call");
+            first.unmount();
+            roomId.mockReturnValue(room.roomId);
+            expandedId.mockReturnValue(null);
+            viewingCall.mockReturnValue(false);
+            fullPage = false;
+            const replacement = await getComponent();
+            expect(dispatch).not.toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+            );
+            replacement.unmount();
+            dispatch.mockRestore();
+            viewingCall.mockRestore();
+            card.mockRestore();
+            open.mockRestore();
+            expandedId.mockRestore();
+            roomId.mockRestore();
+        },
+    );
+
+    it.each(["room", "panel", "call"])(
+        "should cancel a history handoff when the %s changes before mount",
+        async (destination) => {
+            fullPage = true;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const storeListeners = store.listenerCount(UPDATE_EVENT);
+            const panelListeners = panel.listenerCount(UPDATE_EVENT);
+            const first = await getComponent();
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            expandedId.mockReturnValue(null);
+            first.unmount();
+            if (destination === "room") {
+                roomId.mockReturnValue("!another:example.org");
+                store.emit(UPDATE_EVENT);
+            } else if (destination === "panel") {
+                card.mockReturnValue({ phase: RightPanelPhases.RoomSummary });
+                panel.emit(UPDATE_EVENT);
+            } else {
+                viewingCall.mockReturnValue(true);
+                store.emit(UPDATE_EVENT);
+            }
+            expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+            expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+            roomId.mockReturnValue(room.roomId);
+            viewingCall.mockReturnValue(false);
+            card.mockReturnValue({ phase: RightPanelPhases.ThreadView, state: { threadHeadEvent: rootEvent } });
+            fullPage = false;
+            const replacement = await getComponent();
+            expect(dispatch).not.toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+            );
+            replacement.unmount();
+            dispatch.mockRestore();
+            viewingCall.mockRestore();
+            card.mockRestore();
+            open.mockRestore();
+            expandedId.mockRestore();
+            roomId.mockRestore();
+        },
+    );
+
+    it.each(["call before mount", "call", "room", "layout", "card"])(
+        "should recheck the destination before deferred focus after %s navigation",
+        async (destination) => {
+            fullPage = true;
+            mainSplitContentType = MainSplitContentType.Thread;
+            const store = SDKContextClass.instance.roomViewStore;
+            const panel = RightPanelStore.instance;
+            const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+            const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+            const viewingCall = vi.spyOn(store, "isViewingCall").mockReturnValue(false);
+            const open = vi.spyOn(panel, "isOpenForRoom").mockReturnValue(true);
+            const card = vi.spyOn(panel, "currentCardForRoom").mockReturnValue({
+                phase: RightPanelPhases.ThreadView,
+                state: { threadHeadEvent: rootEvent },
+            });
+            const storeListeners = store.listenerCount(UPDATE_EVENT);
+            const panelListeners = panel.listenerCount(UPDATE_EVENT);
+            const first = await getComponent();
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            expandedId.mockReturnValue(null);
+            first.unmount();
+            const navigate = (): void => {
+                if (destination.startsWith("call")) viewingCall.mockReturnValue(true);
+                else if (destination === "room") roomId.mockReturnValue("!another:example.org");
+                else if (destination === "layout") expandedId.mockReturnValue(rootEvent.getId()!);
+                else card.mockReturnValue({ phase: RightPanelPhases.RoomSummary });
+            };
+            if (destination === "call before mount") navigate();
+            const setState = React.Component.prototype.setState;
+            const deferredUpdate = vi.spyOn(ThreadView.prototype, "setState").mockImplementation(function (
+                this: ThreadView,
+                state,
+                callback,
+            ) {
+                if (callback && state && typeof state === "object" && Object.keys(state).length === 0) {
+                    return setState.call(this, state, () => {
+                        navigate();
+                        callback();
+                    });
+                }
+                return setState.call(this, state, callback);
+            });
+            let replacement: RenderResult | undefined;
+            try {
+                fullPage = false;
+                replacement = await getComponent();
+                expect(dispatch).not.toHaveBeenCalledWith(
+                    expect.objectContaining({ action: Action.FocusSendMessageComposer }),
+                );
+                // Prevent unmount from preparing a reverse handoff for the simulated layout change.
+                viewingCall.mockReturnValue(true);
+                replacement.unmount();
+                expect(store.listenerCount(UPDATE_EVENT)).toBe(storeListeners);
+                expect(panel.listenerCount(UPDATE_EVENT)).toBe(panelListeners);
+            } finally {
+                deferredUpdate.mockRestore();
+                viewingCall.mockReturnValue(true);
+                replacement?.unmount();
+                dispatch.mockRestore();
+                card.mockRestore();
+                open.mockRestore();
+                viewingCall.mockRestore();
+                expandedId.mockRestore();
+                roomId.mockRestore();
+            }
+        },
+    );
+
+    it("should forget an old viewport when toggling at the latest message", async () => {
+        const renderPanel = vi.spyOn(TimelinePanel.prototype, "render");
+        const { getByRole, unmount } = await getComponent();
+        saveThreadScrollAnchor(rootEvent.getId()!, { eventId: "$old" });
+        const panel = renderPanel.mock.contexts.at(-1) as TimelinePanel;
+        const scroll = vi.spyOn(panel, "getScrollState").mockReturnValue({ stuckAtBottom: true });
+        const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+        fireEvent.click(getByRole("button", { name: "Expand thread" }));
+        expect(peekThreadScrollAnchor(rootEvent.getId()!)).toBeNull();
+        // Navigation before a replacement mounts cancels its focus handoff.
+        SDKContextClass.instance.roomViewStore.emit(UPDATE_EVENT);
+        unmount();
+        const replacement = await getComponent();
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.FocusSendMessageComposer }));
+        replacement.unmount();
+        scroll.mockRestore();
+        renderPanel.mockRestore();
+        dispatch.mockRestore();
+    });
+
+    it("should pass a saved viewport on first render and clear it on mount", async () => {
+        saveThreadScrollAnchor(rootEvent.getId()!, { eventId: rootEvent.getId()!, pixelOffset: 15 });
+        const renderPanel = vi.spyOn(TimelinePanel.prototype, "render");
+        const { unmount } = await getComponent();
+        expect((renderPanel.mock.contexts[0] as TimelinePanel).props).toMatchObject({
+            eventId: rootEvent.getId()!,
+            eventPixelOffset: 15,
+            eventScrollIntoView: true,
+        });
+        expect(peekThreadScrollAnchor(rootEvent.getId()!)).toBeNull();
+        unmount();
+        renderPanel.mockRestore();
+    });
+
+    it("should discard a restored viewport when the same view leaves and returns to its root", async () => {
+        const next = mkThread({
+            room,
+            client: mockClient,
+            authorId: mockClient.getUserId()!,
+            participantUserIds: [mockClient.getUserId()!],
+        }).rootEvent;
+        saveThreadScrollAnchor(rootEvent.getId()!, { eventId: rootEvent.getId()!, pixelOffset: 15 });
+        const renderPanel = vi.spyOn(TimelinePanel.prototype, "render");
+        const refresh = vi.spyOn(TimelinePanel.prototype, "refreshTimeline");
+        const { unmount } = await getComponent();
+        const instance = viewRef.current;
+        expect(refresh).not.toHaveBeenCalled();
+        act(() => changeEvent(next));
+        expect(viewRef.current).toBe(instance);
+        const panel = renderPanel.mock.contexts.at(-1) as TimelinePanel;
+        expect(panel.props.timelineSet).toBe(room.getThread(next.getId()!)!.timelineSet);
+        expect(panel.props.eventId).toBeUndefined();
+        expect(panel.props.eventPixelOffset).toBeUndefined();
+        expect(panel.props.eventScrollIntoView).toBe(false);
+        expect(refresh).toHaveBeenCalledWith(undefined);
+
+        refresh.mockClear();
+        act(() => changeEvent(rootEvent));
+        expect(viewRef.current).toBe(instance);
+        const returnedPanel = renderPanel.mock.contexts.at(-1) as TimelinePanel;
+        expect(returnedPanel.props.timelineSet).toBe(room.getThread(rootEvent.getId()!)!.timelineSet);
+        expect(returnedPanel.props.eventId).toBeUndefined();
+        expect(returnedPanel.props.eventPixelOffset).toBeUndefined();
+        expect(returnedPanel.props.eventScrollIntoView).toBe(false);
+        expect(refresh).toHaveBeenCalledWith(undefined);
+        unmount();
+        refresh.mockRestore();
+        renderPanel.mockRestore();
+    });
+
+    it.each([false, true])(
+        "should reset an untracked initial target only for an ordinary thread (expanded: %s)",
+        async (expanded) => {
+            fullPage = expanded;
+            initialEventScrollIntoView = true;
+            const store = SDKContextClass.instance.roomViewStore;
+            const initialId = vi.spyOn(store, "getInitialEventId").mockReturnValue(null);
+            const { unmount } = await getComponent(rootEvent);
+            const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+            try {
+                act(() => viewRef.current!["resetJumpToEvent"](rootEvent.getId()));
+                if (expanded) {
+                    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ViewRoom }));
+                } else {
+                    expect(dispatch).toHaveBeenCalledWith(
+                        expect.objectContaining({ action: Action.ViewRoom, event_id: rootEvent.getId() }),
+                    );
+                }
+            } finally {
+                unmount();
+                dispatch.mockRestore();
+                initialId.mockRestore();
+            }
+        },
+    );
+
+    it("should preserve expanded state when resetting or unmounting a permalink", async () => {
+        fullPage = true;
+        const store = SDKContextClass.instance.roomViewStore;
+        const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+        const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+        const initialId = vi.spyOn(store, "getInitialEventId").mockReturnValue(rootEvent.getId()!);
+        initialEventScrollIntoView = true;
+        const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+        const { unmount } = await getComponent(rootEvent);
+        // Invoke the timeline callback with the permalink flags consumed by resetJumpToEvent.
+        const instance = viewRef.current!;
+        act(() => instance["resetJumpToEvent"](rootEvent.getId()));
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                action: Action.ViewRoom,
+                full_page_thread_id: rootEvent.getId(),
+                scroll_into_view: false,
+            }),
+        );
+        dispatch.mockClear();
+        unmount();
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                action: Action.ViewRoom,
+                full_page_thread_id: rootEvent.getId(),
+            }),
+        );
+        dispatch.mockRestore();
+        expandedId.mockRestore();
+        initialId.mockRestore();
+        roomId.mockRestore();
+    });
+
+    it.each([
+        ["$incoming", "$other-thread"],
+        ["$incoming", null],
+        ["same-event", "$other-thread"],
+        ["same-event", null],
+    ])("should leave the incoming permalink untouched on unmount (%s, %s)", async (eventId, threadId) => {
+        fullPage = true;
+        const store = SDKContextClass.instance.roomViewStore;
+        const roomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+        const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(rootEvent.getId()!);
+        const initialId = vi.spyOn(store, "getInitialEventId").mockReturnValue(rootEvent.getId()!);
+        const { unmount } = await getComponent(rootEvent);
+        expandedId.mockReturnValue(threadId);
+        initialId.mockReturnValue(eventId === "same-event" ? rootEvent.getId()! : eventId);
+        const dispatch = vi.spyOn(dispatcher, "dispatch").mockImplementation(() => {});
+        unmount();
+        expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ action: Action.ViewRoom }));
+        dispatch.mockRestore();
+        initialId.mockRestore();
+        expandedId.mockRestore();
+        roomId.mockRestore();
     });
 
     it.each([false, true])(
@@ -306,7 +766,10 @@ describe("ThreadView", () => {
     });
 
     it("clears highlight message in the room view store", async () => {
-        const getRoomId = vi.spyOn(SDKContextClass.instance.roomViewStore, "getRoomId").mockReturnValue(room.roomId);
+        const store = SDKContextClass.instance.roomViewStore;
+        const getRoomId = vi.spyOn(store, "getRoomId").mockReturnValue(room.roomId);
+        const initialId = vi.spyOn(store, "getInitialEventId").mockReturnValue(rootEvent.getId()!);
+        const expandedId = vi.spyOn(store, "getFullPageThreadId").mockReturnValue(null);
         const mock = vi.spyOn(dispatcher, "dispatch");
         const { unmount } = await getComponent(rootEvent);
         mock.mockClear();
@@ -314,9 +777,12 @@ describe("ThreadView", () => {
         expect(mock).toHaveBeenCalledWith({
             action: Action.ViewRoom,
             room_id: room.roomId,
+            full_page_thread_id: undefined,
             metricsTrigger: undefined,
         });
         getRoomId.mockRestore();
+        initialId.mockRestore();
+        expandedId.mockRestore();
     });
 
     it("should not navigate back to the room when opening Threads from a highlighted reply", async () => {

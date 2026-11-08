@@ -155,15 +155,19 @@ Please see LICENSE in the repository root for full details.
     outline-offset: -2px;
 }
 
+.time,
 .footer,
 .context {
     color: var(--cpd-color-text-secondary);
 }
 
 .time {
-    /* Timestamps also need text contrast against the selected and hovered row surfaces. */
-    color: var(--cpd-color-text-primary);
     font-variant-numeric: tabular-nums;
+}
+
+/* Secondary text lacks contrast on the current row's stronger subtle background. */
+.row[aria-current="true"] .time {
+    color: var(--cpd-color-text-primary);
 }
 
 .snippet {

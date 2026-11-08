@@ -16,7 +16,10 @@ export default defineProject({
             headless: true,
             provider: playwright({
                 connectOptions: process.env.PW_TEST_CONNECT_WS_ENDPOINT
-                    ? { wsEndpoint: process.env.PW_TEST_CONNECT_WS_ENDPOINT, exposeNetwork: "<loopback>" }
+                    ? {
+                          wsEndpoint: process.env.PW_TEST_CONNECT_WS_ENDPOINT,
+                          exposeNetwork: "<loopback>",
+                      }
                     : undefined,
             }),
             instances: [{ browser: "chromium" }],

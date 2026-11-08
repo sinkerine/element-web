@@ -240,7 +240,8 @@ export async function fetchInitialEvent(
         const mapper = client.getEventMapper();
         const rootEvent = room?.findEventById(threadId) ?? mapper(await client.fetchRoomEvent(roomId, threadId));
         try {
-            room?.createThread(threadId, rootEvent, [initialEvent], true);
+            // createThread returns an existing thread without attaching the fetched event to it.
+            initialEvent.setThread(room?.createThread(threadId, rootEvent, [initialEvent], true));
         } catch {
             logger.warn("Could not find root event: " + threadId);
         }

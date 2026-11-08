@@ -13,7 +13,7 @@ import React, { type JSX, type Key, type LegacyRef, type ReactNode } from "react
 import { sanitizeHtml, type HtmlSanitizeOptions } from "@element-hq/element-web-shared-utils";
 import classNames from "classnames";
 import katex, { type KatexOptions } from "katex";
-import { decode } from "html-entities";
+import { decode, encode } from "html-entities";
 import { type IContent } from "matrix-js-sdk/src/matrix";
 import { logger } from "matrix-js-sdk/src/logger";
 import escapeHtml from "escape-html";
@@ -49,6 +49,137 @@ function renderMathsElements(root: ParentNode): void {
         } catch (err) {
             logger.warn("Failed to render maths", err);
         }
+    }
+}
+
+/** Explicit received delimiters only: single dollars can be currency or intentionally literal text. */
+const RECEIVED_MATHS_PATTERN = /(?<!\\)(?:\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$\$(?!\$)([\s\S]+?)\$\$(?!\$))/g;
+
+/** Masks Markdown code in plain source without changing the offsets of surrounding text. */
+function maskMathsCode(text: string): string {
+    return text.replace(
+        /(^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\2[ \t]*(?=\n|$)|(?![\s\S])))|(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\3(?!`)/gm,
+        (code) => " ".repeat(code.length),
+    );
+}
+
+/** Adds maths elements to sanitized text, retaining HTML outside the matched delimiters. */
+function addReceivedMathsElements(root: HTMLElement, rawBody: string, isFormattedBody: boolean): void {
+    // Markdown can remove backslashes from the outer delimiters. Recover only exact source-backed matches.
+    const recoveries = Array.from((isFormattedBody ? maskMathsCode(rawBody) : "").matchAll(RECEIVED_MATHS_PATTERN))
+        .filter((match) => match[1] !== undefined || match[2] !== undefined)
+        .map((match) => ({
+            source: match[0].slice(1, -2) + match[0].slice(-1),
+            tex: match[1] ?? match[2],
+            displayMode: match[2] !== undefined,
+        }));
+
+    // Code delimiters can span links or highlights. Mask the complete plain text before collecting DOM runs.
+    const maskedText = new WeakMap<Node, string>();
+    if (!isFormattedBody) {
+        const source = maskMathsCode(root.textContent ?? "");
+        const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let offset = 0;
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            maskedText.set(node, source.slice(offset, offset + node.textContent!.length));
+            offset += node.textContent!.length;
+        }
+    }
+
+    const runs: Node[][] = [];
+    const visit = (element: Element): void => {
+        if (element.matches("code, pre, [data-mx-maths]")) return;
+        let nodes: Node[] = [];
+        for (const child of Array.from(element.childNodes)) {
+            if (child.nodeType === Node.TEXT_NODE || child.nodeName === "BR") {
+                nodes.push(child);
+            } else {
+                if (nodes.length) runs.push(nodes);
+                nodes = [];
+                if (child.nodeType === Node.ELEMENT_NODE) visit(child as Element);
+            }
+        }
+        if (nodes.length) runs.push(nodes);
+    };
+    visit(root);
+    const runText = (nodes: Node[]): string =>
+        nodes.map((node) => (node.nodeName === "BR" ? "\n" : node.textContent)).join("");
+    const represented = runs.flatMap((nodes) =>
+        Array.from(runText(nodes).matchAll(RECEIVED_MATHS_PATTERN), (match) => ({
+            tex: match[1] ?? match[2] ?? match[3],
+            displayMode: match[1] === undefined,
+        })),
+    );
+    for (const element of root.querySelectorAll("div[data-mx-maths], span[data-mx-maths]")) {
+        represented.push({
+            tex: decode(element.getAttribute("data-mx-maths")),
+            displayMode: element.tagName === "DIV",
+        });
+    }
+    // Recover only one unaccounted source occurrence with exactly one possible destination.
+    const uniqueRecoveries = recoveries.filter((recovery) => {
+        const sameFormula = (formula: (typeof represented)[number]): boolean =>
+            formula.tex === recovery.tex && formula.displayMode === recovery.displayMode;
+        const remaining = recoveries.filter(sameFormula).length - represented.filter(sameFormula).length;
+        return (
+            remaining === 1 &&
+            runs.reduce((count, nodes) => count + runText(nodes).split(recovery.source).length - 1, 0) === 1
+        );
+    });
+    for (const nodes of runs) {
+        const text = runText(nodes);
+        const source = isFormattedBody ? text : nodes.map((node) => maskedText.get(node) ?? "\n").join("");
+        const matches = Array.from(source.matchAll(RECEIVED_MATHS_PATTERN), (match) => ({
+            start: match.index,
+            end: match.index + match[0].length,
+            tex: match[1] ?? match[2] ?? match[3],
+            displayMode: match[1] === undefined,
+        }));
+        for (const recovery of uniqueRecoveries) {
+            const start = source.indexOf(recovery.source);
+            if (start !== -1) {
+                matches.push({ ...recovery, start, end: start + recovery.source.length });
+            }
+        }
+        matches.sort((a, b) => a.start - b.start || b.end - a.end);
+        let end = 0;
+        const nonOverlapping = matches.filter((match) => {
+            if (match.start < end) return false;
+            end = match.end;
+            return true;
+        });
+        if (!nonOverlapping.length) continue;
+        const fragment = root.ownerDocument.createDocumentFragment();
+        const appendText = (start: number, end: number): void => {
+            let offset = 0;
+            for (const node of nodes) {
+                const length = node.nodeName === "BR" ? 1 : node.textContent!.length;
+                if (start < offset + length && end > offset) {
+                    fragment.appendChild(
+                        node.nodeName === "BR"
+                            ? node.cloneNode()
+                            : root.ownerDocument.createTextNode(
+                                  node.textContent!.slice(Math.max(0, start - offset), end - offset),
+                              ),
+                    );
+                }
+                offset += length;
+            }
+        };
+        let start = 0;
+        for (const match of nonOverlapping) {
+            appendText(start, match.start);
+            const element = root.ownerDocument.createElement(match.displayMode ? "div" : "span");
+            // Matrix attributes are decoded by renderMathsElements; encode this plain text once for that path.
+            element.setAttribute("data-mx-maths", encode(match.tex));
+            element.textContent = text.slice(match.start, match.end);
+            fragment.appendChild(element);
+            start = match.end;
+        }
+        appendText(start, text.length);
+        nodes[0].parentNode!.insertBefore(fragment, nodes[0]);
+        for (const node of nodes) node.parentNode!.removeChild(node);
     }
 }
 
@@ -397,16 +528,20 @@ function analyseEvent(content: IContent, highlights?: string[], opts: EventRende
             const phtml = new DOMParser().parseFromString(safeBody, "text/html");
             const isPlainText = phtml.body.innerHTML === phtml.body.textContent;
             isHtmlMessage = !isPlainText;
-
-            if (isHtmlMessage && SettingsStore.getValue("feature_latex_maths")) {
-                renderMathsElements(phtml);
-                safeBody = phtml.body.innerHTML;
-            }
         } else if (opts.linkify) {
             // If we are linkifying plain text, pass the result through sanitizeHtml so that the highlighter configured in sanitizeParams.textFilter gets applied.
             safeBody = sanitizeHtml(linkifyHtml(escapeHtml(plainBody)), sanitizeParams);
         } else if (highlighter) {
             safeBody = highlighter.applyHighlights(escapeHtml(plainBody), safeHighlights!).join("");
+        }
+
+        if (SettingsStore.getValue("feature_latex_maths")) {
+            const phtml = new DOMParser().parseFromString(safeBody ?? escapeHtml(strippedBody), "text/html");
+            addReceivedMathsElements(phtml.body, strippedBody, isFormattedBody);
+            if (phtml.querySelector("div[data-mx-maths], span[data-mx-maths]")) {
+                renderMathsElements(phtml);
+                safeBody = phtml.body.innerHTML;
+            }
         }
 
         return { bodyHasEmoji, isHtmlMessage, strippedBody, safeBody, isFormattedBody };

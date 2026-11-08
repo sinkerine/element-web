@@ -100,6 +100,26 @@ describe("ThreadOwnMessagesView", () => {
         expect(within(rows()[1]).getByText("Root")).toBeInTheDocument();
         expect(screen.getByText("2")).toBeInTheDocument();
     });
+    it.each(["light", "dark", "light-hc", "dark-hc"])(
+        "should keep current-row timestamps readable on the selected background in the %s theme",
+        (theme) => {
+            const { container } = render(<ThreadOwnMessagesView vm={new TestViewModel()} />);
+            container.classList.add(`cpd-theme-${theme}`);
+            const currentRow = rows()[0];
+            const timestamp = within(currentRow).getByText("10:30");
+            const luminance = (color: string): number => {
+                const [red, green, blue] = color.match(/\d+/g)!.map((value) => {
+                    const channel = Number(value) / 255;
+                    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+                });
+                return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+            };
+            const foreground = luminance(getComputedStyle(timestamp).color);
+            const background = luminance(getComputedStyle(currentRow).backgroundColor);
+            const contrast = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+            expect(contrast).toBeGreaterThanOrEqual(4.5);
+        },
+    );
     it("should move focus with arrows, Home and End and let Tab leave", async () => {
         render(
             <>

@@ -432,6 +432,15 @@ describe("EventUtils", () => {
             await fetchInitialEvent(client, room.roomId, THREAD_REPLY);
             expect(room.getThread(THREAD_ROOT)).toBeInstanceOf(Thread);
         });
+
+        it("should attach a fetched reply to its existing thread", async () => {
+            await fetchInitialEvent(client, room.roomId, THREAD_REPLY);
+            const thread = room.getThread(THREAD_ROOT)!;
+            const reply = await fetchInitialEvent(client, room.roomId, THREAD_REPLY);
+
+            expect(reply?.getThread()).toBe(thread);
+            expect(reply?.getThread()?.rootEvent?.getId()).toBe(THREAD_ROOT);
+        });
     });
 
     describe("media editing", () => {

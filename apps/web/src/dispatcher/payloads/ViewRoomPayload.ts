@@ -21,6 +21,9 @@ export type FocusNextType = "composer" | "threadsPanel" | undefined;
 interface BaseViewRoomPayload extends Pick<ActionPayload, "action"> {
     action: Action.ViewRoom;
 
+    /** Root event ID of a thread to show over the whole room area. Absent or undefined means not expanded. */
+    full_page_thread_id?: string;
+
     event_id?: string; // the event to ensure is in view if any
     highlighted?: boolean; // whether to highlight `event_id`
     scroll_into_view?: boolean; // whether to scroll `event_id` into view

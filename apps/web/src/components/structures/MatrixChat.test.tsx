@@ -13,6 +13,7 @@ import React, { type ComponentProps, createRef, type RefObject } from "react";
 import { cleanup, fireEvent, render, type RenderResult, screen, waitFor, within, act } from "test-utils-rtl";
 import {
     ClientEvent,
+    EventType,
     type MatrixClient,
     MatrixEvent,
     Room,
@@ -1452,6 +1453,159 @@ describe("<MatrixChat />", () => {
                     await screen.findByRole("heading", { name: "Confirm your digital identity", level: 2 });
                 }, 15000);
             });
+        });
+
+        describe("room routing", () => {
+            it("should push history when expanding and collapsing a room with a canonical alias", async () => {
+                const room = new Room("!aliased:s", mockClient, userId);
+                vi.spyOn(room, "getCanonicalAlias").mockReturnValue("#aliased:s");
+                mockClient.getRoom.mockImplementation((id) => (id === room.roomId ? room : null));
+                await getComponentAndWaitForReady();
+
+                for (const threadId of [undefined, "$root", undefined]) {
+                    act(() => {
+                        defaultDispatcher.dispatch({
+                            action: Action.ViewRoom,
+                            room_id: room.roomId,
+                            full_page_thread_id: threadId,
+                        });
+                    });
+                    await waitFor(() => {
+                        expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(
+                            `room/#aliased:s${threadId ? `/thread/${threadId}` : ""}`,
+                            false,
+                        );
+                    });
+                }
+            });
+
+            it.each([undefined, "$root"])(
+                "should replace history when canonicalizing the same destination (thread: %s)",
+                async (threadId) => {
+                    const room = new Room("!canonical:s", mockClient, userId);
+                    const getCanonicalAlias = vi.spyOn(room, "getCanonicalAlias").mockReturnValue(null);
+                    mockClient.getRoom.mockImplementation((id) => (id === room.roomId ? room : null));
+                    await getComponentAndWaitForReady();
+                    const payload = {
+                        action: Action.ViewRoom,
+                        room_id: room.roomId,
+                        full_page_thread_id: threadId,
+                        event_id: "$reply",
+                        highlighted: true,
+                    };
+                    const suffix = threadId ? `/thread/${threadId}/$reply` : "/$reply";
+                    act(() => defaultDispatcher.dispatch(payload));
+                    await waitFor(() => {
+                        expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(`room/!canonical:s${suffix}`, false);
+                    });
+
+                    getCanonicalAlias.mockReturnValue("#canonical:s");
+                    act(() => defaultDispatcher.dispatch(payload));
+                    await waitFor(() => {
+                        expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(`room/#canonical:s${suffix}`, true);
+                    });
+                },
+            );
+
+            it.each([
+                [undefined, undefined],
+                ["$root", undefined],
+                ["$root", "$reply"],
+            ])("should preserve thread %s and event %s when the canonical alias changes", async (threadId, eventId) => {
+                const room = new Room("!canonical:s", mockClient, userId);
+                mockClient.getRoom.mockImplementation((id) => (id === room.roomId ? room : null));
+                await getComponentAndWaitForReady();
+                const suffix = threadId ? `/thread/${threadId}${eventId ? `/${eventId}` : ""}` : "";
+                act(() => {
+                    defaultDispatcher.dispatch({
+                        action: Action.ViewRoom,
+                        room_id: room.roomId,
+                        full_page_thread_id: threadId,
+                        event_id: eventId,
+                        highlighted: Boolean(eventId),
+                    });
+                });
+                await waitFor(() => {
+                    expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(`room/!canonical:s${suffix}`, false);
+                });
+
+                const event = new MatrixEvent({
+                    type: EventType.RoomCanonicalAlias,
+                    room_id: room.roomId,
+                    state_key: "",
+                    content: { alias: "#canonical:s" },
+                });
+                act(() => {
+                    room.currentState.setStateEvents([event]);
+                    defaultDispatcher.dispatch({
+                        action: "MatrixActions.RoomState.events",
+                        event,
+                        state: room.currentState,
+                        lastStateEvent: null,
+                    });
+                });
+                await waitFor(() => {
+                    expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(`room/#canonical:s${suffix}`, true);
+                });
+            });
+
+            it.each([
+                ["thread/$a", "$a", undefined, false],
+                ["thread/$a/$b", "$a", "$b", true],
+                ["thread/$a/with/slashes/$b/with/slashes", "$a/with/slashes", "$b/with/slashes", true],
+                ["$e", undefined, "$e", true],
+                ["$event/with/slashes", undefined, "$event/with/slashes", true],
+            ])("should dispatch the room suffix %s", async (suffix, threadId, eventId, highlighted) => {
+                const ref = createRef<MatrixChat>();
+                getComponent({}, ref);
+                await screen.findByLabelText("User menu");
+
+                act(() => ref.current!.showScreen(`room/!r:s/${suffix}`));
+
+                expect(defaultDispatcher.dispatch).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        action: Action.ViewRoom,
+                        room_id: "!r:s",
+                        event_id: eventId,
+                        highlighted,
+                        ...(threadId ? { full_page_thread_id: threadId } : {}),
+                    }),
+                );
+                if (!threadId) {
+                    const calls = vi.mocked(defaultDispatcher.dispatch).mock.calls;
+                    const payload = [...calls].reverse().find(([payload]) => payload.action === Action.ViewRoom)![0];
+                    expect(payload).not.toHaveProperty("full_page_thread_id");
+                }
+            });
+
+            it.each([
+                ["$a", undefined, false, "thread/$a"],
+                ["$a", "$b", true, "thread/$a/$b"],
+                ["$a", "$b", false, "thread/$a"],
+                ["$a", "$a", true, "thread/$a"],
+                [undefined, "$e", true, "$e"],
+                [undefined, "$e", false, ""],
+            ])(
+                "should format thread %s and event %s (highlighted: %s)",
+                async (threadId, eventId, highlighted, suffix) => {
+                    await getComponentAndWaitForReady();
+                    act(() => {
+                        defaultDispatcher.dispatch({
+                            action: Action.ViewRoom,
+                            room_id: "!r:s",
+                            full_page_thread_id: threadId,
+                            event_id: eventId,
+                            highlighted,
+                        });
+                    });
+                    await waitFor(() => {
+                        expect(defaultProps.onNewScreen).toHaveBeenLastCalledWith(
+                            `room/!r:s${suffix ? `/${suffix}` : ""}`,
+                            false,
+                        );
+                    });
+                },
+            );
         });
 
         describe("showScreen", () => {
