@@ -50,11 +50,6 @@ import { type AttachmentOpen } from "@matrix-org/analytics-events/types/typescri
 import { PosthogAnalytics } from "../../PosthogAnalytics";
 import type { AttachmentCancel } from "@matrix-org/analytics-events/types/typescript/AttachmentCancel";
 
-import { ComposerAttachmentStripViewModel } from "./ComposerAttachmentStripViewModel";
-import { isGalleryItemFile, MAX_GALLERY_ITEMS } from "../../utils/MediaCaptionContent";
-import Modal from "../../Modal";
-import ErrorDialog from "../../components/views/dialogs/ErrorDialog";
-
 const logger = rootLogger.getChild("RoomUploadViewModel");
 
 /** The send composer's text, offered as the attachment caption. */
@@ -69,15 +64,12 @@ export interface CaptionDraftSource {
 
 interface RoomUploadViewSnapshot extends UploadButtonViewSnapshot {
     mayDragAndDropFile: boolean;
-    hasStagedAttachments: boolean;
 }
 
 export class RoomUploadViewModel
     extends BaseViewModel<RoomUploadViewSnapshot, Record<string, never>>
     implements UploadButtonViewActions
 {
-    public readonly attachmentStripVm: ComposerAttachmentStripViewModel;
-
     private readonly uploadSelectFns = new Map<string, ComposerApiFileUploadOption["onSelected"]>();
     private captionDraftSource: CaptionDraftSource | null = null;
 
@@ -88,7 +80,7 @@ export class RoomUploadViewModel
 
     private async sendFiles(files: File[]): Promise<void> {
         const source = this.captionDraftSource;
-        const captionDraft = this.attachmentStripVm.hasFiles ? undefined : (source?.getCaptionDraft() ?? undefined);
+        const captionDraft = source?.getCaptionDraft() ?? undefined;
         const result = await ContentMessages.sharedInstance().sendContentListToRoom(
             files,
             this.room.roomId,
@@ -122,14 +114,7 @@ export class RoomUploadViewModel
             {
                 options: [],
                 mayDragAndDropFile: false,
-                hasStagedAttachments: false,
             },
-        );
-        this.attachmentStripVm = this.disposables.track(new ComposerAttachmentStripViewModel());
-        this.disposables.track(
-            this.attachmentStripVm.subscribe(() => {
-                this.snapshot.merge({ hasStagedAttachments: this.attachmentStripVm.hasFiles });
-            }),
         );
         // Initial check.
         this.updateOptions();
@@ -194,16 +179,13 @@ export class RoomUploadViewModel
         if (!files?.length) return;
         try {
             const incoming = Array.from(files);
-            if (!(this.attachmentStripVm.hasFiles && (await this.stageFiles(incoming)))) await this.sendFiles(incoming);
+            await this.sendFiles(incoming);
         } catch (ex) {
             logger.warn("Failed to handle file upload transfer", ex);
         }
     };
 
-    public initiateViaDataTransfer = async (
-        dataTransfer: DataTransfer,
-        options?: { source: "timeline-drop" },
-    ): Promise<void> => {
+    public initiateViaDataTransfer = async (dataTransfer: DataTransfer): Promise<void> => {
         if (!this.checkCanUpload()) {
             return;
         }
@@ -213,64 +195,9 @@ export class RoomUploadViewModel
 
         try {
             const incoming = Array.from(dataTransfer.files);
-            if (
-                !(
-                    options?.source !== "timeline-drop" &&
-                    this.attachmentStripVm.hasFiles &&
-                    (await this.stageFiles(incoming))
-                )
-            )
-                await this.sendFiles(incoming);
+            await this.sendFiles(incoming);
         } catch (ex) {
             logger.warn("Failed to handle drag and drop data transfer", ex);
-        }
-    };
-
-    /** Stage composer drops only while a CIDER composer is registered. */
-    public initiateViaComposerDrop = async (dataTransfer: DataTransfer): Promise<void> => {
-        if (!this.checkCanUpload() || !dataTransfer.files?.length) return;
-        const files = Array.from(dataTransfer.files);
-        if (!(await this.stageFiles(files))) await this.initiateViaDataTransfer(dataTransfer);
-    };
-
-    private async stageFiles(files: File[]): Promise<boolean> {
-        if (!this.captionDraftSource || !files.every(isGalleryItemFile)) return false;
-        const messages = ContentMessages.sharedInstance();
-        await messages.ensureMediaConfigFetched(this.client);
-        if (!files.every((file) => messages.isFileSizeAcceptable(file))) return false;
-        if (this.attachmentStripVm.files.length + files.length > MAX_GALLERY_ITEMS) {
-            Modal.createDialog(ErrorDialog, {
-                title: _t("upload_failed_title"),
-                description: _t("upload_file|gallery_limit", { count: MAX_GALLERY_ITEMS }),
-            });
-            return true;
-        }
-        this.attachmentStripVm.addFiles(files);
-        this.dispatcher.dispatch({ action: Action.FocusSendMessageComposer, context: this.timelineRenderingType });
-        return true;
-    }
-
-    /** Send the staged media with the current composer text as a literal caption. */
-    public sendStagedFiles = async (captionDraft?: SerializedPart[]): Promise<boolean> => {
-        const files = this.attachmentStripVm.takeFiles();
-        if (!files.length) return false;
-        try {
-            const result = await ContentMessages.sharedInstance().sendContentListToRoom(
-                files,
-                this.room.roomId,
-                this.threadRelation,
-                this.replyToEvent,
-                this.client,
-                this.timelineRenderingType,
-                { captionDraft, skipConfirmDialog: true, sendAsGallery: files.length >= 2 },
-            );
-            const success = result.caption ? await result.caption.sent : result.queuedCount > 0;
-            if (!success && captionDraft) this.captionDraftSource?.restoreCaptionDraft(captionDraft);
-            return success;
-        } catch (error) {
-            if (captionDraft) this.captionDraftSource?.restoreCaptionDraft(captionDraft);
-            logger.warn("Failed to send staged attachments", error);
-            return false;
         }
     };
 

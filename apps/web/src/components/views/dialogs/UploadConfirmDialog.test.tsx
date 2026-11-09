@@ -176,7 +176,7 @@ describe("<UploadConfirmDialog />", () => {
         expect(onFinished).not.toHaveBeenCalled();
         autocomplete.mockRestore();
         fireEvent.keyDown(caption, { key: "Enter", code: "Enter", keyCode: 13 });
-        expect(onFinished).toHaveBeenCalledWith(true, { confirmedFiles: expect.any(Array), sendAsGallery: false });
+        expect(onFinished).toHaveBeenCalledWith(true, { confirmedFiles: expect.any(Array) });
     });
 
     it.each(["room", "model", "neither"])("hides the caption when only %s is provided", (provided) => {
@@ -194,28 +194,16 @@ describe("<UploadConfirmDialog />", () => {
         expect(queryByRole("textbox")).not.toBeInTheDocument();
     });
 
-    it("should group media by default, allow separate sends, and fall back when one remains", async () => {
-        const revoke = vi.spyOn(URL, "revokeObjectURL");
+    it("confirms remaining files without grouping", () => {
         const onFinished = vi.fn();
-        const files = [
-            new File(["a"], "a.png", { type: "image/png" }),
-            new File(["b"], "b.png", { type: "image/png" }),
-        ];
+        const files = [new File(["a"], "a.txt"), new File(["b"], "b.txt")];
         const { getByRole, getAllByRole, queryByRole } = render(
             <UploadConfirmDialog files={files} onFinished={onFinished} />,
         );
-        const checkbox = getByRole("checkbox", { name: "Send as one message" });
-        expect(checkbox).toBeChecked();
-        fireEvent.click(getByRole("button", { name: "Upload" }));
-        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: files, sendAsGallery: true });
-        fireEvent.click(checkbox);
-        fireEvent.click(getByRole("button", { name: "Upload" }));
-        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: files, sendAsGallery: false });
-        fireEvent.click(getAllByRole("button", { name: "Remove" })[0]);
-        expect(revoke).toHaveBeenCalled();
         expect(queryByRole("checkbox")).toBeNull();
+        fireEvent.click(getAllByRole("button", { name: "Remove" })[0]);
         fireEvent.click(getByRole("button", { name: "Upload" }));
-        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: [files[1]], sendAsGallery: false });
+        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: [files[1]] });
     });
 
     it("should cancel and release the preview when the last attachment is removed", () => {
@@ -227,18 +215,6 @@ describe("<UploadConfirmDialog />", () => {
         fireEvent.click(getByRole("button", { name: "Remove" }));
         expect(onFinished).toHaveBeenCalledExactlyOnceWith(false);
         expect(revoke).toHaveBeenCalledOnce();
-    });
-
-    it("should prevent an oversized gallery while permitting separate sends", () => {
-        const files = Array.from({ length: 61 }, (_, index) => new File(["a"], `${index}.png`, { type: "image/png" }));
-        const onFinished = vi.fn();
-        const { getByRole } = render(<UploadConfirmDialog files={files} onFinished={onFinished} />);
-        expect(getByRole("alert")).toHaveTextContent("60");
-        fireEvent.click(getByRole("button", { name: "Upload" }));
-        expect(onFinished).not.toHaveBeenCalled();
-        fireEvent.click(getByRole("checkbox"));
-        fireEvent.click(getByRole("button", { name: "Upload" }));
-        expect(onFinished).toHaveBeenCalledWith(true, { confirmedFiles: files, sendAsGallery: false });
     });
 
     it("should display image preview", async () => {

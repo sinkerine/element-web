@@ -3,6 +3,7 @@
         "seek_bar_label": "Audio seek bar"
     },
     "action": {
+        "add": "Add",
         "back": "Back",
         "cancel": "Cancel",
         "click": "Select",
@@ -33,6 +34,7 @@
         "retry": "Retry",
         "save": "Save",
         "search": "Search",
+        "send": "Send",
         "start_chat": "Start chat",
         "undo": "Undo",
         "unpin": "Unpin",
@@ -49,8 +51,6 @@
         "threads": "Threads"
     },
     "composer": {
-        "attachments": "Attachments",
-        "remove_attachment": "Remove %(name)s",
         "url_preview": {
             "clear_all": "Clear all",
             "collapse": "Collapse URL previews",
@@ -474,6 +474,12 @@
             "view_image": "View image",
             "view_video": "View video"
         }
+    },
+    "upload_media": {
+        "caption_last_file": "The caption is sent with the last file",
+        "group_items": "Group items",
+        "remove_item": "Remove %(name)s",
+        "selected_media": "Selected media"
     },
     "user_menu": {
         "link_new_device": "Link new device",

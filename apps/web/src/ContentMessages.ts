@@ -65,6 +65,7 @@ import { TimelineRenderingType } from "./contexts/RoomContext";
 import { addReplyToMessageContent } from "./utils/Reply";
 import ErrorDialog from "./components/views/dialogs/ErrorDialog";
 import UploadFailureDialog from "./components/views/dialogs/UploadFailureDialog";
+import { MediaUploadDialog } from "./components/views/dialogs/MediaUploadDialog";
 import UploadConfirmDialog from "./components/views/dialogs/UploadConfirmDialog";
 import { createThumbnail } from "./utils/image-media";
 import { attachMentions, attachRelation } from "./utils/messages.ts";
@@ -81,10 +82,6 @@ const PHYS_HIDPI = [0x00, 0x00, 0x16, 0x25, 0x00, 0x00, 0x16, 0x25, 0x01];
 export interface SendContentListOptions {
     /** Composer parts to pre-fill the caption field with. */
     captionDraft?: SerializedPart[];
-    /** Send directly from the composer attachment strip. */
-    skipConfirmDialog?: boolean;
-    /** Group eligible media (default true). */
-    sendAsGallery?: boolean;
 }
 
 /** The confirmed uploads and the eventual outcome of their caption. */
@@ -546,20 +543,26 @@ export default class ContentMessages {
               )
             : undefined;
         if (!okFiles.length) return { queuedCount: 0 };
-        let confirmedFiles = okFiles;
-        let sendAsGallery = options.sendAsGallery ?? true;
-        if (!options.skipConfirmDialog) {
-            const { finished } = Modal.createDialog(UploadConfirmDialog, {
-                files: okFiles,
+        // Media owns the shared caption; other files keep their legacy confirmation afterwards.
+        const mediaFiles = okFiles.filter(isGalleryItemFile);
+        const otherFiles = okFiles.filter((file) => !isGalleryItemFile(file));
+        let confirmedMedia: File[] = [];
+        let confirmedOther: File[] = [];
+        let groupItems = false;
+        if (mediaFiles.length) {
+            const { finished } = Modal.createDialog(MediaUploadDialog, {
+                files: mediaFiles,
                 room,
                 captionModel,
-                defaultSendAsGallery: sendAsGallery,
+                isFileSizeAcceptable: (file: File) => this.isFileSizeAcceptable(file),
             });
             const [confirmed, selection] = await finished;
-            confirmedFiles = confirmed && selection ? selection.confirmedFiles : [];
-            sendAsGallery = confirmed && selection ? selection.sendAsGallery : false;
+            if (confirmed && selection) {
+                confirmedMedia = selection.files;
+                groupItems = selection.groupItems;
+            }
         }
-        if (sendAsGallery && confirmedFiles.length > MAX_GALLERY_ITEMS && confirmedFiles.every(isGalleryItemFile)) {
+        if (groupItems && confirmedMedia.length > MAX_GALLERY_ITEMS) {
             Modal.createDialog(ErrorDialog, {
                 title: _t("upload_failed_title"),
                 description: _t("upload_file|gallery_limit", { count: MAX_GALLERY_ITEMS }),
@@ -568,30 +571,12 @@ export default class ContentMessages {
         }
 
         let promBefore: Promise<unknown> = Promise.resolve();
-        const result: SendContentListResult = { queuedCount: confirmedFiles.length };
-        const sentFileTypes = confirmedFiles.map((file) => file.type.split("/")[0]);
-        if (sendAsGallery && confirmedFiles.length >= 2 && confirmedFiles.every(isGalleryItemFile)) {
-            const sent = doMaybeLocalRoomAction(
-                roomId,
-                (actualRoomId) =>
-                    this.sendGalleryToRoom(
-                        confirmedFiles,
-                        actualRoomId,
-                        relation,
-                        matrixClient,
-                        replyToEvent,
-                        undefined,
-                        captionModel,
-                    ),
-                matrixClient,
-            ).catch(() => false);
-            if (captionModel && createMediaCaptionFields(captionModel)) {
-                result.caption = { parts: captionModel.serializeParts(), sent };
-            }
-        } else {
-            for (const [index, file] of confirmedFiles.entries()) {
+        const result: SendContentListResult = { queuedCount: 0 };
+        // Keep one send chain across both dialogs so legacy events follow the confirmed media.
+        const sendFiles = (selected: File[], model?: EditorModel): void => {
+            for (const [index, file] of selected.entries()) {
                 const loopPromiseBefore = promBefore;
-                const lastCaptionModel = index === confirmedFiles.length - 1 ? captionModel : undefined;
+                const lastCaptionModel = index === selected.length - 1 ? model : undefined;
                 const sent = doMaybeLocalRoomAction(
                     roomId,
                     (actualRoomId) =>
@@ -611,7 +596,42 @@ export default class ContentMessages {
                     result.caption = { parts: lastCaptionModel.serializeParts(), sent };
                 }
             }
+        };
+        if (groupItems && confirmedMedia.length >= 2) {
+            const sent = doMaybeLocalRoomAction(
+                roomId,
+                (actualRoomId) =>
+                    this.sendGalleryToRoom(
+                        confirmedMedia,
+                        actualRoomId,
+                        relation,
+                        matrixClient,
+                        replyToEvent,
+                        undefined,
+                        captionModel,
+                    ),
+                matrixClient,
+            ).catch(() => false);
+            promBefore = sent;
+            if (captionModel && createMediaCaptionFields(captionModel)) {
+                result.caption = { parts: captionModel.serializeParts(), sent };
+            }
+        } else {
+            sendFiles(confirmedMedia, captionModel);
         }
+        if (otherFiles.length) {
+            const { finished } = Modal.createDialog(UploadConfirmDialog, {
+                files: otherFiles,
+                room,
+                captionModel: mediaFiles.length ? undefined : captionModel,
+            });
+            const [confirmed, selection] = await finished;
+            if (confirmed && selection) confirmedOther = selection.confirmedFiles;
+            sendFiles(confirmedOther, mediaFiles.length ? undefined : captionModel);
+        }
+        const confirmedFiles = [...confirmedMedia, ...confirmedOther];
+        result.queuedCount = confirmedFiles.length;
+        const sentFileTypes = confirmedFiles.map((file) => file.type.split("/")[0]);
         if (sentFileTypes.length) {
             // Find the most common type.
             const [type] = sentFileTypes.sort(

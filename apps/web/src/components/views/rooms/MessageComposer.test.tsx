@@ -25,7 +25,6 @@ import {
 } from "test-utils";
 import { addTextToComposerRTL } from "./__mocks__/composer.ts";
 
-import ContentMessages from "../../../ContentMessages";
 import MessageComposer from "./MessageComposer";
 import MatrixClientContext from "../../../contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
@@ -101,54 +100,23 @@ describe("MessageComposer", () => {
         });
     });
 
-    it("should stage composer drops before native ancestor listeners and enable Send for an empty caption", async () => {
-        const messages = ContentMessages.sharedInstance();
-        const config = vi.spyOn(messages, "ensureMediaConfigFetched").mockResolvedValue();
-        const size = vi.spyOn(messages, "isFileSizeAcceptable").mockReturnValue(true);
-        const send = vi.spyOn(messages, "sendContentListToRoom").mockResolvedValue({ queuedCount: 1 });
-        const { renderResult } = wrapAndRender({
-            room: mkStubRoom("!stage:server", "Room", MatrixClientPeg.safeGet()),
-        });
+    it("lets composer drops bubble and keeps Send hidden when the composer is empty", () => {
+        const { renderResult } = wrapAndRender({ room: mkStubRoom("!drop:server", "Room", MatrixClientPeg.safeGet()) });
         const composer = screen.getByRole("region", { name: "Message composer" });
         const parent = composer.parentElement!;
         const ancestorDrop = vi.fn();
         parent.addEventListener("drop", ancestorDrop);
-        const file = new File(["image"], "a.png", { type: "image/png" });
-        const dataTransfer = { types: ["Files"], files: [file], dropEffect: "none" };
-        try {
-            const drag = (type: string): void => {
-                const event = new Event(type, { bubbles: true, cancelable: true });
-                Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
-                fireEvent(composer, event);
-            };
-            drag("dragenter");
-            drag("dragover");
-            expect(dataTransfer.dropEffect).toBe("copy");
-            drag("drop");
-            expect(ancestorDrop).not.toHaveBeenCalled();
-            expect(await screen.findByRole("list", { name: "Attachments" })).toBeInTheDocument();
-            expect(send).not.toHaveBeenCalled();
-            await userEvent.click(screen.getByTestId("sendmessagebtn"));
-            await waitFor(() =>
-                expect(send).toHaveBeenCalledWith(
-                    [file],
-                    expect.anything(),
-                    undefined,
-                    undefined,
-                    expect.anything(),
-                    TimelineRenderingType.Room,
-                    { captionDraft: [], skipConfirmDialog: true, sendAsGallery: false },
-                ),
-            );
-            expect(screen.queryByRole("list", { name: "Attachments" })).not.toBeInTheDocument();
-        } finally {
-            parent.removeEventListener("drop", ancestorDrop);
-            renderResult.unmount();
-            document.getSelection()?.removeAllRanges();
-            config.mockRestore();
-            size.mockRestore();
-            send.mockRestore();
-        }
+        const event = new Event("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "dataTransfer", {
+            value: { types: ["Files"], files: [new File(["a"], "a.png", { type: "image/png" })] },
+        });
+        fireEvent(composer, event);
+        expect(ancestorDrop).toHaveBeenCalledOnce();
+        expect(event.defaultPrevented).toBe(false);
+        expect(screen.queryByRole("list", { name: "Attachments" })).not.toBeInTheDocument();
+        expect(screen.queryByTestId("sendmessagebtn")).not.toBeInTheDocument();
+        parent.removeEventListener("drop", ancestorDrop);
+        renderResult.unmount();
     });
 
     it("wysiwyg correctly persists state to and from localStorage", async () => {

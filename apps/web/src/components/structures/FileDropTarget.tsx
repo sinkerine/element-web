@@ -83,7 +83,7 @@ const FileDropTarget: React.FC<IProps> = ({ parent }) => {
             ev.stopPropagation();
             ev.preventDefault();
             if (!ev.dataTransfer) return;
-            void vm.initiateViaDataTransfer(ev.dataTransfer, { source: "timeline-drop" });
+            void vm.initiateViaDataTransfer(ev.dataTransfer);
 
             setState((state) => ({
                 dragging: false,

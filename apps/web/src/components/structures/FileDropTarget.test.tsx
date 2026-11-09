@@ -46,7 +46,7 @@ describe("FileDropTarget", () => {
         const event = new Event("drop", { bubbles: true, cancelable: true });
         Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
         fireEvent(element, event);
-        expect(onFileDrop).toHaveBeenCalledExactlyOnceWith(dataTransfer, { source: "timeline-drop" });
+        expect(onFileDrop).toHaveBeenCalledExactlyOnceWith(dataTransfer);
     });
 
     it("should render nothing when idle", () => {

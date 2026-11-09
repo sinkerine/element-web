@@ -3870,8 +3870,23 @@
         "error_some_files_too_large": "Some files are <b>too large</b> to be uploaded. The file size limit is %(limit)s.",
         "error_title": "Upload Error",
         "gallery_limit": "You can send up to %(count)s attachments in one message. Remove some attachments or send them separately.",
+        "media_not_supported": "Only images and videos can be added here. Skipped: %(fileNames)s",
+        "media_title_image": "Send an image",
+        "media_title_images": {
+            "one": "%(count)s images selected",
+            "other": "%(count)s images selected"
+        },
+        "media_title_items": {
+            "one": "%(count)s items selected",
+            "other": "%(count)s items selected"
+        },
+        "media_title_video": "Send a video",
+        "media_title_videos": {
+            "one": "%(count)s videos selected",
+            "other": "%(count)s videos selected"
+        },
+        "media_too_large": "Too large to upload: %(fileNames)s",
         "not_image": "The file you have chosen is not a valid image file.",
-        "send_as_one_message": "Send as one message",
         "title": "Upload files",
         "upload_n_others_button": {
             "one": "Upload %(count)s other file",

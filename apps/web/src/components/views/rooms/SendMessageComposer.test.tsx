@@ -366,53 +366,15 @@ describe("<SendMessageComposer/>", () => {
             });
         });
 
-        it.each(["", "/join #room:server", "a caption"])(
-            "should send staged media with literal caption %j on Enter",
-            async (text) => {
-                const { container } = getComponent();
-                const file = new File(["image"], "a.png", { type: "image/png" });
-                uploadVm.attachmentStripVm.addFiles([file]);
-                const send = vi.spyOn(uploadVm, "sendStagedFiles").mockResolvedValue(true);
-                if (text) addTextToComposer(container, text);
-                fireEvent.keyDown(container.querySelector(".mx_SendMessageComposer")!, { key: "Enter" });
-                expect(send).toHaveBeenCalledExactlyOnceWith(text ? [{ type: "plain", text }] : []);
-                expect(container.querySelector('[contenteditable="true"]')).toHaveTextContent("");
-                expect(localStorage.getItem("mx_cider_state_" + mockRoom.roomId)).toBeNull();
-                expect(mockClient.sendMessage).not.toHaveBeenCalled();
-                send.mockRestore();
-            },
-        );
-
-        it.each([false, true])(
-            "should restore a failed staged caption only if the composer stays empty (new text=%s)",
-            async (newText) => {
-                let finish!: (sent: boolean) => void;
-                const send = vi
-                    .spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom")
-                    .mockImplementation(async (_files, _room, _relation, _reply, _client, _context, options) => ({
-                        queuedCount: 1,
-                        caption: {
-                            parts: options!.captionDraft!,
-                            sent: new Promise((resolve) => {
-                                finish = resolve;
-                            }),
-                        },
-                    }));
-                const { container } = getComponent();
-                uploadVm.attachmentStripVm.addFiles([new File(["image"], "a.png", { type: "image/png" })]);
-                addTextToComposer(container, "/literal");
-                fireEvent.keyDown(container.querySelector(".mx_SendMessageComposer")!, { key: "Enter" });
-                expect(container.querySelector('[contenteditable="true"]')).toHaveTextContent("");
-                if (newText) addTextToComposer(container, "new message");
-                finish(false);
-                await waitFor(() =>
-                    expect(container.querySelector('[contenteditable="true"]')).toHaveTextContent(
-                        newText ? "new message" : "/literal",
-                    ),
-                );
-                send.mockRestore();
-            },
-        );
+        it("sends text on Enter without opening an attachment dialog", async () => {
+            const send = vi.spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom");
+            const { container } = getComponent();
+            addTextToComposer(container, "a message");
+            fireEvent.keyDown(container.querySelector(".mx_SendMessageComposer")!, { key: "Enter" });
+            await waitFor(() => expect(mockClient.sendMessage).toHaveBeenCalled());
+            expect(send).not.toHaveBeenCalled();
+            send.mockRestore();
+        });
 
         it.each([false, true])("restores a failed caption only when empty (new text=%s)", async (newText) => {
             let finish!: (sent: boolean) => void;

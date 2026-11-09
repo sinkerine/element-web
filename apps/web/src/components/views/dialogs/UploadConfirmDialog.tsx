@@ -10,7 +10,6 @@ Please see LICENSE files in the repository root for full details.
 import React, { useCallback, useEffect, useRef, useState, type JSX } from "react";
 
 import { CloseIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
-import { isGalleryItemFile, MAX_GALLERY_ITEMS } from "../../../utils/MediaCaptionContent";
 
 import type { Room } from "matrix-js-sdk/src/matrix";
 import type EditorModel from "../../../editor/model";
@@ -31,10 +30,9 @@ import {
 } from "@element-hq/web-shared-components";
 import { MediaPreviewGroupViewModel } from "../../../viewmodels/message-body/MediaPreviewGroupViewModel";
 
-/** Confirmed attachments and their grouping choice. */
+/** Confirmed attachments. */
 export interface UploadConfirmDialogResult {
     confirmedFiles: File[];
-    sendAsGallery: boolean;
 }
 
 interface IProps {
@@ -42,7 +40,6 @@ interface IProps {
     file?: File;
     room?: Room;
     captionModel?: EditorModel;
-    defaultSendAsGallery?: boolean;
     onFinished: (uploadConfirmed: boolean, result?: UploadConfirmDialogResult) => void;
 }
 
@@ -137,14 +134,9 @@ export default function UploadConfirmDialog({
     file,
     room,
     captionModel,
-    defaultSendAsGallery = true,
     onFinished,
 }: IProps): JSX.Element {
     const [files, setFiles] = useState(() => initialFiles ?? (file ? [file] : []));
-    const [grouped, setGrouped] = useState(defaultSendAsGallery);
-    const canGroup = files.length > 1 && files.every(isGalleryItemFile);
-    const sendAsGallery = canGroup && grouped;
-    const exceedsLimit = sendAsGallery && files.length > MAX_GALLERY_ITEMS;
     const vm = useCreateAutoDisposedViewModel(() => new UploadPreviewViewModel(files));
     useEffect(() => {
         vm.update(files, (removed) => {
@@ -175,8 +167,8 @@ export default function UploadConfirmDialog({
     }, [onFinished]);
 
     const onUploadClick = useCallback((): void => {
-        if (!exceedsLimit && files.length) onFinished(true, { confirmedFiles: files, sendAsGallery });
-    }, [onFinished, files, sendAsGallery, exceedsLimit]);
+        if (files.length) onFinished(true, { confirmedFiles: files });
+    }, [onFinished, files]);
 
     return (
         <BaseDialog
@@ -192,17 +184,6 @@ export default function UploadConfirmDialog({
                         <MediaPreviewGroupPreview vm={vm} />
                     </div>
                 </div>
-                {canGroup && (
-                    <label className="mx_UploadConfirmDialog_grouping">
-                        <input
-                            type="checkbox"
-                            checked={grouped}
-                            onChange={(event) => setGrouped(event.target.checked)}
-                        />
-                        {_t("upload_file|send_as_one_message")}
-                    </label>
-                )}
-                {exceedsLimit && <p role="alert">{_t("upload_file|gallery_limit", { count: MAX_GALLERY_ITEMS })}</p>}
                 {room && captionModel && (
                     <div
                         className="mx_UploadConfirmDialog_caption"
@@ -225,7 +206,7 @@ export default function UploadConfirmDialog({
                             label={_t("upload_file|caption_label")}
                             placeholder={_t("upload_file|caption_placeholder")}
                         />
-                        {files.length > 1 && !sendAsGallery && <p>{_t("upload_file|caption_last_file")}</p>}
+                        {files.length > 1 && <p>{_t("upload_file|caption_last_file")}</p>}
                     </div>
                 )}
             </div>

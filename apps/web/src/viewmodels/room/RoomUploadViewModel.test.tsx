@@ -16,7 +16,7 @@ import {
     RoomEvent,
 } from "matrix-js-sdk/src/matrix";
 import { render } from "test-utils-rtl";
-import { vi, describe, it, expect, beforeEach, afterEach, afterAll, type MockedObject } from "vitest";
+import { beforeEach, vi, describe, it, expect, afterEach, afterAll, type MockedObject } from "vitest";
 import { type SerializedPart, Type } from "../../editor/parts";
 import { getRoomContext, mkEvent, mkStubRoom, stubClient } from "test-utils";
 
@@ -29,9 +29,6 @@ import type { ComposerInsertFilesPayload } from "../../dispatcher/payloads/Compo
 import { ScopedRoomContextProvider } from "../../contexts/ScopedRoomContext";
 import { Action } from "../../dispatcher/actions";
 import MatrixClientContext from "../../contexts/MatrixClientContext";
-import Modal from "../../Modal";
-import ErrorDialog from "../../components/views/dialogs/ErrorDialog";
-import { MAX_GALLERY_ITEMS } from "../../utils/MediaCaptionContent";
 import { PosthogAnalytics } from "../../PosthogAnalytics";
 
 const sendContentListToRoomSpy = vi.spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom");
@@ -159,90 +156,19 @@ describe("RoomUploadViewModel", () => {
             vi.mocked(ContentMessages.sharedInstance().isFileSizeAcceptable).mockRestore();
         });
 
-        it("should stage drops, append picker and paste media, and preserve attachments during mixed dialog uploads", async () => {
-            await vm.initiateViaComposerDrop({ files: [image] } as unknown as DataTransfer);
-            expect(vm.getSnapshot().hasStagedAttachments).toBe(true);
-            expect(dis.dispatch).toHaveBeenCalledWith({
-                action: Action.FocusSendMessageComposer,
-                context: TimelineRenderingType.Thread,
-            });
-            await vm.initiateViaInputFiles([video]);
-            await vm.initiateViaDataTransfer({ files: [image] } as unknown as DataTransfer);
-            expect(vm.attachmentStripVm.files).toEqual([image, video, image]);
-            expect(sendContentListToRoomSpy).not.toHaveBeenCalled();
-            await vm.initiateViaInputFiles([document, image]);
-            expect(sendContentListToRoomSpy.mock.calls.at(-1)?.[0]).toEqual([document, image]);
-            expect(sendContentListToRoomSpy.mock.calls.at(-1)?.[6]).toEqual({ captionDraft: undefined });
-            expect(source.getCaptionDraft).not.toHaveBeenCalled();
-            expect(vm.attachmentStripVm.files).toEqual([image, video, image]);
-            vm.attachmentStripVm.clear();
-            expect(vm.getSnapshot().hasStagedAttachments).toBe(false);
-        });
-
-        it("should keep timeline drops in the dialog flow while staged attachments remain", async () => {
-            vm.attachmentStripVm.addFiles([image]);
-            await vm.initiateViaDataTransfer({ files: [video] } as unknown as DataTransfer, {
-                source: "timeline-drop",
-            });
-            expect(sendContentListToRoomSpy.mock.calls.at(-1)?.[0]).toEqual([video]);
-            expect(vm.attachmentStripVm.files).toEqual([image]);
-            expect(source.getCaptionDraft).not.toHaveBeenCalled();
-        });
-
-        it("should fall back to confirmation without a CIDER composer, for mixed files, or oversized media", async () => {
-            vm.setCaptionDraftSource(null);
-            await vm.initiateViaComposerDrop({ files: [image] } as unknown as DataTransfer);
-            expect(sendContentListToRoomSpy).toHaveBeenCalledTimes(1);
-            vm.setCaptionDraftSource(source);
-            await vm.initiateViaComposerDrop({ files: [image, document] } as unknown as DataTransfer);
-            expect(sendContentListToRoomSpy).toHaveBeenCalledTimes(2);
-            vi.mocked(ContentMessages.sharedInstance().isFileSizeAcceptable).mockReturnValue(false);
-            await vm.initiateViaComposerDrop({ files: [image] } as unknown as DataTransfer);
-            expect(sendContentListToRoomSpy).toHaveBeenCalledTimes(3);
-            expect(vm.attachmentStripVm.hasFiles).toBe(false);
-        });
-
-        it("should report overflow without dropping existing staged items or sending incoming files", async () => {
-            const dialog = vi.spyOn(Modal, "createDialog");
-            vm.attachmentStripVm.addFiles(Array.from({ length: MAX_GALLERY_ITEMS }, () => image));
-            await vm.initiateViaInputFiles([video]);
-            expect(vm.attachmentStripVm.files).toHaveLength(MAX_GALLERY_ITEMS);
-            expect(sendContentListToRoomSpy).not.toHaveBeenCalled();
-            expect(dialog).toHaveBeenCalledWith(ErrorDialog, expect.anything());
-            dialog.mockRestore();
-        });
-
-        it.each([1, 2])(
-            "should send %s staged files with the literal draft, and restore failed captions",
-            async (count) => {
-                const parts = [{ type: Type.Plain, text: "/literal caption" }];
-                vm.attachmentStripVm.addFiles([image, video].slice(0, count));
-                sendContentListToRoomSpy.mockResolvedValue({
-                    queuedCount: count,
-                    caption: { parts, sent: Promise.resolve(false) },
-                });
-                expect(await vm.sendStagedFiles(parts)).toBe(false);
-                expect(sendContentListToRoomSpy).toHaveBeenCalledWith(
-                    [image, video].slice(0, count),
-                    room.roomId,
-                    { rel_type: "m.thread", event_id: "$root" },
-                    undefined,
-                    client,
-                    TimelineRenderingType.Thread,
-                    { captionDraft: parts, skipConfirmDialog: true, sendAsGallery: count > 1 },
-                );
-                expect(source.restoreCaptionDraft).toHaveBeenCalledWith(parts);
-                expect(vm.getSnapshot().hasStagedAttachments).toBe(false);
-            },
-        );
-
-        it.each(["cancel", "throw", "success"])("should handle staged %s outcomes", async (outcome) => {
-            const parts = [{ type: Type.Plain, text: "caption" }];
-            vm.attachmentStripVm.addFiles([image]);
-            if (outcome === "throw") sendContentListToRoomSpy.mockRejectedValue(new Error("upload failed"));
-            else sendContentListToRoomSpy.mockResolvedValue({ queuedCount: outcome === "cancel" ? 0 : 1 });
-            expect(await vm.sendStagedFiles(parts)).toBe(outcome === "success");
-            expect(source.restoreCaptionDraft).toHaveBeenCalledTimes(outcome === "success" ? 0 : 1);
+        it.each(["input", "drop", "paste"])("sends %s immediately with the registered draft", async (entry) => {
+            if (entry === "input") await vm.initiateViaInputFiles([image, video, document]);
+            else await vm.initiateViaDataTransfer({ files: [image, video, document] } as unknown as DataTransfer);
+            expect(sendContentListToRoomSpy).toHaveBeenCalledExactlyOnceWith(
+                [image, video, document],
+                room.roomId,
+                { rel_type: "m.thread", event_id: "$root" },
+                undefined,
+                client,
+                TimelineRenderingType.Thread,
+                { captionDraft: [{ type: Type.Plain, text: "draft" }] },
+            );
+            expect(vm.getSnapshot()).not.toHaveProperty("hasStagedAttachments");
         });
     });
 
