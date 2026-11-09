@@ -29,8 +29,10 @@ test.describe("Image Upload", () => {
     test("should show image preview when uploading an image", { tag: "@screenshot" }, async ({ page, app }) => {
         await app.setComposerInputFiles("room", getSampleFilePath("riot.png"));
 
-        await expect(page.getByRole("button", { name: "Upload" })).toBeEnabled();
-        await expect(page.getByRole("button", { name: "Close dialog" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Add", exact: true })).toBeEnabled();
+        await expect(page.getByRole("textbox", { name: "Caption", exact: true })).toBeVisible();
         await expect(page.locator(".mx_Dialog")).toMatchScreenshot("image-upload-preview.png");
     });
 
@@ -43,7 +45,7 @@ test.describe("Image Upload", () => {
 
     test("should group images and videos and fall back to a single video after removal", async ({ page, app }) => {
         test.setTimeout(120_000);
-        const dialog = page.getByRole("dialog", { name: "Upload files", exact: true });
+        const dialog = page.getByRole("dialog", { name: /^(Send an image|Send a video|2 items selected)$/ });
         const files = [getSampleFilePath("riot.png"), getSampleFilePath("5secvid.webm")];
         const events = () =>
             app.client.evaluate((client) => {
@@ -60,9 +62,9 @@ test.describe("Image Upload", () => {
                     .map((event) => event.getContent());
             });
         await app.setComposerInputFiles("room", files);
-        await expect(dialog.getByRole("checkbox", { name: "Send as one message" })).toBeChecked();
+        await expect(dialog.getByRole("checkbox", { name: "Group items" })).toBeChecked();
         await dialog.getByRole("textbox", { name: "Caption", exact: true }).fill("Image and video");
-        await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+        await dialog.getByRole("button", { name: "Send", exact: true }).click();
         await expect.poll(async () => (await events()).length).toBe(1);
         expect((await events())[0]).toMatchObject({
             msgtype: "dm.filament.gallery",
@@ -82,10 +84,10 @@ test.describe("Image Upload", () => {
         await expect(tile.getByRole("button", { name: "5secvid.webm", exact: true })).toBeVisible();
 
         await app.setComposerInputFiles("room", files);
-        await dialog.getByRole("button", { name: "Remove", exact: true }).first().click();
-        await expect(dialog.getByRole("checkbox", { name: "Send as one message" })).not.toBeVisible();
+        await dialog.getByRole("button", { name: "Remove riot.png", exact: true }).first().click();
+        await expect(dialog.getByRole("checkbox", { name: "Group items" })).not.toBeVisible();
         await dialog.getByRole("textbox", { name: "Caption", exact: true }).fill("Single video");
-        await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+        await dialog.getByRole("button", { name: "Send", exact: true }).click();
         await expect.poll(async () => (await events()).length).toBe(2);
         expect((await events())[1]).toMatchObject({
             msgtype: "m.video",

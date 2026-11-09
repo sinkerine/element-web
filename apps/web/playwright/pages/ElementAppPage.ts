@@ -217,7 +217,10 @@ export class ElementAppPage {
         ...params: Parameters<Locator["setInputFiles"]>
     ): Promise<void> {
         await this.setComposerInputFiles(location, ...params);
-        await this.page.locator(".mx_Dialog").getByRole("button", { name: "Upload" }).click();
+        await this.page
+            .locator(".mx_Dialog")
+            .getByRole("button", { name: /^(Send|Upload)$/ })
+            .click();
     }
 
     /**
@@ -251,7 +254,10 @@ export class ElementAppPage {
         await this.page.dispatchEvent(location === "room" ? ".mx_RoomView_body" : ".mx_ThreadPanel", "drop", {
             dataTransfer,
         });
-        await this.page.locator(".mx_Dialog").getByRole("button", { name: "Upload" }).click();
+        await this.page
+            .locator(".mx_Dialog")
+            .getByRole("button", { name: /^(Send|Upload)$/ })
+            .click();
     }
 
     /**
@@ -291,7 +297,10 @@ export class ElementAppPage {
             },
             [buffer.toString("base64"), name, type],
         );
-        await this.page.locator(".mx_Dialog").getByRole("button", { name: "Upload" }).click();
+        await this.page
+            .locator(".mx_Dialog")
+            .getByRole("button", { name: /^(Send|Upload)$/ })
+            .click();
     }
 
     /**

@@ -25,23 +25,23 @@
 
 ## Attachments and captions
 
-Use the attachment button, paste an image, or drag files into the room to open the upload dialog. The dialog shows a
-preview of every selected file, per-file remove buttons, and a shared **Caption** field. Text already in the composer is
-copied into the caption, including Markdown formatting and member mentions. The caption receives focus with the caret at the end, so you can keep typing immediately.
+Use the attachment button, paste an image, or drag images and videos onto the timeline or **Message composer** to
+open the media dialog. It shows previews, filenames and sizes, per-item remove buttons, and a shared **Caption** field.
+The caption starts with the composer draft, including Markdown and member mentions, and receives focus at the end.
+Use **Add** or drop more images and videos onto the dialog to append them. Unsupported or oversized additions are
+skipped with an inline explanation. Removing the last item closes the dialog.
 
-Press Enter or choose **Upload** to send the file and its caption as one message. Shift+Enter adds a line break to the
-caption. A nonempty caption clears the original composer draft after sending. Clearing the caption sends the file on
-its own and keeps the draft in the composer; closing the dialog also keeps the draft and sends nothing.
+Press Enter or choose **Send** to send. Shift+Enter adds a caption line break. A nonempty caption clears the composer
+draft; a failed upload restores it when the composer is still empty. An empty caption preserves the draft.
+**Cancel**, Escape, or clicking outside closes the dialog without sending and keeps the draft.
 
-When selecting two or more images or videos, **Send as one message** is checked by default. Upload sends one gallery
-with a shared caption. Uncheck it to send separate messages in order, with the caption on the last file. Selections
-containing audio or other file types are sent separately. Removing files down to one sends a standard attachment.
+With two or more images or videos, **Group items** is checked by default and sends one gallery with a shared caption.
+Uncheck it to send separate messages in selection order, with the caption on the last file. Galleries support up to
+60 items; remove items or uncheck **Group items** to send a larger selection. One remaining item sends a standard attachment.
 
-Drop images or videos onto the **Message composer** to stage them in an attachment strip above the input. Further drops,
-pastes, or attachment selections append images and videos to the strip. Remove individual items with their remove buttons.
-Type a shared caption in the composer and press Enter or Send to send the staged attachments together. An empty composer
-sends an uncaptioned gallery; a single remaining item sends a standard attachment. Galleries support up to 60 items.
-Dropping onto the room timeline opens the upload dialog. The rich text composer also uses the upload dialog.
+Audio and other non-media files use the legacy **Upload files** dialog and **Upload** button. A mixed selection first
+opens the media dialog, then the legacy dialog without a Caption field. Media are sent first, followed by the other
+files. A selection containing only non-media files keeps the shared caption on its last file.
 
 Click an image in a gallery to open the image viewer. Use **Previous**, **Next**, or the Left/Right arrow keys to move
 between items; the counter shows your position. Press Escape to close the viewer.
@@ -53,6 +53,9 @@ and the message continues to show its edited marker.
 Captioned attachments also work in replies, threads, and encrypted rooms. A reply keeps the quoted message above the
 attachment; a thread attachment stays in its thread. In an encrypted room, the caption and every gallery attachment are
 encrypted.
+
+The media upload E2E journey runs only when this feature is first added, including initial repairs. Future pushes and
+deployments do not rerun it. Existing unit tests must still run.
 
 ## Misc
 
