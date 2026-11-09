@@ -491,6 +491,7 @@
         "feedback": "Feedback",
         "filter_results": "Filter results",
         "forward_message": "Forward message",
+        "gallery": "Gallery",
         "general": "General",
         "go_to_settings": "Go to Settings",
         "guest": "Guest",
@@ -1659,6 +1660,9 @@
         "space_rejoin_warning_restricted": "This space is restricted and cannot be rejoined unless you are in one of its authorised spaces or invited."
     },
     "lightbox": {
+        "counter": "%(current)s of %(total)s",
+        "next": "Next",
+        "previous": "Previous",
         "rotate_left": "Rotate Left",
         "rotate_right": "Rotate Right",
         "title": "Image view"

@@ -25,6 +25,8 @@ import {
     useCreateAutoDisposedViewModel,
 } from "@element-hq/web-shared-components";
 
+import { MGalleryBody } from "./MGalleryBody";
+import { GALLERY_MSGTYPE, STABLE_GALLERY_MSGTYPE, getMediaCaption } from "../../../utils/MediaCaptionContent";
 import { isCaptionableContent } from "../../../utils/MediaCaption";
 import SettingsStore from "../../../settings/SettingsStore";
 import { Mjolnir } from "../../../mjolnir/Mjolnir";
@@ -82,6 +84,8 @@ const baseBodyTypes = new Map<string, React.ComponentType<IBodyProps>>([
     [MsgType.Notice, TextualBodyFactory],
     [MsgType.Emote, TextualBodyFactory],
     [MsgType.Image, ImageBodyFactory],
+    [GALLERY_MSGTYPE, MGalleryBody],
+    [STABLE_GALLERY_MSGTYPE, MGalleryBody],
     [MsgType.File, (props: IBodyProps) => renderMBody(props, FileBodyFactory)!],
     [MsgType.Audio, MVoiceOrAudioBody],
     [MsgType.Video, VideoBodyFactory],
@@ -332,10 +336,7 @@ export default class MessageEvent extends React.Component<IProps> implements IMe
             }
         }
 
-        const hasCaption =
-            [MsgType.Image, MsgType.File, MsgType.Audio, MsgType.Video].includes(msgtype as MsgType) &&
-            content.filename &&
-            content.filename !== content.body;
+        const hasCaption = !!getMediaCaption(content);
         const bodyProps: IBodyProps = {
             ref: this.body,
             mxEvent: this.props.mxEvent,

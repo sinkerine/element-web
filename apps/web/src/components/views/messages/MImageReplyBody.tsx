@@ -17,6 +17,7 @@ import { Tooltip } from "@vector-im/compound-web";
 import { ImageErrorIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 import { HiddenMediaPlaceholder } from "@element-hq/web-shared-components";
 
+import { isGalleryContent, galleryItemToMediaContent } from "../../../utils/MediaCaptionContent";
 import Modal from "../../../Modal";
 import { _t } from "../../../languageHandler";
 import SettingsStore from "../../../settings/SettingsStore";
@@ -91,7 +92,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
                 return;
             }
 
-            const content = this.props.mxEvent.getContent<ImageContent>();
+            const content = this.content;
 
             let httpUrl = this.state.contentUrl;
             if (
@@ -189,20 +190,31 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
 
     private getContentUrl(): string | null {
         if (this.props.forExport) return this.media.srcMxc;
-        return this.media.srcHttp;
+        return this.usesThumbnailOnly ? this.media.thumbnailHttp : this.media.srcHttp;
+    }
+
+    private get usesThumbnailOnly(): boolean {
+        const content = this.props.mxEvent.getContent();
+        return isGalleryContent(content) && content.itemtypes[0].itemtype !== "m.image";
+    }
+
+    protected get content(): ImageContent {
+        const content = this.props.mxEvent.getContent();
+        return (isGalleryContent(content) ? galleryItemToMediaContent(content.itemtypes[0]) : content) as ImageContent;
     }
 
     private get media(): Media {
-        return mediaFromContent(this.props.mxEvent.getContent());
+        return mediaFromContent(this.content);
     }
 
     private getThumbUrl(): string | null {
         const thumbWidth = 800;
         const thumbHeight = 600;
 
-        const content = this.props.mxEvent.getContent<ImageContent>();
+        const content = this.content;
         const media = mediaFromContent(content);
         const info = content.info;
+        if (this.usesThumbnailOnly) return media.thumbnailHttp;
 
         if (info?.mimetype === "image/svg+xml" && media.hasThumbnail) {
             return media.getThumbnailHttp(thumbWidth, thumbHeight, "scale");
@@ -230,7 +242,9 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
         if (this.props.mediaEventHelper?.media.isEncrypted) {
             try {
                 [contentUrl, thumbUrl] = await Promise.all([
-                    this.props.mediaEventHelper.sourceUrl.value,
+                    this.usesThumbnailOnly
+                        ? this.props.mediaEventHelper.thumbnailUrl.value
+                        : this.props.mediaEventHelper.sourceUrl.value,
                     this.props.mediaEventHelper.thumbnailUrl.value,
                 ]);
             } catch (error) {
@@ -252,7 +266,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
             contentUrl = this.getContentUrl();
         }
 
-        const content = this.props.mxEvent.getContent<ImageContent>();
+        const content = this.content;
         let isAnimated = content.info?.["org.matrix.msc4230.is_animated"] ?? mayBeAnimated(content.info?.mimetype);
 
         if (isAnimated && !SettingsStore.getValue("autoplayGifs")) {
@@ -319,7 +333,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
             void this.downloadImage();
         }
 
-        if (this.props.mxEvent.getContent().info?.[BLURHASH_FIELD]) {
+        if (this.content.info?.[BLURHASH_FIELD]) {
             this.clearBlurhashTimeout();
             this.timeout = window.setTimeout(() => {
                 if (!this.state.imgLoaded || !this.state.imgError) {
@@ -420,7 +434,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
 
         if (!this.props.forExport && !this.state.imgLoaded) {
             const classes = classNames("mx_MImageBody_placeholder", {
-                "mx_MImageBody_placeholder--blurhash": this.props.mxEvent.getContent().info?.[BLURHASH_FIELD],
+                "mx_MImageBody_placeholder--blurhash": this.content.info?.[BLURHASH_FIELD],
             });
 
             placeholder = (
@@ -541,7 +555,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
     }
 
     protected getPlaceholder(width: number, height: number): ReactNode {
-        const blurhash = this.props.mxEvent.getContent().info?.[BLURHASH_FIELD];
+        const blurhash = this.content.info?.[BLURHASH_FIELD];
 
         if (blurhash) {
             if (this.state.placeholder === Placeholder.NoImage) {
@@ -571,7 +585,7 @@ export class ImageBodyBaseInner extends React.Component<ImageBodyBaseProps, ISta
     }
 
     public render(): React.ReactNode {
-        const content = this.props.mxEvent.getContent<ImageContent>();
+        const content = this.content;
 
         if (
             this.props.mediaEventHelper?.media.isEncrypted &&
@@ -635,12 +649,23 @@ class MImageReplyBodyInner extends ImageBodyBaseInner {
             return super.render();
         }
 
-        const content = this.props.mxEvent.getContent<ImageContent>();
+        const content = this.content;
         const thumbnail = this.state.contentUrl
             ? this.messageContent(this.state.contentUrl, this.state.thumbUrl, content, FORCED_IMAGE_HEIGHT)
             : undefined;
 
-        return <div className="mx_MImageReplyBody">{thumbnail}</div>;
+        if (!this.props.mediaVisible) {
+            return (
+                <HiddenMediaPlaceholder onClick={() => this.props.setMediaVisible(true)}>
+                    {_t("timeline|m.image|show_image")}
+                </HiddenMediaPlaceholder>
+            );
+        }
+        return (
+            <div className="mx_MImageReplyBody">
+                {thumbnail ?? (isGalleryContent(this.props.mxEvent.getContent()) ? _t("common|gallery") : null)}
+            </div>
+        );
     }
 }
 

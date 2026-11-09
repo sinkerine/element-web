@@ -12,6 +12,8 @@ import React, { type JSX, createRef, type CSSProperties, useEffect } from "react
 import FocusLock from "react-focus-lock";
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 import {
+    ChevronLeftIcon,
+    ChevronRightIcon,
     CloseIcon,
     DownloadIcon,
     OverflowHorizontalIcon,
@@ -43,6 +45,19 @@ import {
     MessageTimestampViewModel,
     type MessageTimestampViewModelProps,
 } from "../../../viewmodels/room/timeline/event-tile/timestamp/MessageTimestampViewModel.ts";
+
+import { type MediaEventHelper } from "../../../utils/MediaEventHelper";
+
+/** One independently downloadable attachment in a gallery lightbox. */
+export interface LightboxGalleryItem {
+    src: string;
+    name?: string;
+    width?: number;
+    height?: number;
+    fileSize?: number;
+    mediaEventHelper?: MediaEventHelper;
+    itemtype?: "m.image" | "m.video" | "m.audio" | "m.file";
+}
 
 // Max scale to keep gaps around the image
 const MAX_SCALE = 0.95;
@@ -81,10 +96,13 @@ interface IProps {
         width: number;
         height: number;
     };
+    items?: LightboxGalleryItem[];
+    initialIndex?: number;
     onFinished(): void;
 }
 
 interface IState {
+    activeIndex: number;
     zoom: number;
     minZoom: number;
     maxZoom: number;
@@ -113,6 +131,7 @@ export default class ImageView extends React.Component<IProps, IState> {
         }
 
         this.state = {
+            activeIndex: Math.max(0, Math.min(props.initialIndex ?? 0, (props.items?.length ?? 1) - 1)),
             zoom: 0, // We default to 0 and override this in imageLoaded once we have naturalSize
             minZoom: MAX_SCALE,
             maxZoom: MAX_SCALE,
@@ -129,6 +148,7 @@ export default class ImageView extends React.Component<IProps, IState> {
     private focusLock = createRef<any>();
     private imageWrapper = createRef<HTMLDivElement>();
     private image = createRef<HTMLImageElement>();
+    private playableMedia: HTMLMediaElement | null = null;
 
     private downloadFunction?: () => Promise<void>;
 
@@ -146,22 +166,41 @@ export default class ImageView extends React.Component<IProps, IState> {
         this.focusLock.current.addEventListener("wheel", this.onWheel, { passive: false });
         // We want to recalculate zoom whenever the window's size changes
         window.addEventListener("resize", this.recalculateZoom);
-        // After the image loads for the first time we want to calculate the zoom
-        this.image.current?.addEventListener("load", this.imageLoaded);
     }
 
     public componentWillUnmount(): void {
+        this.playableMedia?.pause();
         this.focusLock.current.removeEventListener("wheel", this.onWheel);
         window.removeEventListener("resize", this.recalculateZoom);
-        this.image.current?.removeEventListener("load", this.imageLoaded);
     }
+
+    private get activeItem(): LightboxGalleryItem {
+        return this.props.items?.[this.state.activeIndex] ?? this.props;
+    }
+
+    private navigate = (delta: number): void => {
+        const activeIndex = this.state.activeIndex + delta;
+        if (!this.props.items || activeIndex < 0 || activeIndex >= this.props.items.length) return;
+        this.playableMedia?.pause();
+        this.imageIsLoaded = false;
+        this.setState({
+            activeIndex,
+            zoom: 0,
+            minZoom: MAX_SCALE,
+            maxZoom: MAX_SCALE,
+            rotation: 0,
+            translationX: 0,
+            translationY: 0,
+            moving: false,
+        });
+    };
 
     private imageLoaded = (): void => {
         if (!this.image.current) return;
         // First, we calculate the zoom, so that the image has the same size as
         // the thumbnail
         const { thumbnailInfo } = this.props;
-        if (thumbnailInfo?.width) {
+        if (!this.props.items && thumbnailInfo?.width) {
             this.setState({ zoom: thumbnailInfo.width / this.image.current.naturalWidth });
         }
 
@@ -304,6 +343,12 @@ export default class ImageView extends React.Component<IProps, IState> {
     };
 
     private onKeyDown = (ev: KeyboardEvent): void => {
+        if (this.props.items && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.navigate(ev.key === "ArrowLeft" ? -1 : 1);
+            return;
+        }
         const action = getKeyBindingsManager().getAccessibilityAction(ev);
         switch (action) {
             case KeyBindingAction.Escape:
@@ -431,6 +476,8 @@ export default class ImageView extends React.Component<IProps, IState> {
     }
 
     public render(): React.ReactNode {
+        const active = this.activeItem;
+        const isImage = !active.itemtype || active.itemtype === "m.image";
         const showEventMeta = !!this.props.mxEvent;
 
         let transitionClassName;
@@ -521,7 +568,9 @@ export default class ImageView extends React.Component<IProps, IState> {
         }
 
         let title: JSX.Element | undefined;
-        if (this.props.mxEvent?.getContent()) {
+        if (this.props.items) {
+            title = <div className="mx_ImageView_title">{active.name}</div>;
+        } else if (this.props.mxEvent?.getContent()) {
             title = (
                 <div className="mx_ImageView_title">
                     {presentableTextForFile(this.props.mxEvent?.getContent(), _t("common|image"), true)}
@@ -544,37 +593,69 @@ export default class ImageView extends React.Component<IProps, IState> {
                     {info}
                     {title}
                     <div className="mx_ImageView_toolbar">
-                        <AccessibleButton
-                            className="mx_ImageView_button"
-                            title={_t("action|zoom_out")}
-                            onClick={this.onZoomOutClick}
-                        >
-                            <ZoomOutIcon />
-                        </AccessibleButton>
-                        <AccessibleButton
-                            className="mx_ImageView_button"
-                            title={_t("action|zoom_in")}
-                            onClick={this.onZoomInClick}
-                        >
-                            <ZoomInIcon />
-                        </AccessibleButton>
-                        <AccessibleButton
-                            className="mx_ImageView_button"
-                            title={_t("lightbox|rotate_left")}
-                            onClick={this.onRotateCounterClockwiseClick}
-                        >
-                            <RotateLeftIcon />
-                        </AccessibleButton>
-                        <AccessibleButton
-                            className="mx_ImageView_button"
-                            title={_t("lightbox|rotate_right")}
-                            onClick={this.onRotateClockwiseClick}
-                        >
-                            <RotateRightIcon />
-                        </AccessibleButton>
+                        {this.props.items && this.props.items.length > 1 && (
+                            <>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("lightbox|previous")}
+                                    disabled={this.state.activeIndex === 0}
+                                    onClick={() => this.navigate(-1)}
+                                >
+                                    <ChevronLeftIcon />
+                                </AccessibleButton>
+                                <span aria-live="polite">
+                                    {_t("lightbox|counter", {
+                                        current: this.state.activeIndex + 1,
+                                        total: this.props.items.length,
+                                    })}
+                                </span>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("lightbox|next")}
+                                    disabled={this.state.activeIndex === this.props.items.length - 1}
+                                    onClick={() => this.navigate(1)}
+                                >
+                                    <ChevronRightIcon />
+                                </AccessibleButton>
+                            </>
+                        )}
+                        {isImage && (
+                            <>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("action|zoom_out")}
+                                    onClick={this.onZoomOutClick}
+                                >
+                                    <ZoomOutIcon />
+                                </AccessibleButton>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("action|zoom_in")}
+                                    onClick={this.onZoomInClick}
+                                >
+                                    <ZoomInIcon />
+                                </AccessibleButton>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("lightbox|rotate_left")}
+                                    onClick={this.onRotateCounterClockwiseClick}
+                                >
+                                    <RotateLeftIcon />
+                                </AccessibleButton>
+                                <AccessibleButton
+                                    className="mx_ImageView_button"
+                                    title={_t("lightbox|rotate_right")}
+                                    onClick={this.onRotateClockwiseClick}
+                                >
+                                    <RotateRightIcon />
+                                </AccessibleButton>
+                            </>
+                        )}
                         <DownloadButton
-                            url={this.props.src}
-                            fileName={this.props.name}
+                            key={this.state.activeIndex}
+                            mediaEventHelper={active.mediaEventHelper}
+                            url={active.src}
+                            fileName={active.name}
                             mxEvent={this.props.mxEvent}
                             onDownloadReady={this.onDownloadFunctionReady}
                         />
@@ -597,15 +678,44 @@ export default class ImageView extends React.Component<IProps, IState> {
                     onMouseUp={this.onEndMoving}
                     onMouseLeave={this.onEndMoving}
                 >
-                    <img
-                        src={this.props.src}
-                        style={style}
-                        alt={this.props.name}
-                        ref={this.image}
-                        className={`mx_ImageView_image ${transitionClassName}`}
-                        draggable={true}
-                        onMouseDown={this.onStartMoving}
-                    />
+                    {isImage ? (
+                        <img
+                            key={this.state.activeIndex}
+                            src={active.src}
+                            style={style}
+                            alt={active.name}
+                            ref={this.image}
+                            className={`mx_ImageView_image ${transitionClassName}`}
+                            draggable={true}
+                            onMouseDown={this.onStartMoving}
+                            onLoad={this.imageLoaded}
+                        />
+                    ) : active.itemtype === "m.video" ? (
+                        <video
+                            ref={(media) => {
+                                this.playableMedia = media;
+                            }}
+                            key={this.state.activeIndex}
+                            src={active.src}
+                            controls
+                            className="mx_ImageView_media"
+                            aria-label={active.name}
+                            onMouseDown={(ev) => ev.stopPropagation()}
+                        />
+                    ) : active.itemtype === "m.audio" ? (
+                        <audio
+                            ref={(media) => {
+                                this.playableMedia = media;
+                            }}
+                            key={this.state.activeIndex}
+                            src={active.src}
+                            controls
+                            aria-label={active.name}
+                            onMouseDown={(ev) => ev.stopPropagation()}
+                        />
+                    ) : (
+                        <div className="mx_ImageView_file">{active.name}</div>
+                    )}
                 </div>
             </FocusLock>
         );
@@ -616,11 +726,18 @@ interface DownloadButtonProps {
     url: string;
     fileName?: string;
     mxEvent?: MatrixEvent;
+    mediaEventHelper?: MediaEventHelper;
     onDownloadReady?: (download: () => Promise<void>) => void;
 }
 
-export const DownloadButton: React.FC<DownloadButtonProps> = ({ url, fileName, mxEvent, onDownloadReady }) => {
-    const { download, loading, canDownload } = useDownloadMedia(url, fileName, mxEvent);
+export const DownloadButton: React.FC<DownloadButtonProps> = ({
+    url,
+    fileName,
+    mxEvent,
+    mediaEventHelper,
+    onDownloadReady,
+}) => {
+    const { download, loading, canDownload } = useDownloadMedia(url, fileName, mxEvent, mediaEventHelper);
 
     useEffect(() => {
         if (onDownloadReady) onDownloadReady(download);

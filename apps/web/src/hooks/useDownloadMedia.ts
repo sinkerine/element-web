@@ -23,13 +23,27 @@ export interface UseDownloadMediaReturn {
     canDownload: boolean;
 }
 
-export function useDownloadMedia(url: string, fileName?: string, mxEvent?: MatrixEvent): UseDownloadMediaReturn {
+export function useDownloadMedia(
+    url: string,
+    fileName?: string,
+    mxEvent?: MatrixEvent,
+    itemHelper?: MediaEventHelper,
+): UseDownloadMediaReturn {
     const downloader = useRef(new FileDownloader()).current;
     const blobRef = useRef<Blob>(null);
     const [loading, setLoading] = useState(false);
     const [canDownload, setCanDownload] = useState<boolean>(true);
 
-    const mediaEventHelper = useMemo(() => (mxEvent ? new MediaEventHelper(mxEvent) : undefined), [mxEvent]);
+    const mediaEventHelper = useMemo(
+        () => itemHelper ?? (mxEvent ? new MediaEventHelper(mxEvent) : undefined),
+        [mxEvent, itemHelper],
+    );
+    useEffect(() => {
+        blobRef.current = null;
+        return () => {
+            if (!itemHelper) mediaEventHelper?.destroy();
+        };
+    }, [mediaEventHelper, itemHelper, url]);
 
     useEffect(() => {
         if (!mxEvent) return;

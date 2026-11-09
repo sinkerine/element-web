@@ -156,6 +156,28 @@ describe("<MImageReplyBody />", () => {
         permalinkCreator: new RoomPermalinkCreator(new Room("!room:server", cli, cli.getUserId()!)),
     };
 
+    it.each(["dm.filament.gallery", "m.gallery"])(
+        "uses the first attachment for a %s reply thumbnail",
+        async (msgtype) => {
+            const first = {
+                itemtype: "m.image",
+                body: "first.png",
+                url: "mxc://server/first",
+                info: { w: 320, h: 240, mimetype: "image/jpeg" },
+            };
+            const mxEvent = createEvent({
+                body: "Shared caption",
+                content: { msgtype, itemtypes: [first, { ...first, body: "second.png", url: "mxc://server/second" }] },
+            });
+            render(<MImageReplyBody mxEvent={mxEvent} />);
+            await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
+            expect(mockedMediaFromContent).toHaveBeenCalledWith(
+                expect.objectContaining({ body: "first.png", msgtype: "m.image", url: "mxc://server/first" }),
+            );
+            expect(screen.queryByRole("img", { name: "Shared caption" })).toBeNull();
+        },
+    );
+
     const renderBase = ({
         timelineRenderingType = TimelineRenderingType.Room,
         overrides = {},

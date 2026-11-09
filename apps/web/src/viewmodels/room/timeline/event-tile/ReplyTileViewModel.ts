@@ -33,6 +33,7 @@ import { renderReplyTile } from "../../../../events/EventTileFactory";
 import { type GetRelationsForEvent } from "../../../../components/views/rooms/EventTile";
 import { type IBodyProps } from "../../../../components/views/messages/IBodyProps";
 import { FileBodyFactory, VideoBodyFactory, renderMBody } from "../../../../components/views/messages/MBodyFactory";
+import { GALLERY_MSGTYPE, STABLE_GALLERY_MSGTYPE } from "../../../../utils/MediaCaptionContent";
 import MImageReplyBody from "../../../../components/views/messages/MImageReplyBody";
 import MVoiceMessageBody from "../../../../components/views/messages/MVoiceMessageBody";
 import { isVoiceMessage } from "../../../../utils/EventUtils";
@@ -163,6 +164,8 @@ export class ReplyTileViewModel
 
         const msgtypeOverrides: Record<string, ComponentType<IBodyProps>> = {
             [MsgType.Image]: MImageReplyBody,
+            [GALLERY_MSGTYPE]: MImageReplyBody,
+            [STABLE_GALLERY_MSGTYPE]: MImageReplyBody,
             // Audio attachments render as a file body, voice messages keep their player.
             [MsgType.Audio]: isVoiceMessage(mxEvent) ? MVoiceMessageBody : ReplyTileFileBody,
             [MsgType.Video]: VideoBodyFactory,

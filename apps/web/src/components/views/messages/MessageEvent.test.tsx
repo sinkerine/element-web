@@ -125,6 +125,55 @@ describe("MessageEvent", () => {
         vi.restoreAllMocks();
     });
 
+    it.each(["dm.filament.gallery", "m.gallery"])(
+        "renders %s with its caption and retains the grid during editing",
+        (msgtype) => {
+            event = mkEvent({
+                event: true,
+                type: EventType.RoomMessage,
+                user: "@alice:example.com",
+                room: room.roomId,
+                content: {
+                    msgtype,
+                    body: "Shared caption",
+                    itemtypes: [{ itemtype: "m.image", body: "photo.png", url: "mxc://server/photo" }],
+                },
+            });
+            const result = renderMessageEvent();
+            expect(result.getByRole("button", { name: "photo.png" })).toBeInTheDocument();
+            expect(result.getByTestId("textual-body")).toBeInTheDocument();
+            result.rerender(
+                <MatrixClientContext.Provider value={client}>
+                    <MessageEvent mxEvent={event} editState={new EditorStateTransfer(event)} />
+                </MatrixClientContext.Provider>,
+            );
+            expect(result.getByRole("button", { name: "photo.png" })).toBeInTheDocument();
+            expect(result.getByRole("textbox", { name: "Edit message" })).toHaveValue("Shared caption");
+        },
+    );
+
+    it("retains an edited marker for an uncaptioned gallery", () => {
+        event = mkEvent({
+            event: true,
+            type: EventType.RoomMessage,
+            user: "@alice:example.com",
+            room: room.roomId,
+            content: {
+                msgtype: "m.gallery",
+                body: "",
+                itemtypes: [{ itemtype: "m.image", body: "photo.png", url: "mxc://server/photo" }],
+            },
+        });
+        const result = render(
+            <MatrixClientContext.Provider value={client}>
+                <MessageEvent mxEvent={event} replacingEventId="$edit" />
+            </MatrixClientContext.Provider>,
+        );
+        expect(result.getAllByText("(edited)")).toHaveLength(1);
+        expect(result.getByRole("button", { name: "photo.png" })).toBeInTheDocument();
+        expect(result.queryByTestId("textual-body")).toBeNull();
+    });
+
     it("renders the shared redacted body for redacted events", () => {
         vi.spyOn(room, "getMember").mockReturnValue({ name: "Moderator" } as any);
         event = mkEvent({

@@ -152,6 +152,8 @@ describe("ReplyTileViewModel", () => {
         const { overrideBodyTypes, overrideEventTypes } = getReplyTileOverrides();
         expect(overrideBodyTypes).toMatchObject({
             [MsgType.Image]: MImageReplyBody,
+            "dm.filament.gallery": MImageReplyBody,
+            "m.gallery": MImageReplyBody,
             [MsgType.Video]: VideoBodyFactory,
         });
         expect(overrideEventTypes).toMatchObject({
