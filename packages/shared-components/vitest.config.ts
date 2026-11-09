@@ -8,6 +8,8 @@ Please see LICENSE files in the repository root for full details.
 import { defineConfig } from "vitest/config";
 import type { BrowserCommand } from "vitest/node";
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
+import { searchForWorkspaceRoot } from "vite";
 import { storybookTest } from "@storybook/addon-vitest/vitest-plugin";
 import { storybookVis } from "storybook-addon-vis/vitest-plugin";
 import { playwright, type PlaywrightProviderOptions } from "@vitest/browser-playwright";
@@ -45,6 +47,16 @@ const parkPointer: BrowserCommand = async ({ page }) => {
 };
 
 export default defineConfig({
+    server: {
+        fs: {
+            // Worktrees can share a pnpm store outside Vite's inferred workspace root.
+            // Storybook setup modules and font assets must be served from that store too.
+            allow: [
+                searchForWorkspaceRoot(__dirname),
+                realpathSync(path.resolve(__dirname, "../../node_modules/.pnpm")),
+            ],
+        },
+    },
     test: {
         coverage: {
             exclude: ["src/**/*.stories.tsx"],
