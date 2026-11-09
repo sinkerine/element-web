@@ -77,6 +77,11 @@ describe("<LeftResizablePanelView />", () => {
         await expect
             .poll(() => vi.mocked(vm.onLeftPanelResize).mock.lastCall?.[0].inPixels)
             .toBeGreaterThan(initialWidth);
+        expect(panel.getBoundingClientRect().width).toBeGreaterThan(initialWidth);
+        expect(vi.mocked(vm.onLeftPanelResize).mock.lastCall![0].inPixels).toBeCloseTo(
+            panel.getBoundingClientRect().width,
+            0,
+        );
     });
 
     it("should be inert when collapsed", () => {

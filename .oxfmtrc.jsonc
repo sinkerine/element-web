@@ -68,5 +68,7 @@
         "/packages/module-api/lib/",
         "/packages/module-api/temp/",
         "/.nx/",
+        // Generated local agent metadata.
+        "/.pi/",
     ],
 }
