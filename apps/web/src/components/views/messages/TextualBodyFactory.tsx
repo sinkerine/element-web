@@ -42,10 +42,11 @@ import { MediaPreviewGroupViewModel } from "../../../viewmodels/message-body/Med
 import PopOutIcon from "@vector-im/compound-design-tokens/assets/web/icons/pop-out";
 import { EditMessageComposerWrapper } from "../rooms/EditMessageComposerWrapper";
 import { ModuleApi } from "../../../modules/Api";
+import { GALLERY_MSGTYPES } from "../../../utils/MediaCaptionContent";
 
 const logger = rootLogger.getChild("TextualBodyFactory");
 
-function getTextualBodyClassName(msgtype: MsgType | undefined): string {
+function getTextualBodyClassName(msgtype: string | undefined): string {
     if (msgtype === MsgType.Notice) {
         return "mx_MNoticeBody mx_EventTile_content";
     }
@@ -54,7 +55,10 @@ function getTextualBodyClassName(msgtype: MsgType | undefined): string {
         return "mx_MEmoteBody mx_EventTile_content";
     }
 
-    if ([MsgType.Image, MsgType.File, MsgType.Audio, MsgType.Video].includes(msgtype as MsgType)) {
+    if (
+        GALLERY_MSGTYPES.has(msgtype ?? "") ||
+        [MsgType.Image, MsgType.File, MsgType.Audio, MsgType.Video].includes(msgtype as MsgType)
+    ) {
         return "mx_MTextBody mx_EventTile_caption";
     }
 
@@ -322,7 +326,7 @@ export function TextualBodyFactory(props: Readonly<IBodyProps>): JSX.Element {
             body={<EventContentBodyView vm={eventContentBodyVm} as={willHaveWrapper ? "span" : "div"} />}
             bodyRef={contentRef}
             urlPreviews={<MediaPreviewGroupPreview vm={mediaPreviewVm} className="mx_TextualBody_urlPreviews" />}
-            className={getTextualBodyClassName(content.msgtype as MsgType | undefined)}
+            className={getTextualBodyClassName(content.msgtype)}
         />
     );
 }

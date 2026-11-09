@@ -77,6 +77,42 @@ function normalize(parts: Part[]) {
 }
 
 describe("editor/deserialize", function () {
+    describe.each(["dm.filament.gallery", "m.gallery"])("%s captions", (msgtype) => {
+        it.each(["", "   ", "/me caption"])("should deserialize caption %j", (body) => {
+            const event = new MatrixEvent({
+                type: "m.room.message",
+                content: {
+                    msgtype,
+                    body,
+                    itemtypes: [
+                        { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                        { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                    ],
+                },
+            });
+            const parts = parseEvent(event, createPartCreator());
+            expect(parts.map((part) => part.text).join("")).toBe(body.trim() ? body : "");
+        });
+        it("should deserialize formatted captions", () => {
+            const event = new MatrixEvent({
+                type: "m.room.message",
+                content: {
+                    msgtype,
+                    body: "caption",
+                    itemtypes: [
+                        { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                        { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                    ],
+                    format: "org.matrix.custom.html",
+                    formatted_body: "<strong>caption</strong>",
+                },
+            });
+            expect(normalize(parseEvent(event, createPartCreator()))).toEqual(
+                normalize(parseEvent(htmlMessage("<strong>caption</strong>"), createPartCreator())),
+            );
+        });
+    });
+
     describe("media captions", () => {
         const media = (content: object): MatrixEvent =>
             new MatrixEvent({

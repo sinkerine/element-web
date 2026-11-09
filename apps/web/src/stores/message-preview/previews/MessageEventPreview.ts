@@ -14,6 +14,7 @@ import { _t, sanitizeForTranslation } from "../../../languageHandler";
 import { getSenderName, isSelf, shouldPrefixMessagesIn } from "./utils";
 import { sanitizeHtmlText } from "../../../HtmlUtils";
 import { stripHTMLReply, stripPlainReply } from "../../../utils/Reply";
+import { getMediaCaption, isGalleryContent } from "../../../utils/MediaCaptionContent";
 
 export class MessageEventPreview implements Preview {
     public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null {
@@ -22,6 +23,15 @@ export class MessageEventPreview implements Preview {
         if (event.isRelation(RelationType.Replace)) {
             // It's an edit, generate the preview on the new text
             eventContent = event.getContent()["m.new_content"];
+        }
+
+        if (eventContent && isGalleryContent(eventContent) && !getMediaCaption(eventContent)) {
+            eventContent = {
+                ...eventContent,
+                body: _t("event_preview|prefix|image"),
+                format: undefined,
+                formatted_body: undefined,
+            };
         }
 
         if (!eventContent?.["body"]) return null; // invalid for our purposes

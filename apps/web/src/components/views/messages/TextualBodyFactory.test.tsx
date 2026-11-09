@@ -167,6 +167,25 @@ describe("<TextualBody />", () => {
         );
     };
 
+    it.each(["dm.filament.gallery", "m.gallery"])("should render %s with caption styling", (msgtype) => {
+        const event = mkEvent({
+            type: "m.room.message",
+            room: room1Id,
+            user: "sender",
+            event: true,
+            content: {
+                msgtype,
+                body: "gallery caption",
+                itemtypes: [
+                    { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                    { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                ],
+            },
+        });
+        const { container } = getComponent({ mxEvent: event });
+        expect(container.querySelector(".mx_EventTile_caption")).toHaveTextContent("gallery caption");
+    });
+
     it("renders m.emote correctly", () => {
         DMRoomMap.makeShared(defaultMatrixClient);
 

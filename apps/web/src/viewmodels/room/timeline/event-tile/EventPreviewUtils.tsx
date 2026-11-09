@@ -11,6 +11,7 @@ import { Disposables } from "@element-hq/web-shared-components";
 
 import { _t } from "../../../../languageHandler";
 import { MessagePreviewStore } from "../../../../stores/message-preview";
+import { GALLERY_MSGTYPES } from "../../../../utils/MediaCaptionContent";
 
 export interface EventPreviewContent {
     previewContent: ReactNode;
@@ -81,7 +82,7 @@ export function getEventPreviewContent(
         return null;
     }
 
-    const prefix = getEventPreviewPrefix(mxEvent.getType(), mxEvent.getContent().msgtype as MsgType | undefined);
+    const prefix = getEventPreviewPrefix(mxEvent.getType(), mxEvent.getContent().msgtype);
 
     return {
         previewContent: cache.get(preview, prefix),
@@ -89,12 +90,14 @@ export function getEventPreviewContent(
     };
 }
 
-function getEventPreviewPrefix(type: string, msgType?: MsgType): string | null {
+function getEventPreviewPrefix(type: string, msgType?: string): string | null {
     switch (type) {
         case M_POLL_START.name:
             return _t("event_preview|prefix|poll");
         default:
     }
+
+    if (GALLERY_MSGTYPES.has(msgType ?? "")) return _t("event_preview|prefix|image");
 
     switch (msgType) {
         case MsgType.Audio:

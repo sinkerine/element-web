@@ -23,6 +23,37 @@ describe("MessageEventPreview", () => {
         stubClient();
     });
 
+    describe.each(["dm.filament.gallery", "m.gallery"])("%s previews", (msgtype) => {
+        it.each([false, true])("should preview captions and cleared captions (replacement: %s)", (replacement) => {
+            const content = {
+                msgtype,
+                body: "caption",
+                itemtypes: [
+                    { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                    { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                ],
+                format: "org.matrix.custom.html",
+                formatted_body: "<strong>caption</strong>",
+            };
+            const event = mkEvent({
+                event: true,
+                user: userId,
+                type: "m.room.message",
+                content: replacement
+                    ? {
+                          "m.new_content": content,
+                          "m.relates_to": { rel_type: RelationType.Replace, event_id: "$original" },
+                      }
+                    : content,
+            });
+            expect(preview.getTextFor(event)).toBe(`${userId}: caption`);
+            const current = replacement ? event.getContent()["m.new_content"] : event.getContent();
+            current.body = "";
+            expect(preview.getTextFor(event)).toBe(`${userId}: Image`);
+            expect(preview.getTextFor(event, undefined, true)).toBe("Image");
+        });
+    });
+
     describe("getTextFor", () => {
         it("when called with an event with empty content should return null", () => {
             const event = mkEvent({

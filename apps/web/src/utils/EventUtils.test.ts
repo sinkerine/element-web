@@ -443,6 +443,25 @@ describe("EventUtils", () => {
         });
     });
 
+    it.each(["dm.filament.gallery", "m.gallery"])("should edit and find an uncaptioned %s", (msgtype) => {
+        const event = new MatrixEvent({
+            type: EventType.RoomMessage,
+            sender: userId,
+            content: {
+                msgtype,
+                body: "",
+                itemtypes: [
+                    { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                    { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                ],
+            },
+        });
+        expect(canEditContent(mockClient, event)).toBe(true);
+        expect(findEditableEvent({ events: [event], isForward: false, matrixClient: mockClient })).toBe(event);
+        event.event.sender = "@other:server";
+        expect(canEditContent(mockClient, event)).toBe(false);
+    });
+
     describe("media editing", () => {
         const mediaEvent = (msgtype = MsgType.Image): MatrixEvent =>
             new MatrixEvent({

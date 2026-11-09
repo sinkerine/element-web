@@ -25,8 +25,15 @@ import { Action } from "../../../../../dispatcher/actions";
 import { type ViewUserPayload } from "../../../../../dispatcher/payloads/ViewUserPayload";
 import MessageEditHistoryDialog from "../../../../../components/views/dialogs/MessageEditHistoryDialog";
 import { type TimelineRenderingType } from "../../../../../contexts/RoomContext";
+import { GALLERY_MSGTYPES } from "../../../../../utils/MediaCaptionContent";
 
-const CAPTION_MESSAGE_TYPES = new Set<MsgType>([MsgType.Image, MsgType.File, MsgType.Audio, MsgType.Video]);
+const CAPTION_MESSAGE_TYPES = new Set<string>([
+    MsgType.Image,
+    MsgType.File,
+    MsgType.Audio,
+    MsgType.Video,
+    ...GALLERY_MSGTYPES,
+]);
 
 export interface TextualBodyViewModelProps {
     /**

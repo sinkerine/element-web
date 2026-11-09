@@ -162,6 +162,21 @@ describe("<EditMessageComposerWrapper />", () => {
         expect(client.getUrlPreview).not.toHaveBeenCalled();
     });
 
+    it.each(["dm.filament.gallery", "m.gallery"])("should use CIDER for %s even with rich text enabled", (msgtype) => {
+        enabledSettings.push("feature_wysiwyg_composer");
+        renderWrapper({
+            msgtype,
+            body: "",
+            itemtypes: [
+                { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+            ],
+        });
+        expect(screen.getByRole("textbox", { name: PLAIN_COMPOSER_LABEL })).toBeInTheDocument();
+        expect(lastProps(plainComposerProps).attachBundles).toBeUndefined();
+        expect(client.getUrlPreview).not.toHaveBeenCalled();
+    });
+
     it("should preview links the plain composer reports", async () => {
         renderWrapper();
         act(() => {

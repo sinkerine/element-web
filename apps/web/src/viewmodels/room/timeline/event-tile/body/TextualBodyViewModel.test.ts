@@ -24,6 +24,11 @@ import { Action } from "../../../../../dispatcher/actions";
 import * as permalinkUtils from "../../../../../utils/permalinks/Permalinks";
 import MessageEditHistoryDialog from "../../../../../components/views/dialogs/MessageEditHistoryDialog";
 
+import { EventPreviewContentCache, getEventPreviewContent } from "../EventPreviewUtils";
+import { MessagePreviewStore } from "../../../../../stores/message-preview";
+import { renderToStaticMarkup } from "react-dom/server";
+import React from "react";
+
 describe("TextualBodyViewModel", () => {
     const createEvent = (
         content: Record<string, unknown>,
@@ -52,6 +57,35 @@ describe("TextualBodyViewModel", () => {
     afterEach(() => {
         vi.restoreAllMocks();
         window.location.hash = "";
+    });
+
+    it.each(["dm.filament.gallery", "m.gallery"])("should style %s as a caption", (msgtype) => {
+        const vm = createVm({
+            mxEvent: createEvent({
+                msgtype,
+                body: "caption",
+                itemtypes: [
+                    { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                    { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                ],
+            }),
+        });
+        expect(vm.getSnapshot().kind).toBe(TextualBodyViewKind.CAPTION);
+        vm.dispose();
+    });
+
+    it.each(["dm.filament.gallery", "m.gallery"])("should prefix %s reply previews with Image", (msgtype) => {
+        vi.spyOn(MessagePreviewStore.instance, "generatePreviewForEvent").mockReturnValue("caption");
+        const event = createEvent({
+            msgtype,
+            body: "caption",
+            itemtypes: [{ itemtype: "m.image", body: "photo.png", url: "mxc://server/image" }],
+        });
+        const preview = getEventPreviewContent(event, new EventPreviewContentCache());
+        expect(renderToStaticMarkup(React.createElement("span", null, preview?.previewContent))).toContain(
+            "<strong>Image:</strong>",
+        );
+        expect(preview?.previewTooltip).toBeUndefined();
     });
 
     it("computes the initial snapshot from props", () => {

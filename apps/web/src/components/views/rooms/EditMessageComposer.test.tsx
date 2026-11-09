@@ -168,6 +168,62 @@ describe("<EditMessageComposer/>", () => {
         );
     });
 
+    describe.each(["dm.filament.gallery", "m.gallery"])("%s captions", (msgtype) => {
+        const gallery = (body: string) =>
+            mkEvent({
+                type: "m.room.message",
+                user: userId,
+                room: roomId,
+                event: true,
+                content: {
+                    msgtype,
+                    body,
+                    itemtypes: [
+                        { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                        { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                    ],
+                    ...(body ? { format: "org.matrix.custom.html", formatted_body: `<strong>${body}</strong>` } : {}),
+                },
+            });
+        it.each(["new caption", "", "/me caption", "a **caption**"])(
+            "should save caption %j preserving all items",
+            async (caption) => {
+                const event = gallery("old caption");
+                getComponent(new EditorStateTransfer(event));
+                expect(screen.getByRole("textbox")).toHaveTextContent("old caption");
+                await userEvent.clear(screen.getByRole("textbox"));
+                if (caption) await editText(caption);
+                fireEvent.click(screen.getByText("Save"));
+                await waitFor(() => expect(mockClient.sendMessage).toHaveBeenCalledTimes(1));
+                const content = mockClient.sendMessage.mock.calls[0][2];
+                expect(content).toMatchObject({
+                    "body": `* ${caption}`,
+                    "m.relates_to": { rel_type: "m.replace", event_id: event.getId() },
+                    "m.new_content": { msgtype, body: caption, itemtypes: event.getContent().itemtypes },
+                });
+                expect(content["m.new_content"]).not.toHaveProperty("filename");
+                if (caption === "a **caption**") {
+                    expect(content["m.new_content"]).toMatchObject({ formatted_body: "a <strong>caption</strong>" });
+                } else {
+                    expect(content["m.new_content"]).not.toHaveProperty("formatted_body");
+                    expect(content["m.new_content"]).not.toHaveProperty("format");
+                }
+                expect(createRedactEventDialog).not.toHaveBeenCalled();
+            },
+        );
+        it.each(["", "   "])("should close an empty edit without sending: %j", async (text) => {
+            getComponent(new EditorStateTransfer(gallery("")));
+            expect(screen.getByRole("textbox").textContent).toBe("");
+            if (text) await editText(text);
+            await userEvent.type(screen.getByRole("textbox"), "{enter}");
+            expect(dispatchSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ action: Action.EditEvent, event: null }),
+            );
+            expect(mockClient.sendMessage).not.toHaveBeenCalled();
+            expect(createRedactEventDialog).not.toHaveBeenCalled();
+        });
+    });
+
     describe("media captions", () => {
         const media = (caption?: string) =>
             mkEvent({

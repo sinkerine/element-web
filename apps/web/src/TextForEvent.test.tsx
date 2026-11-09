@@ -53,6 +53,27 @@ function mockPinnedEvent(pinnedMessageIds?: string[], prevPinnedMessageIds?: str
 describe("TextForEvent", () => {
     const mockClient = createTestClient();
 
+    it.each(["dm.filament.gallery", "m.gallery"])(
+        "should describe %s with its caption or an image summary",
+        (msgtype) => {
+            const event = new MatrixEvent({
+                type: EventType.RoomMessage,
+                sender: "@alice:server",
+                content: {
+                    msgtype,
+                    body: "caption",
+                    itemtypes: [
+                        { itemtype: "m.image", body: "photo.png", url: "mxc://server/image" },
+                        { itemtype: "m.video", body: "clip.mp4", file: { url: "mxc://server/video" } },
+                    ],
+                },
+            });
+            expect(textForEvent(event, mockClient)).toBe("@alice:server: caption");
+            event.getContent().body = "";
+            expect(textForEvent(event, mockClient)).toBe("@alice:server sent an image.");
+        },
+    );
+
     describe("getSenderName()", () => {
         it("Prefers sender.name", () => {
             expect(getSenderName({ sender: { name: "Alice" } } as MatrixEvent)).toBe("Alice");

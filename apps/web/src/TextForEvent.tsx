@@ -41,6 +41,7 @@ import { getSenderName } from "./utils/event/getSenderName";
 import PosthogTrackers from "./PosthogTrackers.ts";
 import { ElementCallEventType } from "./call-types.ts";
 import Spoiler from "./components/views/elements/Spoiler.tsx";
+import { getMediaCaption, isGalleryContent } from "./utils/MediaCaptionContent";
 
 function getRoomMemberDisplayname(client: MatrixClient, event: MatrixEvent, userId = event.getSender()): string {
     const roomId = event.getRoomId();
@@ -418,6 +419,11 @@ function textForMessageEvent(ev: MatrixEvent, client: MatrixClient): (() => stri
 
         if (ev.getContent().msgtype === MsgType.Emote) {
             message = "* " + senderDisplayName + " " + message;
+        } else if (isGalleryContent(ev.getContent())) {
+            const caption = getMediaCaption(ev.getContent());
+            message = caption
+                ? senderDisplayName + ": " + caption.body
+                : _t("timeline|m.image|sent", { senderDisplayName });
         } else if (ev.getContent().msgtype === MsgType.Image) {
             message = _t("timeline|m.image|sent", { senderDisplayName });
         } else if (ev.getType() == EventType.Sticker) {
