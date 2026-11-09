@@ -38,6 +38,17 @@ function FileDropTargetWrapped({
 }
 
 describe("FileDropTarget", () => {
+    it("should mark drops as originating from the timeline", () => {
+        const element = document.createElement("div");
+        const onFileDrop = vi.fn();
+        render(<FileDropTargetWrapped element={element} mayDragAndDropFile onFileDrop={onFileDrop} />);
+        const dataTransfer = { types: ["Files"], files: [new File(["a"], "a.png", { type: "image/png" })] };
+        const event = new Event("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+        fireEvent(element, event);
+        expect(onFileDrop).toHaveBeenCalledExactlyOnceWith(dataTransfer, { source: "timeline-drop" });
+    });
+
     it("should render nothing when idle", () => {
         const element = document.createElement("div");
         const onFileDrop = vi.fn();

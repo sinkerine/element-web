@@ -26,6 +26,7 @@ import {
     type EncryptedFile,
     type MediaEventContent,
     type MediaEventInfo,
+    type RoomMessageEventContent,
 } from "matrix-js-sdk/src/types";
 import encrypt from "matrix-encrypt-attachment";
 import extractPngChunks from "png-chunks-extract";
@@ -33,6 +34,13 @@ import { logger } from "matrix-js-sdk/src/logger";
 import { removeElement } from "matrix-js-sdk/src/utils";
 import type { AttachmentSend } from "@matrix-org/analytics-events/types/typescript/AttachmentSend";
 import type { AttachmentCancel } from "@matrix-org/analytics-events/types/typescript/AttachmentCancel";
+
+import {
+    createGalleryEventContent,
+    isGalleryItemFile,
+    MAX_GALLERY_ITEMS,
+    type GalleryItemContent,
+} from "./utils/MediaCaptionContent";
 
 import EditorModel from "./editor/model";
 import { PartCreator, type SerializedPart } from "./editor/parts";
@@ -73,6 +81,10 @@ const PHYS_HIDPI = [0x00, 0x00, 0x16, 0x25, 0x00, 0x00, 0x16, 0x25, 0x01];
 export interface SendContentListOptions {
     /** Composer parts to pre-fill the caption field with. */
     captionDraft?: SerializedPart[];
+    /** Send directly from the composer attachment strip. */
+    skipConfirmDialog?: boolean;
+    /** Group eligible media (default true). */
+    sendAsGallery?: boolean;
 }
 
 /** The confirmed uploads and the eventual outcome of their caption. */
@@ -177,7 +189,12 @@ const ALWAYS_INCLUDE_THUMBNAIL = ["image/avif", "image/webp", "image/svg+xml"];
  * @param {File} imageFile The image to read and thumbnail.
  * @returns {Promise} A promise that resolves with the attachment info.
  */
-async function infoForImageFile(matrixClient: MatrixClient, roomId: string, imageFile: File): Promise<ImageInfo> {
+async function infoForImageFile(
+    matrixClient: MatrixClient,
+    roomId: string,
+    imageFile: File,
+    abortController?: AbortController,
+): Promise<ImageInfo> {
     let thumbnailType = "image/png";
     if (imageFile.type === "image/jpeg") {
         thumbnailType = "image/jpeg";
@@ -212,7 +229,7 @@ async function infoForImageFile(matrixClient: MatrixClient, roomId: string, imag
         }
     }
 
-    const uploadResult = await uploadFile(matrixClient, roomId, result.thumbnail);
+    const uploadResult = await uploadFile(matrixClient, roomId, result.thumbnail, undefined, abortController);
 
     imageInfo["thumbnail_url"] = uploadResult.url;
     imageInfo["thumbnail_file"] = uploadResult.file;
@@ -315,7 +332,12 @@ function loadVideoElement(videoFile: File): Promise<HTMLVideoElement> {
  * @param {File} videoFile The video to read and thumbnail.
  * @returns {Promise} A promise that resolves with the attachment info.
  */
-function infoForVideoFile(matrixClient: MatrixClient, roomId: string, videoFile: File): Promise<VideoInfo> {
+function infoForVideoFile(
+    matrixClient: MatrixClient,
+    roomId: string,
+    videoFile: File,
+    abortController?: AbortController,
+): Promise<VideoInfo> {
     const thumbnailType = "image/jpeg";
 
     const videoInfo: VideoInfo = {};
@@ -326,7 +348,7 @@ function infoForVideoFile(matrixClient: MatrixClient, roomId: string, videoFile:
         })
         .then((result) => {
             Object.assign(videoInfo, result.info);
-            return uploadFile(matrixClient, roomId, result.thumbnail);
+            return uploadFile(matrixClient, roomId, result.thumbnail, undefined, abortController);
         })
         .then((result) => {
             videoInfo.thumbnail_url = result.url;
@@ -523,49 +545,71 @@ export default class ContentMessages {
                   partCreator,
               )
             : undefined;
-        let uploadAll = false;
-        const confirmedFiles: File[] = [];
-        // Confirm every file before uploading so the caption can follow the last confirmed file.
-        for (let i = 0; i < okFiles.length; ++i) {
-            const file = okFiles[i];
-            if (!uploadAll) {
-                const { finished } = Modal.createDialog(UploadConfirmDialog, {
-                    file,
-                    currentIndex: i,
-                    totalFiles: okFiles.length,
-                    room,
-                    captionModel,
-                });
-                const [shouldContinue, shouldUploadAll] = await finished;
-                if (!shouldContinue) break;
-                uploadAll = !!shouldUploadAll;
-            }
-            confirmedFiles.push(file);
+        if (!okFiles.length) return { queuedCount: 0 };
+        let confirmedFiles = okFiles;
+        let sendAsGallery = options.sendAsGallery ?? true;
+        if (!options.skipConfirmDialog) {
+            const { finished } = Modal.createDialog(UploadConfirmDialog, {
+                files: okFiles,
+                room,
+                captionModel,
+                defaultSendAsGallery: sendAsGallery,
+            });
+            const [confirmed, selection] = await finished;
+            confirmedFiles = confirmed && selection ? selection.confirmedFiles : [];
+            sendAsGallery = confirmed && selection ? selection.sendAsGallery : false;
+        }
+        if (sendAsGallery && confirmedFiles.length > MAX_GALLERY_ITEMS && confirmedFiles.every(isGalleryItemFile)) {
+            Modal.createDialog(ErrorDialog, {
+                title: _t("upload_failed_title"),
+                description: _t("upload_file|gallery_limit", { count: MAX_GALLERY_ITEMS }),
+            });
+            return { queuedCount: 0 };
         }
 
         let promBefore: Promise<unknown> = Promise.resolve();
         const result: SendContentListResult = { queuedCount: confirmedFiles.length };
         const sentFileTypes = confirmedFiles.map((file) => file.type.split("/")[0]);
-        for (const [index, file] of confirmedFiles.entries()) {
-            const loopPromiseBefore = promBefore;
-            const lastCaptionModel = index === confirmedFiles.length - 1 ? captionModel : undefined;
+        if (sendAsGallery && confirmedFiles.length >= 2 && confirmedFiles.every(isGalleryItemFile)) {
             const sent = doMaybeLocalRoomAction(
                 roomId,
                 (actualRoomId) =>
-                    this.sendContentToRoom(
-                        file,
+                    this.sendGalleryToRoom(
+                        confirmedFiles,
                         actualRoomId,
                         relation,
                         matrixClient,
                         replyToEvent,
-                        loopPromiseBefore,
-                        lastCaptionModel,
+                        undefined,
+                        captionModel,
                     ),
                 matrixClient,
             ).catch(() => false);
-            promBefore = sent;
-            if (lastCaptionModel && createMediaCaptionFields(lastCaptionModel)) {
-                result.caption = { parts: lastCaptionModel.serializeParts(), sent };
+            if (captionModel && createMediaCaptionFields(captionModel)) {
+                result.caption = { parts: captionModel.serializeParts(), sent };
+            }
+        } else {
+            for (const [index, file] of confirmedFiles.entries()) {
+                const loopPromiseBefore = promBefore;
+                const lastCaptionModel = index === confirmedFiles.length - 1 ? captionModel : undefined;
+                const sent = doMaybeLocalRoomAction(
+                    roomId,
+                    (actualRoomId) =>
+                        this.sendContentToRoom(
+                            file,
+                            actualRoomId,
+                            relation,
+                            matrixClient,
+                            replyToEvent,
+                            loopPromiseBefore,
+                            lastCaptionModel,
+                        ),
+                    matrixClient,
+                ).catch(() => false);
+                promBefore = sent;
+                if (lastCaptionModel && createMediaCaptionFields(lastCaptionModel)) {
+                    result.caption = { parts: lastCaptionModel.serializeParts(), sent };
+                }
             }
         }
         if (sentFileTypes.length) {
@@ -577,7 +621,7 @@ export default class ContentMessages {
                 eventName: "AttachmentSend",
                 isReply: !!replyToEvent,
                 inThread: relation?.rel_type === "m.thread",
-                count: okFiles.length,
+                count: confirmedFiles.length,
                 kind: "local",
                 type,
             });
@@ -591,7 +635,7 @@ export default class ContentMessages {
             });
         }
 
-        if (replyToEvent) {
+        if (replyToEvent && confirmedFiles.length) {
             // Clear event being replied to
             dis.dispatch({
                 action: "reply_to_event",
@@ -756,18 +800,113 @@ export default class ContentMessages {
             }
             return false;
         } finally {
-            removeElement(this.inprogress, (e) => e.promise === upload.promise);
+            removeElement(this.inprogress, (current) => current === upload);
         }
     }
 
-    private isFileSizeAcceptable(file: File): boolean {
+    /** Upload eligible media together, preserving per-item encryption and one cancellation handle. */
+    public async sendGalleryToRoom(
+        files: File[],
+        roomId: string,
+        relation: IEventRelation | undefined,
+        matrixClient: MatrixClient,
+        replyToEvent: MatrixEvent | undefined,
+        promBefore?: Promise<unknown>,
+        captionModel?: EditorModel,
+    ): Promise<boolean> {
+        await this.ensureMediaConfigFetched(matrixClient);
+        if (
+            !files.length ||
+            files.length > MAX_GALLERY_ITEMS ||
+            !files.every((file) => isGalleryItemFile(file) && this.isFileSizeAcceptable(file))
+        )
+            return false;
+        if (files.length === 1) {
+            return this.sendContentToRoom(
+                files[0],
+                roomId,
+                relation,
+                matrixClient,
+                replyToEvent,
+                promBefore,
+                captionModel,
+            );
+        }
+        const total = files.reduce((size, file) => size + file.size, 0);
+        const upload = new RoomUpload(roomId, files.map((file) => file.name).join(", "), relation, total);
+        this.inprogress.push(upload);
+        dis.dispatch<UploadStartedPayload>({ action: Action.UploadStarted, upload });
+        try {
+            const items: GalleryItemContent[] = [];
+            let loaded = 0;
+            for (const file of files) {
+                if (upload.cancelled) throw new UploadCanceledError();
+                const info = file.type.startsWith("image/")
+                    ? await infoForImageFile(matrixClient, roomId, file, upload.abortController)
+                    : await infoForVideoFile(matrixClient, roomId, file, upload.abortController);
+                if (upload.cancelled) throw new UploadCanceledError();
+                const media = await uploadFile(
+                    matrixClient,
+                    roomId,
+                    file,
+                    (progress) => {
+                        upload.onProgress({ loaded: loaded + progress.loaded, total });
+                        dis.dispatch<UploadProgressPayload>({ action: Action.UploadProgress, upload });
+                    },
+                    upload.abortController,
+                );
+                loaded += file.size;
+                items.push({
+                    itemtype: file.type.startsWith("image/") ? MsgType.Image : MsgType.Video,
+                    body: file.name || _t("common|attachment"),
+                    info: { ...info, mimetype: file.type, size: file.size },
+                    ...media,
+                });
+            }
+            const caption = captionModel ? createMediaCaptionFields(captionModel) : null;
+            const content = createGalleryEventContent(items, caption);
+            attachMentions(matrixClient.getSafeUserId(), content, caption ? captionModel! : null, replyToEvent);
+            attachRelation(content, relation);
+            if (replyToEvent) addReplyToMessageContent(content, replyToEvent);
+            await promBefore;
+            if (upload.cancelled) throw new UploadCanceledError();
+            const threadId = relation?.rel_type === THREAD_RELATION_TYPE.name ? relation.event_id : null;
+            // The SDK does not yet include MSC4274 in its room message content union.
+            await matrixClient.sendMessage(roomId, threadId ?? null, content as unknown as RoomMessageEventContent);
+            dis.dispatch<UploadFinishedPayload>({ action: Action.UploadFinished, upload });
+            dis.dispatch({ action: "message_sent" });
+            return true;
+        } catch (error) {
+            const cause = error instanceof UploadFailedError ? error.cause : error;
+            if (cause instanceof HTTPError && cause.httpStatus === 413) this.mediaConfig = null;
+            if (!upload.cancelled) {
+                Modal.createDialog(ErrorDialog, {
+                    title: _t("upload_failed_title"),
+                    description: _t(
+                        cause instanceof HTTPError && cause.httpStatus === 413
+                            ? "upload_failed_size"
+                            : "upload_failed_generic",
+                        { fileName: upload.fileName },
+                    ),
+                });
+                dis.dispatch<UploadErrorPayload>({ action: Action.UploadFailed, upload, error });
+            }
+            return false;
+        } finally {
+            removeElement(this.inprogress, (current) => current === upload);
+        }
+    }
+
+    /** Whether a file fits within the homeserver upload limit. */
+    public isFileSizeAcceptable(file: File): boolean {
         if (this.mediaConfig?.["m.upload.size"] !== undefined && file.size > this.mediaConfig["m.upload.size"]) {
             return false;
         }
         return true;
     }
 
-    private ensureMediaConfigFetched(matrixClient: MatrixClient): Promise<void> {
+    /** Fetch the homeserver limit before confirming or staging attachments. */
+    public ensureMediaConfigFetched(matrixClient: MatrixClient): Promise<void> {
         if (this.mediaConfig !== null) return Promise.resolve();
 
         logger.log("[Media Config] Fetching");

@@ -370,6 +370,15 @@ export class SendMessageComposer extends React.Component<ISendMessageComposerPro
     public async sendMessage({ urlPreviewSnapshot }: ISendMessageActionProps): Promise<void> {
         const model = this.model;
 
+        if (this.props.uploadVm.attachmentStripVm.hasFiles) {
+            const parts = model.serializeParts();
+            if (!model.isEmpty) this.sendHistoryManager.save(model, this.props.replyToEvent);
+            model.reset([]);
+            this.editorRef.current?.clearUndoHistory();
+            this.clearStoredEditorState();
+            await this.props.uploadVm.sendStagedFiles(parts);
+            return;
+        }
         if (model.isEmpty) {
             return;
         }

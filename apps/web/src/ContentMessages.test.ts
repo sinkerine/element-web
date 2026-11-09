@@ -155,6 +155,263 @@ describe("ContentMessages", () => {
             cryptoSpy.mockRestore();
         });
 
+        describe("sendGalleryToRoom", () => {
+            const files = ["first.webp", "second.webp"].map(
+                (name) => new File(["image"], name, { type: "image/webp" }),
+            );
+
+            beforeEach(() => {
+                vi.mocked(client.getMediaConfig).mockResolvedValue({});
+                vi.mocked(client.uploadContent).mockResolvedValue({ content_uri: "mxc://server/media" });
+            });
+
+            afterEach(() => vi.restoreAllMocks());
+
+            it.each([false, true])(
+                "should upload all items and thumbnails with encryption=%s and preserve caption relations",
+                async (encrypted) => {
+                    vi.spyOn(client.getCrypto()!, "isEncryptionEnabledInRoom").mockResolvedValue(encrypted);
+                    vi.mocked(encrypt.encryptAttachment).mockResolvedValue({
+                        data: new ArrayBuffer(0),
+                        info: {} as IEncryptedFile,
+                    });
+                    vi.spyOn(SettingsStore, "getValue").mockImplementation(
+                        (key) => key === "MessageComposerInput.useMarkdown",
+                    );
+                    const pc = createPartCreator();
+                    const model = new EditorModel([pc.plain("**photos** "), pc.userPill("Bob", "@bob:server")], pc);
+                    const reply = mkEvent({
+                        event: true,
+                        type: "m.room.message",
+                        room: roomId,
+                        user: "@alice:server",
+                        content: { msgtype: "m.text", body: "hi" },
+                    });
+                    const relation = { rel_type: "m.thread", event_id: "$root" };
+                    expect(
+                        await contentMessages.sendGalleryToRoom(
+                            files,
+                            roomId,
+                            relation,
+                            client,
+                            reply,
+                            undefined,
+                            model,
+                        ),
+                    ).toBe(true);
+                    expect(client.uploadContent).toHaveBeenCalledTimes(4);
+                    expect(client.sendMessage).toHaveBeenCalledExactlyOnceWith(
+                        roomId,
+                        "$root",
+                        expect.objectContaining({
+                            "msgtype": "dm.filament.gallery",
+                            "body": "**photos** Bob",
+                            "format": "org.matrix.custom.html",
+                            "formatted_body": expect.stringContaining("<strong>photos</strong>"),
+                            "m.mentions": { user_ids: ["@alice:server", "@bob:server"] },
+                            "m.relates_to": expect.objectContaining({
+                                ...relation,
+                                "m.in_reply_to": { event_id: reply.getId() },
+                            }),
+                            "itemtypes": files.map((file) =>
+                                expect.objectContaining({
+                                    itemtype: "m.image",
+                                    body: file.name,
+                                    ...(encrypted
+                                        ? { file: { url: "mxc://server/media" } }
+                                        : { url: "mxc://server/media" }),
+                                    info: expect.objectContaining({
+                                        size: file.size,
+                                        mimetype: file.type,
+                                        w: 800,
+                                        h: 600,
+                                        ...(encrypted
+                                            ? { thumbnail_file: { url: "mxc://server/media" } }
+                                            : { thumbnail_url: "mxc://server/media" }),
+                                    }),
+                                }),
+                            ),
+                        }),
+                    );
+                    const controllers = vi
+                        .mocked(client.uploadContent)
+                        .mock.calls.map(([, options]) => options!.abortController);
+                    expect(new Set(controllers).size).toBe(1);
+                    expect(encrypt.encryptAttachment).toHaveBeenCalledTimes(encrypted ? 4 : 0);
+                    expect(contentMessages.getCurrentUploads()).toEqual([]);
+                },
+            );
+
+            it("should upload video metadata and thumbnail in a mixed gallery", async () => {
+                vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+                    const element = createElement(tagName);
+                    if (tagName === "video") {
+                        const video = element as HTMLVideoElement;
+                        video.load = vi.fn();
+                        video.play = vi.fn(async () => {
+                            video.onloadeddata!(new Event("loadeddata"));
+                        });
+                        video.pause = vi.fn();
+                        Object.defineProperties(video, {
+                            videoHeight: { value: 600 },
+                            videoWidth: { value: 800 },
+                            duration: { value: 123 },
+                        });
+                    }
+                    return element;
+                });
+                const video = new File(["video"], "clip.mp4", { type: "video/mp4" });
+                expect(
+                    await contentMessages.sendGalleryToRoom([files[0], video], roomId, undefined, client, undefined),
+                ).toBe(true);
+                expect(client.sendMessage).toHaveBeenCalledWith(
+                    roomId,
+                    null,
+                    expect.objectContaining({
+                        itemtypes: [
+                            expect.objectContaining({ itemtype: "m.image" }),
+                            expect.objectContaining({
+                                itemtype: "m.video",
+                                body: "clip.mp4",
+                                info: expect.objectContaining({
+                                    duration: 123000,
+                                    thumbnail_url: "mxc://server/media",
+                                    mimetype: "video/mp4",
+                                }),
+                            }),
+                        ],
+                    }),
+                );
+            });
+
+            it("should aggregate progress and wait for the previous send", async () => {
+                let release!: () => void;
+                const previous = new Promise<void>((resolve) => {
+                    release = resolve;
+                });
+                vi.mocked(client.uploadContent).mockImplementation(async (_file, options) => {
+                    options?.progressHandler?.({ loaded: 2, total: 5 });
+                    return { content_uri: "mxc://server/media" };
+                });
+                const sent = contentMessages.sendGalleryToRoom(files, roomId, undefined, client, undefined, previous);
+                await vi.waitFor(() => expect(client.uploadContent).toHaveBeenCalledTimes(4));
+                expect(client.sendMessage).not.toHaveBeenCalled();
+                const [upload] = contentMessages.getCurrentUploads();
+                expect(upload.total).toBe(10);
+                expect(upload.loaded).toBe(7);
+                release();
+                expect(await sent).toBe(true);
+                expect(client.sendMessage).toHaveBeenCalledWith(roomId, null, expect.objectContaining({ body: "" }));
+            });
+
+            it("should retain a pending gallery's UploadBar entry when a separate upload finishes", async () => {
+                let release!: () => void;
+                const previous = new Promise<void>((resolve) => {
+                    release = resolve;
+                });
+                const gallery = contentMessages.sendGalleryToRoom(
+                    files,
+                    roomId,
+                    undefined,
+                    client,
+                    undefined,
+                    previous,
+                );
+                await vi.waitFor(() => expect(client.uploadContent).toHaveBeenCalledTimes(4));
+                const [upload] = contentMessages.getCurrentUploads();
+                expect(
+                    await contentMessages.sendContentToRoom(
+                        new File(["text"], "a.txt"),
+                        roomId,
+                        undefined,
+                        client,
+                        undefined,
+                    ),
+                ).toBe(true);
+                expect(contentMessages.getCurrentUploads()).toEqual([upload]);
+                release();
+                expect(await gallery).toBe(true);
+            });
+
+            it.each(["thumbnail", "media", "send", "cancel"])(
+                "should send no partial gallery on %s failure",
+                async (failure) => {
+                    const dialog = vi.spyOn(Modal, "createDialog");
+                    if (failure === "send") vi.mocked(client.sendMessage).mockRejectedValue(new Error("send failed"));
+                    else {
+                        let index = 0;
+                        vi.mocked(client.uploadContent).mockImplementation(async () => {
+                            index++;
+                            if (failure === "cancel")
+                                contentMessages.cancelUpload(contentMessages.getCurrentUploads()[0]);
+                            if (index === (failure === "media" ? 2 : 1) && failure !== "cancel")
+                                throw new HTTPError("failure", 500);
+                            return { content_uri: "mxc://server/media" };
+                        });
+                    }
+                    expect(await contentMessages.sendGalleryToRoom(files, roomId, undefined, client, undefined)).toBe(
+                        false,
+                    );
+                    if (failure !== "send") expect(client.sendMessage).not.toHaveBeenCalled();
+                    if (failure === "cancel") expect(dialog).not.toHaveBeenCalled();
+                    else expect(dialog).toHaveBeenCalledWith(ErrorDialog, expect.anything());
+                    expect(contentMessages.getCurrentUploads()).toEqual([]);
+                },
+            );
+
+            it("should enforce limits before uploading and use the single-media fallback", async () => {
+                expect(
+                    await contentMessages.sendGalleryToRoom(
+                        Array(61).fill(files[0]),
+                        roomId,
+                        undefined,
+                        client,
+                        undefined,
+                    ),
+                ).toBe(false);
+                expect(
+                    await contentMessages.sendGalleryToRoom(
+                        [new File(["text"], "a.txt"), files[0]],
+                        roomId,
+                        undefined,
+                        client,
+                        undefined,
+                    ),
+                ).toBe(false);
+                expect(client.uploadContent).not.toHaveBeenCalled();
+                const pc = createPartCreator();
+                const model = new EditorModel([pc.plain("/literal caption")], pc);
+                expect(
+                    await contentMessages.sendGalleryToRoom(
+                        [files[0]],
+                        roomId,
+                        undefined,
+                        client,
+                        undefined,
+                        undefined,
+                        model,
+                    ),
+                ).toBe(true);
+                expect(client.sendMessage).toHaveBeenCalledWith(
+                    roomId,
+                    null,
+                    expect.objectContaining({
+                        msgtype: "m.image",
+                        filename: files[0].name,
+                        body: "/literal caption",
+                    }),
+                );
+            });
+
+            it("should reject oversized files before uploading any items", async () => {
+                vi.mocked(client.getMediaConfig).mockResolvedValue({ "m.upload.size": 1 });
+                expect(await contentMessages.sendGalleryToRoom(files, roomId, undefined, client, undefined)).toBe(
+                    false,
+                );
+                expect(client.uploadContent).not.toHaveBeenCalled();
+            });
+        });
+
         it("returns false when the captioned upload fails", async () => {
             vi.mocked(client.uploadContent).mockRejectedValue(new HTTPError("failure", 500));
             const pc = createPartCreator();
@@ -575,10 +832,12 @@ describe("sendContentListToRoom analytics", () => {
         contentMessages = new ContentMessages();
         vi.spyOn(contentMessages, "sendContentToRoom").mockResolvedValue(true);
         trackEvent = vi.spyOn(PosthogAnalytics.instance, "trackEvent").mockImplementation(() => {});
-        // Automatically continue through the per-file confirmation dialog.
+        // Confirm the complete selection as separate events.
         vi.spyOn(Modal, "createDialog").mockImplementation((component: unknown, ...rest: any[]) => {
             if (component === UploadConfirmDialog) {
-                return { finished: Promise.resolve([true, false]) } as any;
+                return {
+                    finished: Promise.resolve([true, { confirmedFiles: rest[0].files, sendAsGallery: false }]),
+                } as any;
             }
             // Any other dialog (e.g. the fetching-media-config spinner) never resolves on its own.
             return { finished: new Promise(() => {}), close: vi.fn() } as any;
@@ -659,13 +918,60 @@ describe("sendContentListToRoom captions", () => {
     afterEach(() => vi.restoreAllMocks());
 
     it.each([
+        { types: ["image/png", "video/mp4"], grouped: true, skip: false, gallery: true },
+        { types: ["image/png", "image/jpeg"], grouped: false, skip: false, gallery: false },
+        { types: ["image/png", "text/plain"], grouped: true, skip: false, gallery: false },
+        { types: ["image/png"], grouped: true, skip: true, gallery: false },
+        { types: ["image/png", "video/mp4"], grouped: true, skip: true, gallery: true },
+    ])("routes the confirmed selection correctly: %j", async ({ types, grouped, skip, gallery }) => {
+        const files = types.map((type, index) => new File(["a"], String(index), { type }));
+        const gallerySend = vi.spyOn(messages, "sendGalleryToRoom").mockResolvedValue(true);
+        const singleSend = vi.spyOn(messages, "sendContentToRoom").mockResolvedValue(true);
+        const dialog = vi.spyOn(Modal, "createDialog").mockImplementation((component, props) => {
+            if (component !== UploadConfirmDialog) return { finished: new Promise(() => {}), close: vi.fn() } as any;
+            expect(singleSend).not.toHaveBeenCalled();
+            expect(gallerySend).not.toHaveBeenCalled();
+            expect((props as { files: File[] }).files).toEqual(files);
+            return { finished: Promise.resolve([true, { confirmedFiles: files, sendAsGallery: grouped }]) } as any;
+        });
+        const result = await messages.sendContentListToRoom(files, roomId, undefined, undefined, client, undefined, {
+            captionDraft: [{ type: Type.Plain, text: "caption" }],
+            skipConfirmDialog: skip,
+        });
+        expect(result.queuedCount).toBe(files.length);
+        expect(await result.caption?.sent).toBe(true);
+        expect(gallerySend).toHaveBeenCalledTimes(gallery ? 1 : 0);
+        expect(singleSend).toHaveBeenCalledTimes(gallery ? 0 : files.length);
+        expect(dialog.mock.calls.filter(([component]) => component === UploadConfirmDialog)).toHaveLength(skip ? 0 : 1);
+    });
+
+    it("rejects an overflowing direct gallery without silently truncating the files", async () => {
+        const gallerySend = vi.spyOn(messages, "sendGalleryToRoom").mockResolvedValue(true);
+        const dialog = vi
+            .spyOn(Modal, "createDialog")
+            .mockReturnValue({ finished: new Promise(() => {}), close: vi.fn() } as any);
+        expect(
+            await messages.sendContentListToRoom(
+                Array.from({ length: 61 }, (_, index) => new File(["a"], `${index}.png`, { type: "image/png" })),
+                roomId,
+                undefined,
+                undefined,
+                client,
+                undefined,
+                { skipConfirmDialog: true },
+            ),
+        ).toEqual({ queuedCount: 0 });
+        expect(gallerySend).not.toHaveBeenCalled();
+        expect(dialog).toHaveBeenCalledWith(ErrorDialog, expect.anything());
+    });
+
+    it.each([
         { count: 1, cancelAt: -1, all: false, queued: 1 },
         { count: 3, cancelAt: -1, all: false, queued: 3 },
         { count: 3, cancelAt: 2, all: false, queued: 2 },
         { count: 3, cancelAt: -1, all: true, queued: 3 },
         { count: 3, cancelAt: 0, all: false, queued: 0 },
     ])("puts the shared caption on the last confirmed file: %j", async ({ count, cancelAt, all, queued }) => {
-        let confirmations = 0;
         let sharedModel: EditorModel | undefined;
         vi.spyOn(Modal, "createDialog").mockImplementation((component, props) => {
             if (component !== UploadConfirmDialog) {
@@ -676,7 +982,16 @@ describe("sendContentListToRoom captions", () => {
             const { captionModel } = props as { captionModel: EditorModel };
             if (sharedModel) expect(captionModel).toBe(sharedModel);
             sharedModel = captionModel;
-            return { finished: Promise.resolve([confirmations++ !== cancelAt, all]) } as any;
+            const files = (props as { files: File[] }).files;
+            return {
+                finished: Promise.resolve([
+                    cancelAt !== 0,
+                    {
+                        confirmedFiles: cancelAt > 0 ? files.slice(0, cancelAt) : files,
+                        sendAsGallery: all,
+                    },
+                ]),
+            } as any;
         });
         const result = await messages.sendContentListToRoom(
             Array.from({ length: count }, (_, i) => new File(["hi"], `${i}.txt`)),
@@ -738,7 +1053,12 @@ describe("sendContentListToRoom captions", () => {
                     expect(room).toBeUndefined();
                     expect(captionModel).toBeUndefined();
                 }
-                return { finished: Promise.resolve([true]) } as any;
+                return {
+                    finished: Promise.resolve([
+                        true,
+                        { confirmedFiles: (props as { files: File[] }).files, sendAsGallery: false },
+                    ]),
+                } as any;
             });
             const send = vi.spyOn(messages, "sendContentToRoom");
             const result = await messages.sendContentListToRoom(
@@ -758,9 +1078,15 @@ describe("sendContentListToRoom captions", () => {
 
     it("exposes a false caption outcome on HTTP failure", async () => {
         vi.spyOn(Modal, "createDialog").mockImplementation(
-            (component) =>
+            (component, props) =>
                 ({
-                    finished: component === UploadConfirmDialog ? Promise.resolve([true]) : new Promise(() => {}),
+                    finished:
+                        component === UploadConfirmDialog
+                            ? Promise.resolve([
+                                  true,
+                                  { confirmedFiles: (props as { files: File[] }).files, sendAsGallery: false },
+                              ])
+                            : new Promise(() => {}),
                     close: vi.fn(),
                 }) as any,
         );

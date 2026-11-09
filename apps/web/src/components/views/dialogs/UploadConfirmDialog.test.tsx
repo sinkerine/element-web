@@ -155,7 +155,7 @@ describe("<UploadConfirmDialog />", () => {
                     file={new File(["hi"], "notes.txt")}
                     room={room}
                     captionModel={captionModel}
-                    totalFiles={totalFiles}
+                    files={Array.from({ length: totalFiles }, (_, index) => new File(["hi"], `${index}.txt`))}
                     onFinished={onFinished}
                 />
             </SDKContext.Provider>,
@@ -176,7 +176,7 @@ describe("<UploadConfirmDialog />", () => {
         expect(onFinished).not.toHaveBeenCalled();
         autocomplete.mockRestore();
         fireEvent.keyDown(caption, { key: "Enter", code: "Enter", keyCode: 13 });
-        expect(onFinished).toHaveBeenCalledWith(true);
+        expect(onFinished).toHaveBeenCalledWith(true, { confirmedFiles: expect.any(Array), sendAsGallery: false });
     });
 
     it.each(["room", "model", "neither"])("hides the caption when only %s is provided", (provided) => {
@@ -194,14 +194,59 @@ describe("<UploadConfirmDialog />", () => {
         expect(queryByRole("textbox")).not.toBeInTheDocument();
     });
 
+    it("should group media by default, allow separate sends, and fall back when one remains", async () => {
+        const revoke = vi.spyOn(URL, "revokeObjectURL");
+        const onFinished = vi.fn();
+        const files = [
+            new File(["a"], "a.png", { type: "image/png" }),
+            new File(["b"], "b.png", { type: "image/png" }),
+        ];
+        const { getByRole, getAllByRole, queryByRole } = render(
+            <UploadConfirmDialog files={files} onFinished={onFinished} />,
+        );
+        const checkbox = getByRole("checkbox", { name: "Send as one message" });
+        expect(checkbox).toBeChecked();
+        fireEvent.click(getByRole("button", { name: "Upload" }));
+        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: files, sendAsGallery: true });
+        fireEvent.click(checkbox);
+        fireEvent.click(getByRole("button", { name: "Upload" }));
+        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: files, sendAsGallery: false });
+        fireEvent.click(getAllByRole("button", { name: "Remove" })[0]);
+        expect(revoke).toHaveBeenCalled();
+        expect(queryByRole("checkbox")).toBeNull();
+        fireEvent.click(getByRole("button", { name: "Upload" }));
+        expect(onFinished).toHaveBeenLastCalledWith(true, { confirmedFiles: [files[1]], sendAsGallery: false });
+    });
+
+    it("should cancel and release the preview when the last attachment is removed", () => {
+        const revoke = vi.spyOn(URL, "revokeObjectURL");
+        const onFinished = vi.fn();
+        const { getByRole } = render(
+            <UploadConfirmDialog file={new File(["a"], "a.png", { type: "image/png" })} onFinished={onFinished} />,
+        );
+        fireEvent.click(getByRole("button", { name: "Remove" }));
+        expect(onFinished).toHaveBeenCalledExactlyOnceWith(false);
+        expect(revoke).toHaveBeenCalledOnce();
+    });
+
+    it("should prevent an oversized gallery while permitting separate sends", () => {
+        const files = Array.from({ length: 61 }, (_, index) => new File(["a"], `${index}.png`, { type: "image/png" }));
+        const onFinished = vi.fn();
+        const { getByRole } = render(<UploadConfirmDialog files={files} onFinished={onFinished} />);
+        expect(getByRole("alert")).toHaveTextContent("60");
+        fireEvent.click(getByRole("button", { name: "Upload" }));
+        expect(onFinished).not.toHaveBeenCalled();
+        fireEvent.click(getByRole("checkbox"));
+        fireEvent.click(getByRole("button", { name: "Upload" }));
+        expect(onFinished).toHaveBeenCalledWith(true, { confirmedFiles: files, sendAsGallery: false });
+    });
+
     it("should display image preview", async () => {
         const url = "blob:null/1234-5678-9101-1121";
         vi.spyOn(URL, "createObjectURL").mockReturnValue(url);
 
         const file = new File([secureRandomString(1024 * 124)], "image.png", { type: "image/png" });
-        const { asFragment, getByRole } = render(
-            <UploadConfirmDialog file={file} currentIndex={0} totalFiles={1} onFinished={vi.fn()} />,
-        );
+        const { asFragment, getByRole } = render(<UploadConfirmDialog file={file} onFinished={vi.fn()} />);
 
         // The preview labels the image with the file name.
         await waitFor(() => expect(getByRole("img", { name: "image.png" })).toHaveAttribute("src", url));
@@ -215,18 +260,14 @@ describe("<UploadConfirmDialog />", () => {
         vi.spyOn(URL, "createObjectURL").mockReturnValue(url);
 
         const file = new File([secureRandomString(1024 * 124)], name, { type });
-        const { container } = render(
-            <UploadConfirmDialog file={file} currentIndex={0} totalFiles={1} onFinished={vi.fn()} />,
-        );
+        const { container } = render(<UploadConfirmDialog file={file} onFinished={vi.fn()} />);
 
         await waitFor(() => expect(container.querySelector(tag)).toHaveAttribute("src", url));
     });
 
     it("should display a file with no media preview", () => {
         const file = new File(["hello"], "notes.txt", { type: "text/plain" });
-        const { container, getByText } = render(
-            <UploadConfirmDialog file={file} currentIndex={0} totalFiles={1} onFinished={vi.fn()} />,
-        );
+        const { container, getByText } = render(<UploadConfirmDialog file={file} onFinished={vi.fn()} />);
 
         expect(getByText("notes.txt")).toBeInTheDocument();
         expect(container.querySelector("img, video, audio")).toBeNull();

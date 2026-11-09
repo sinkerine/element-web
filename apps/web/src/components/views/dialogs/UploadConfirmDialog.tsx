@@ -7,7 +7,10 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { useCallback, useEffect, useRef, type JSX } from "react";
+import React, { useCallback, useEffect, useRef, useState, type JSX } from "react";
+
+import { CloseIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { isGalleryItemFile, MAX_GALLERY_ITEMS } from "../../../utils/MediaCaptionContent";
 
 import type { Room } from "matrix-js-sdk/src/matrix";
 import type EditorModel from "../../../editor/model";
@@ -22,24 +25,25 @@ import DialogButtons from "../elements/DialogButtons";
 import { fileSize } from "../../../utils/FileUtils";
 import {
     attachmentIcon,
-    type MediaPreviewGroupEntry,
     type MediaPreviewGroupEntryContent,
     MediaPreviewGroupPreview,
     useCreateAutoDisposedViewModel,
 } from "@element-hq/web-shared-components";
 import { MediaPreviewGroupViewModel } from "../../../viewmodels/message-body/MediaPreviewGroupViewModel";
 
+/** Confirmed attachments and their grouping choice. */
+export interface UploadConfirmDialogResult {
+    confirmedFiles: File[];
+    sendAsGallery: boolean;
+}
+
 interface IProps {
-    file: File;
-    /** Defaults to 0. */
-    currentIndex?: number;
-    /** Defaults to 1. */
-    totalFiles?: number;
-    /** Room receiving the files; required for the caption editor. */
+    files?: File[];
+    file?: File;
     room?: Room;
-    /** Caption model shared between confirmation steps. */
     captionModel?: EditorModel;
-    onFinished: (uploadConfirmed: boolean, uploadAll?: boolean) => void;
+    defaultSendAsGallery?: boolean;
+    onFinished: (uploadConfirmed: boolean, result?: UploadConfirmDialogResult) => void;
 }
 
 const previewableFormats = ["video", "audio", "image"];
@@ -90,33 +94,65 @@ function computePreviewContent(mimeType: string, fileName: string, objectUrl?: s
  * view-model: it is revoked when the view-model is disposed, i.e. when the dialog unmounts.
  */
 class UploadPreviewViewModel extends MediaPreviewGroupViewModel {
-    public constructor(file: File) {
-        const mimeType = file.type;
-        const objectUrl = formatIsPreviewable(mimeType) ? URL.createObjectURL(file) : undefined;
+    private readonly previews: { file: File; url?: string; id: string }[];
 
-        const preview: MediaPreviewGroupEntry = {
-            id: file.name,
-            header: file.name,
-            body: fileSize(file.size),
-            ...attachmentIcon(mimeType),
-            ...computePreviewContent(mimeType, file.name, objectUrl),
-        };
+    public constructor(files: File[]) {
+        super({ entries: [] });
+        this.previews = files.map((file, index) => ({
+            file,
+            id: String(index),
+            url: formatIsPreviewable(file.type) ? URL.createObjectURL(file) : undefined,
+        }));
+        this.disposables.track(() =>
+            this.previews.forEach(({ url }) => {
+                if (url) URL.revokeObjectURL(url);
+            }),
+        );
+    }
 
-        super({ entries: [preview] });
-
-        if (objectUrl !== undefined) this.disposables.track(() => URL.revokeObjectURL(objectUrl));
+    public update(files: File[], remove: (file: File) => void): void {
+        for (const preview of this.previews) {
+            if (!files.includes(preview.file) && preview.url) {
+                URL.revokeObjectURL(preview.url);
+                preview.url = undefined;
+            }
+        }
+        this.setProps({
+            entries: this.previews
+                .filter(({ file }) => files.includes(file))
+                .map(({ file, url, id }) => ({
+                    id,
+                    header: file.name,
+                    body: fileSize(file.size),
+                    ...attachmentIcon(file.type),
+                    ...computePreviewContent(file.type, file.name, url),
+                    buttons: [{ icon: <CloseIcon />, label: _t("action|remove"), onClick: () => remove(file) }],
+                })),
+        });
     }
 }
 
 export default function UploadConfirmDialog({
+    files: initialFiles,
     file,
-    currentIndex = 0,
-    totalFiles = 1,
     room,
     captionModel,
+    defaultSendAsGallery = true,
     onFinished,
 }: IProps): JSX.Element {
-    const vm = useCreateAutoDisposedViewModel(() => new UploadPreviewViewModel(file));
+    const [files, setFiles] = useState(() => initialFiles ?? (file ? [file] : []));
+    const [grouped, setGrouped] = useState(defaultSendAsGallery);
+    const canGroup = files.length > 1 && files.every(isGalleryItemFile);
+    const sendAsGallery = canGroup && grouped;
+    const exceedsLimit = sendAsGallery && files.length > MAX_GALLERY_ITEMS;
+    const vm = useCreateAutoDisposedViewModel(() => new UploadPreviewViewModel(files));
+    useEffect(() => {
+        vm.update(files, (removed) => {
+            const remaining = files.filter((file) => file !== removed);
+            if (!remaining.length) onFinished(false);
+            setFiles(remaining);
+        });
+    }, [files, vm, onFinished]);
     const captionComposer = useRef<BasicMessageComposer>(null);
 
     useEffect(() => {
@@ -134,43 +170,20 @@ export default function UploadConfirmDialog({
         };
     }, [captionModel, room]);
 
-    let title: string;
-    if (totalFiles > 1 && currentIndex !== undefined) {
-        title = _t("upload_file|title_progress", {
-            current: currentIndex + 1,
-            total: totalFiles,
-        });
-    } else {
-        title = _t("upload_file|title");
-    }
-
     const onCancelClick = useCallback((): void => {
         onFinished(false);
     }, [onFinished]);
 
     const onUploadClick = useCallback((): void => {
-        onFinished(true);
-    }, [onFinished]);
-
-    const onUploadAllClick = useCallback((): void => {
-        onFinished(true, true);
-    }, [onFinished]);
-
-    let uploadAllButton: JSX.Element | undefined;
-    if (currentIndex + 1 < totalFiles) {
-        uploadAllButton = (
-            <button onClick={onUploadAllClick} className="mx_LegacyDialogButton" type="button">
-                {_t("upload_file|upload_all_button")}
-            </button>
-        );
-    }
+        if (!exceedsLimit && files.length) onFinished(true, { confirmedFiles: files, sendAsGallery });
+    }, [onFinished, files, sendAsGallery, exceedsLimit]);
 
     return (
         <BaseDialog
             className="mx_UploadConfirmDialog"
             fixedWidth={false}
             onFinished={onCancelClick}
-            title={title}
+            title={_t("upload_file|title")}
             contentId="mx_Dialog_content"
         >
             <div id="mx_Dialog_content">
@@ -179,6 +192,17 @@ export default function UploadConfirmDialog({
                         <MediaPreviewGroupPreview vm={vm} />
                     </div>
                 </div>
+                {canGroup && (
+                    <label className="mx_UploadConfirmDialog_grouping">
+                        <input
+                            type="checkbox"
+                            checked={grouped}
+                            onChange={(event) => setGrouped(event.target.checked)}
+                        />
+                        {_t("upload_file|send_as_one_message")}
+                    </label>
+                )}
+                {exceedsLimit && <p role="alert">{_t("upload_file|gallery_limit", { count: MAX_GALLERY_ITEMS })}</p>}
                 {room && captionModel && (
                     <div
                         className="mx_UploadConfirmDialog_caption"
@@ -201,7 +225,7 @@ export default function UploadConfirmDialog({
                             label={_t("upload_file|caption_label")}
                             placeholder={_t("upload_file|caption_placeholder")}
                         />
-                        {totalFiles > 1 && <p>{_t("upload_file|caption_last_file")}</p>}
+                        {files.length > 1 && !sendAsGallery && <p>{_t("upload_file|caption_last_file")}</p>}
                     </div>
                 )}
             </div>
@@ -211,9 +235,7 @@ export default function UploadConfirmDialog({
                 hasCancel={false}
                 onPrimaryButtonClick={onUploadClick}
                 focus={!room || !captionModel}
-            >
-                {uploadAllButton}
-            </DialogButtons>
+            />
         </BaseDialog>
     );
 }

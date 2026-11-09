@@ -25,6 +25,7 @@ import {
 } from "test-utils";
 import { addTextToComposerRTL } from "./__mocks__/composer.ts";
 
+import ContentMessages from "../../../ContentMessages";
 import MessageComposer from "./MessageComposer";
 import MatrixClientContext from "../../../contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
@@ -86,7 +87,68 @@ describe("MessageComposer", () => {
                     SettingsStore.setValue(setting, null, SettingLevel.DEVICE, SettingsStore.getDefaultValue(setting)),
                 ),
             );
+            // SettingsStore resolves before its setTimeout-backed dispatcher notifications run.
+            // Drain those actions before another test mounts a composer with different settings.
+            await new Promise<void>((resolve) => {
+                const barrier = { action: "test_settings_restored" };
+                const token = dis.register((payload) => {
+                    if (payload !== barrier) return;
+                    dis.unregister(token);
+                    resolve();
+                });
+                dis.dispatch(barrier);
+            });
         });
+    });
+
+    it("should stage composer drops before native ancestor listeners and enable Send for an empty caption", async () => {
+        const messages = ContentMessages.sharedInstance();
+        const config = vi.spyOn(messages, "ensureMediaConfigFetched").mockResolvedValue();
+        const size = vi.spyOn(messages, "isFileSizeAcceptable").mockReturnValue(true);
+        const send = vi.spyOn(messages, "sendContentListToRoom").mockResolvedValue({ queuedCount: 1 });
+        const { renderResult } = wrapAndRender({
+            room: mkStubRoom("!stage:server", "Room", MatrixClientPeg.safeGet()),
+        });
+        const composer = screen.getByRole("region", { name: "Message composer" });
+        const parent = composer.parentElement!;
+        const ancestorDrop = vi.fn();
+        parent.addEventListener("drop", ancestorDrop);
+        const file = new File(["image"], "a.png", { type: "image/png" });
+        const dataTransfer = { types: ["Files"], files: [file], dropEffect: "none" };
+        try {
+            const drag = (type: string): void => {
+                const event = new Event(type, { bubbles: true, cancelable: true });
+                Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+                fireEvent(composer, event);
+            };
+            drag("dragenter");
+            drag("dragover");
+            expect(dataTransfer.dropEffect).toBe("copy");
+            drag("drop");
+            expect(ancestorDrop).not.toHaveBeenCalled();
+            expect(await screen.findByRole("list", { name: "Attachments" })).toBeInTheDocument();
+            expect(send).not.toHaveBeenCalled();
+            await userEvent.click(screen.getByTestId("sendmessagebtn"));
+            await waitFor(() =>
+                expect(send).toHaveBeenCalledWith(
+                    [file],
+                    expect.anything(),
+                    undefined,
+                    undefined,
+                    expect.anything(),
+                    TimelineRenderingType.Room,
+                    { captionDraft: [], skipConfirmDialog: true, sendAsGallery: false },
+                ),
+            );
+            expect(screen.queryByRole("list", { name: "Attachments" })).not.toBeInTheDocument();
+        } finally {
+            parent.removeEventListener("drop", ancestorDrop);
+            renderResult.unmount();
+            document.getSelection()?.removeAllRanges();
+            config.mockRestore();
+            size.mockRestore();
+            send.mockRestore();
+        }
     });
 
     it("wysiwyg correctly persists state to and from localStorage", async () => {
@@ -100,13 +162,18 @@ describe("MessageComposer", () => {
 
         const key = `mx_wysiwyg_state_${room.roomId}`;
 
-        await userEvent.click(await screen.findByRole("textbox"));
-        fireEvent.input(screen.getByRole("textbox"), {
+        // CIDER is also editable, so identify WYSIWYG before checking its hook readiness.
+        const editor = await screen.findByRole("textbox", { name: "Message composer" });
+        await waitFor(() => expect(editor).toHaveAttribute("contenteditable", "true"));
+        await userEvent.click(editor);
+        fireEvent.input(editor, {
             data: messageText,
             inputType: "insertText",
         });
 
-        await waitFor(() => expect(screen.getByRole("textbox")).toHaveTextContent(messageText));
+        await waitFor(() =>
+            expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent(messageText),
+        );
 
         // Wait for event dispatch to happen
         await flushPromises();
@@ -125,7 +192,9 @@ describe("MessageComposer", () => {
 
         // ensure the correct state is re-loaded
         render(rawComponent);
-        await waitFor(() => expect(screen.getByRole("textbox")).toHaveTextContent(messageText));
+        await waitFor(() =>
+            expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent(messageText),
+        );
     }, 10000);
 
     describe("for a Room", () => {

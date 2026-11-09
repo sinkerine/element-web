@@ -19,7 +19,11 @@ import {
 import { Tooltip } from "@vector-im/compound-web";
 import { logger } from "matrix-js-sdk/src/logger";
 import { LockOffIcon, SendSolidIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
-import { useCreateAutoDisposedViewModel } from "@element-hq/web-shared-components";
+import {
+    ComposerAttachmentStripView,
+    useViewModel,
+    useCreateAutoDisposedViewModel,
+} from "@element-hq/web-shared-components";
 
 import { _t } from "../../../languageHandler";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
@@ -65,6 +69,8 @@ import { useScopedRoomContext } from "../../../contexts/ScopedRoomContext";
 import PlatformPeg from "../../../PlatformPeg";
 import { ModuleApi } from "../../../modules/Api";
 
+import { type RoomUploadViewModel, useRoomUploadViewModel } from "../../../viewmodels/room/RoomUploadViewModel";
+
 // The prefix used when persisting editor drafts to localstorage.
 export const WYSIWYG_EDITOR_STATE_STORAGE_PREFIX = "mx_wysiwyg_state_";
 
@@ -97,6 +103,8 @@ interface IProps extends MatrixClientProps {
     e2eStatus?: E2EStatus;
     compact?: boolean;
     urlPreviewVm: MessageComposerUrlPreviewViewModel;
+    uploadVm: RoomUploadViewModel;
+    hasStagedAttachments: boolean;
 }
 
 interface IState {
@@ -400,6 +408,13 @@ export class MessageComposer extends React.Component<IProps, IState> {
         return true;
     };
 
+    private onComposerDragOver = (event: React.DragEvent): void => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "copy";
+    };
+
     private sendMessage = async (): Promise<void> => {
         // snapshot need to be captured before the composer is cleared
         // otherwise the send message function will think there are no URLs in
@@ -685,7 +700,9 @@ export class MessageComposer extends React.Component<IProps, IState> {
             />,
         );
 
-        const showSendButton = canSendMessages && (!this.state.isComposerEmpty || this.state.haveRecording);
+        const showSendButton =
+            canSendMessages &&
+            (this.props.hasStagedAttachments || !this.state.isComposerEmpty || this.state.haveRecording);
 
         const classes = classNames({
             "mx_MessageComposer": true,
@@ -695,7 +712,21 @@ export class MessageComposer extends React.Component<IProps, IState> {
         });
 
         return (
-            <div className={classes} ref={this.ref} role="region" aria-label={_t("a11y|message_composer")}>
+            <div
+                className={classes}
+                ref={this.ref}
+                role="region"
+                aria-label={_t("a11y|message_composer")}
+                onDragEnterCapture={this.onComposerDragOver}
+                onDragOverCapture={this.onComposerDragOver}
+                onDragLeaveCapture={this.onComposerDragOver}
+                onDropCapture={(event) => {
+                    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void this.props.uploadVm.initiateViaComposerDrop(event.dataTransfer);
+                }}
+            >
                 <div className="mx_MessageComposer_wrapper">
                     <MessageComposerUrlPreviewWrapper urlPreviewVm={this.props.urlPreviewVm} />
                     <UserIdentityWarning room={this.props.room} key={this.props.room.roomId} />
@@ -703,6 +734,7 @@ export class MessageComposer extends React.Component<IProps, IState> {
                         replyToEvent={this.props.replyToEvent}
                         permalinkCreator={this.props.permalinkCreator}
                     />
+                    <ComposerAttachmentStripView vm={this.props.uploadVm.attachmentStripVm} />
                     <div className="mx_MessageComposer_row">
                         {leftIcon}
                         {composer}
@@ -747,7 +779,11 @@ export class MessageComposer extends React.Component<IProps, IState> {
 
 const MessageComposerWithMatrixClient = withMatrixClientHOC(MessageComposer);
 
-export default function MessageComposerWrapper(props: Omit<IProps, "mxClient" | "urlPreviewVm">): JSX.Element {
+export default function MessageComposerWrapper(
+    props: Omit<IProps, "mxClient" | "urlPreviewVm" | "uploadVm" | "hasStagedAttachments">,
+): JSX.Element {
+    const uploadVm = useRoomUploadViewModel();
+    const { hasStagedAttachments } = useViewModel(uploadVm);
     const { showUrlPreview } = useScopedRoomContext("showUrlPreview");
     const client = useMatrixClientContext();
     const urlPreviewVm = useCreateAutoDisposedViewModel(
@@ -764,5 +800,12 @@ export default function MessageComposerWrapper(props: Omit<IProps, "mxClient" | 
         urlPreviewVm.updateUrlPreviewVisible(showUrlPreview);
     }, [urlPreviewVm, showUrlPreview]);
 
-    return <MessageComposerWithMatrixClient {...props} urlPreviewVm={urlPreviewVm} />;
+    return (
+        <MessageComposerWithMatrixClient
+            {...props}
+            urlPreviewVm={urlPreviewVm}
+            uploadVm={uploadVm}
+            hasStagedAttachments={hasStagedAttachments}
+        />
+    );
 }
