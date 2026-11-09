@@ -278,17 +278,20 @@ test.describe("Composer", () => {
                                     .getId(),
                             room.roomId,
                         );
+                        // Thread activation moves focus, so establish the room draft before opening it.
+                        await main.pressSequentially("untouched room draft");
+                        await expect(main).toHaveText("untouched room draft");
                         const tile = page
                             .getByTestId("timeline")
                             .getByTestId("event-tile")
                             .filter({ hasText: "caption thread root" });
                         await tile.hover();
                         await tile.getByRole("button", { name: "Reply in thread", exact: true }).click();
-                        await main.pressSequentially("untouched room draft");
                     }
                     const region = app.getComposer(inThread);
                     const composer = app.getComposerField(inThread);
                     await expect(composer).toBeEditable();
+                    if (inThread) await expect(composer).toBeEmpty();
                     if (!rich) await region.getByRole("button", { name: "Hide formatting", exact: true }).click();
                     // Rich captions must keep their formatting even when plain-text Markdown is disabled.
                     await app.settings.setValue("MessageComposerInput.useMarkdown", null, SettingLevel.ACCOUNT, false);
