@@ -83,9 +83,9 @@ test.describe("Composer", () => {
         });
 
         test("renders in narrow viewports", { tag: "@screenshot" }, async ({ page, bot, app }) => {
-            // Shrink the viewport
+            // Wait for the responsive collapse before measuring and dragging the separator.
             await page.setViewportSize({ width: 500, height: 1080 });
-            // Shrinking the viewport will collapse the left-panel, so manually expand it.
+            await expect(page.getByTestId("left-panel")).toHaveJSProperty("clientWidth", 0);
             await app.resizeLeftPanel(150);
             // Now take the screenshot
             await expect(app.getComposer()).toMatchScreenshot("narrow.png");
