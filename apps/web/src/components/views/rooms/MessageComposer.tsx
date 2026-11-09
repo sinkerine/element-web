@@ -451,6 +451,14 @@ export class MessageComposer extends React.Component<IProps, IState> {
         });
     };
 
+    private onCaptionDraftChange = (content: string): void => {
+        this.props.urlPreviewVm.updateWithText({ content, debounced: false });
+        this.setState(
+            { composerContent: content, initialComposerContent: content, isComposerEmpty: content.length === 0 },
+            this.saveWysiwygEditorState,
+        );
+    };
+
     private onRichTextToggle = async (): Promise<void> => {
         const { richToPlain, plainToRich } = await getConversionFunctions();
 
@@ -590,6 +598,7 @@ export class MessageComposer extends React.Component<IProps, IState> {
                         key="controls_input"
                         disabled={this.state.haveRecording}
                         onChange={this.onWysiwygChange}
+                        onCaptionDraftChange={this.onCaptionDraftChange}
                         onSend={this.sendMessage}
                         isRichTextEnabled={this.state.isRichTextEnabled}
                         initialContent={this.state.initialComposerContent}

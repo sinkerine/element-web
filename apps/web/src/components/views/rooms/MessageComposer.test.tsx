@@ -26,6 +26,7 @@ import {
 import { addTextToComposerRTL } from "./__mocks__/composer.ts";
 
 import MessageComposer from "./MessageComposer";
+import ContentMessages from "../../../ContentMessages";
 import MatrixClientContext from "../../../contexts/MatrixClientContext";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import ResizeNotifier from "../../../utils/ResizeNotifier";
@@ -164,6 +165,53 @@ describe("MessageComposer", () => {
             expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent(messageText),
         );
     }, 10000);
+
+    it.each([
+        { rich: true, thread: false },
+        { rich: false, thread: false },
+        { rich: true, thread: true },
+        { rich: false, thread: true },
+    ])("should persist caption clearing and failure restoration with %j", async ({ rich, thread }) => {
+        await SettingsStore.setValue("feature_wysiwyg_composer", null, SettingLevel.DEVICE, true);
+        const room = mkStubRoom(`!caption-${rich}-${thread}:server`, "Caption room", cli);
+        const relation = thread ? { rel_type: THREAD_RELATION_TYPE.name, event_id: "$caption-thread" } : undefined;
+        const key = `mx_wysiwyg_state_${room.roomId}${thread ? "_$caption-thread" : ""}`;
+        localStorage.setItem(key, JSON.stringify({ content: "caption", isRichText: rich }));
+        const send = vi.spyOn(ContentMessages.sharedInstance(), "sendContentListToRoom");
+        let finish!: (success: boolean) => void;
+        send.mockImplementation(async (...args) => ({
+            queuedCount: 1,
+            caption: {
+                parts: args[6]!.captionDraft!,
+                sent: new Promise((resolve) => {
+                    finish = resolve;
+                }),
+            },
+        }));
+        const { renderResult, rawComponent } = wrapAndRender({ room, relation });
+        try {
+            await waitFor(() =>
+                expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent("caption"),
+            );
+            fireEvent.change(screen.getByTestId("room-upload-context-input"), {
+                target: { files: [new File(["file"], "file.png", { type: "image/png" })] },
+            });
+            await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+            await waitFor(() =>
+                expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent(/^$/),
+            );
+            await act(async () => finish(false));
+            await waitFor(() => expect(JSON.parse(localStorage.getItem(key)!).content).toContain("caption"));
+            renderResult.unmount();
+            render(rawComponent);
+            await waitFor(() =>
+                expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveTextContent("caption"),
+            );
+        } finally {
+            send.mockRestore();
+            localStorage.removeItem(key);
+        }
+    });
 
     describe("for a Room", () => {
         const room = mkStubRoom("!roomId:server", "Room 1", cli);
@@ -499,7 +547,11 @@ function wrapAndRender(
         canSendMessages,
         tombstone,
         narrow,
-        timelineRenderingType: TimelineRenderingType.Room,
+        timelineRenderingType:
+            props.relation?.rel_type === THREAD_RELATION_TYPE.name
+                ? TimelineRenderingType.Thread
+                : TimelineRenderingType.Room,
+        threadId: props.relation?.event_id,
     } satisfies Partial<RoomContextType> as RoomContextType;
 
     const defaultProps = {
@@ -508,12 +560,12 @@ function wrapAndRender(
         permalinkCreator: new RoomPermalinkCreator(room),
     };
 
-    const getRawComponent = (props = {}, context = roomContext, client = mockClient) => (
+    const getRawComponent = (componentProps = props, context = roomContext, client = mockClient) => (
         <SDKContext.Provider value={SDKContextClass.instance}>
             <MatrixClientContext.Provider value={client}>
                 <ScopedRoomContextProvider {...context}>
-                    <RoomUploadContextProvider>
-                        <MessageComposer {...defaultProps} {...props} />
+                    <RoomUploadContextProvider threadRelation={componentProps.relation}>
+                        <MessageComposer {...defaultProps} {...componentProps} />
                     </RoomUploadContextProvider>
                 </ScopedRoomContextProvider>
             </MatrixClientContext.Provider>

@@ -23,6 +23,7 @@ export function useComposerFunctions(
                 if (ref.current) {
                     ref.current.innerHTML = "";
                 }
+                setContent("");
             },
             insertText: (text: string) => {
                 const selection = document.getSelection();

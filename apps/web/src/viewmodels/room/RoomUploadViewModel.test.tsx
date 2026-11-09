@@ -124,6 +124,53 @@ describe("RoomUploadViewModel", () => {
         vm.dispose();
     });
 
+    it.each(["confirmation", "upload"])("should not change another thread after switching during %s", async (stage) => {
+        const vm = new RoomUploadViewModel(
+            room,
+            client,
+            TimelineRenderingType.Thread,
+            dis,
+            undefined,
+            { rel_type: "m.thread", event_id: "$first" },
+            vi.fn(),
+        );
+        const parts: SerializedPart[] = [{ type: Type.Plain, text: "first thread" }];
+        const source = {
+            getCaptionDraft: vi.fn(() => parts),
+            clearCaptionDraft: vi.fn(),
+            restoreCaptionDraft: vi.fn(),
+        };
+        vm.setCaptionDraftSource(source);
+        let confirm!: (result: {
+            queuedCount: number;
+            caption: { parts: SerializedPart[]; sent: Promise<boolean> };
+        }) => void;
+        let finish!: (success: boolean) => void;
+        sendContentListToRoomSpy.mockReturnValue(
+            new Promise((resolve) => {
+                confirm = resolve;
+            }),
+        );
+        const pending = vm.initiateViaInputFiles([new File(["file"], "file.png")]);
+        if (stage === "confirmation") vm.setThreadRelation({ rel_type: "m.thread", event_id: "$second" });
+        confirm({
+            queuedCount: 1,
+            caption: {
+                parts,
+                sent: new Promise((resolve) => {
+                    finish = resolve;
+                }),
+            },
+        });
+        await pending;
+        expect(source.clearCaptionDraft).toHaveBeenCalledTimes(stage === "confirmation" ? 0 : 1);
+        vm.setThreadRelation({ rel_type: "m.thread", event_id: "$second" });
+        finish(false);
+        await Promise.resolve();
+        expect(source.restoreCaptionDraft).not.toHaveBeenCalled();
+        vm.dispose();
+    });
+
     describe("composer attachments", () => {
         const image = new File(["image"], "a.png", { type: "image/png" });
         const video = new File(["video"], "a.mp4", { type: "video/mp4" });
@@ -141,6 +188,7 @@ describe("RoomUploadViewModel", () => {
                 vi.fn(),
             );
             source = {
+                getCaptionUseMarkdown: undefined,
                 getCaptionDraft: vi.fn(() => [{ type: Type.Plain, text: "draft" }]),
                 clearCaptionDraft: vi.fn(),
                 restoreCaptionDraft: vi.fn(),

@@ -56,6 +56,8 @@ const logger = rootLogger.getChild("RoomUploadViewModel");
 export interface CaptionDraftSource {
     /** Current parts, or null for an empty composer or a slash command. */
     getCaptionDraft(): SerializedPart[] | null;
+    /** Override caption serialization for rich drafts, independently of the Markdown preference. */
+    getCaptionUseMarkdown?(): boolean | undefined;
     /** Clear the composer, stored draft and undo history, and push to send history. */
     clearCaptionDraft(): void;
     /** Restore failed caption parts if the composer is still empty. */
@@ -80,7 +82,9 @@ export class RoomUploadViewModel
 
     private async sendFiles(files: File[]): Promise<void> {
         const source = this.captionDraftSource;
+        const threadId = this.threadRelation?.event_id;
         const captionDraft = source?.getCaptionDraft() ?? undefined;
+        const captionUseMarkdown = captionDraft ? source?.getCaptionUseMarkdown?.() : undefined;
         const result = await ContentMessages.sharedInstance().sendContentListToRoom(
             files,
             this.room.roomId,
@@ -88,13 +92,15 @@ export class RoomUploadViewModel
             this.replyToEvent,
             this.client,
             this.timelineRenderingType,
-            { captionDraft },
+            { captionDraft, ...(captionUseMarkdown === undefined ? {} : { captionUseMarkdown }) },
         );
-        if (captionDraft && result.caption) source?.clearCaptionDraft();
+        if (captionDraft && result.caption && this.threadRelation?.event_id === threadId) source?.clearCaptionDraft();
         if (result.caption) {
             const { parts, sent } = result.caption;
             void sent.then((success) => {
-                if (!success) this.captionDraftSource?.restoreCaptionDraft(parts);
+                if (!success && this.threadRelation?.event_id === threadId) {
+                    this.captionDraftSource?.restoreCaptionDraft(parts);
+                }
             });
         }
     }

@@ -126,6 +126,19 @@ describe("MediaCaption", () => {
             });
         });
 
+        it("should preserve rich draft formatting without changing the plain Markdown preference", () => {
+            vi.mocked(SettingsStore.getValue).mockReturnValue(false);
+            const model = new EditorModel(
+                [pc.plain("**bold** [link](https://example.org) "), pc.userPill("Alice", "@alice:example.org")],
+                pc,
+            );
+            const rich = createMediaCaptionFields(model, true)!;
+            expect(rich.formatted_body).toContain("<strong>bold</strong>");
+            expect(rich.formatted_body).toContain('<a href="https://example.org">link</a>');
+            expect(rich.formatted_body).toContain("https://matrix.to/#/@alice:example.org");
+            expect(createMediaCaptionFields(model)?.formatted_body).toBe("**bold** [link](https://example.org) Alice");
+        });
+
         it("should serialize a pill permalink", () => {
             expect(createMediaCaptionFields(new EditorModel([pc.userPill("Alice", "@alice:example.org")], pc))).toEqual(
                 {

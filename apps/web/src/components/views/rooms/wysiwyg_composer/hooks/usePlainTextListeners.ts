@@ -66,13 +66,6 @@ export function usePlainTextListeners(
     const autocompleteRef = useRef<Autocomplete>(null);
     const [content, setContent] = useState<string | undefined>(initialContent);
 
-    const send = useCallback(() => {
-        if (ref.current) {
-            ref.current.innerHTML = "";
-        }
-        onSend?.();
-    }, [ref, onSend]);
-
     const setText = useCallback(
         (text?: string) => {
             if (isNotUndefined(text)) {
@@ -87,6 +80,15 @@ export function usePlainTextListeners(
         },
         [onChange, ref],
     );
+
+    const send = useCallback(() => {
+        if (ref.current) {
+            ref.current.innerHTML = "";
+        }
+        // Let the parent capture the outgoing draft before publishing the empty editor state.
+        onSend?.();
+        setText("");
+    }, [ref, onSend, setText]);
 
     // For separation of concerns, the suggestion handling is kept in a separate hook but is
     // nested here because we do need to be able to update the `content` state in this hook

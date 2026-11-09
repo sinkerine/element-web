@@ -82,6 +82,8 @@ const PHYS_HIDPI = [0x00, 0x00, 0x16, 0x25, 0x00, 0x00, 0x16, 0x25, 0x01];
 export interface SendContentListOptions {
     /** Composer parts to pre-fill the caption field with. */
     captionDraft?: SerializedPart[];
+    /** Rich composer drafts use Markdown parts even when the user's plain-text Markdown preference is disabled. */
+    captionUseMarkdown?: boolean;
 }
 
 /** The confirmed uploads and the eventual outcome of their caption. */
@@ -588,11 +590,12 @@ export default class ContentMessages {
                             replyToEvent,
                             loopPromiseBefore,
                             lastCaptionModel,
+                            ...(options.captionUseMarkdown === undefined ? [] : [options.captionUseMarkdown]),
                         ),
                     matrixClient,
                 ).catch(() => false);
                 promBefore = sent;
-                if (lastCaptionModel && createMediaCaptionFields(lastCaptionModel)) {
+                if (lastCaptionModel && createMediaCaptionFields(lastCaptionModel, options.captionUseMarkdown)) {
                     result.caption = { parts: lastCaptionModel.serializeParts(), sent };
                 }
             }
@@ -609,11 +612,12 @@ export default class ContentMessages {
                         replyToEvent,
                         undefined,
                         captionModel,
+                        ...(options.captionUseMarkdown === undefined ? [] : [options.captionUseMarkdown]),
                     ),
                 matrixClient,
             ).catch(() => false);
             promBefore = sent;
-            if (captionModel && createMediaCaptionFields(captionModel)) {
+            if (captionModel && createMediaCaptionFields(captionModel, options.captionUseMarkdown)) {
                 result.caption = { parts: captionModel.serializeParts(), sent };
             }
         } else {
@@ -699,6 +703,7 @@ export default class ContentMessages {
         replyToEvent: MatrixEvent | undefined,
         promBefore?: Promise<unknown>,
         captionModel?: EditorModel,
+        captionUseMarkdown?: boolean,
     ): Promise<boolean> {
         const fileName = file.name || _t("common|attachment");
         let content: Omit<MediaEventContent, "info"> & { info: Partial<MediaEventInfo> } = {
@@ -709,7 +714,7 @@ export default class ContentMessages {
             msgtype: MsgType.File, // set more specifically later
         };
 
-        const caption = captionModel ? createMediaCaptionFields(captionModel) : null;
+        const caption = captionModel ? createMediaCaptionFields(captionModel, captionUseMarkdown) : null;
         if (caption) content = withMediaCaption(content, fileName, caption);
         attachMentions(matrixClient.getSafeUserId(), content, caption ? captionModel! : null, replyToEvent);
         attachRelation(content, relation);
@@ -833,6 +838,7 @@ export default class ContentMessages {
         replyToEvent: MatrixEvent | undefined,
         promBefore?: Promise<unknown>,
         captionModel?: EditorModel,
+        captionUseMarkdown?: boolean,
     ): Promise<boolean> {
         await this.ensureMediaConfigFetched(matrixClient);
         if (
@@ -850,6 +856,7 @@ export default class ContentMessages {
                 replyToEvent,
                 promBefore,
                 captionModel,
+                ...(captionUseMarkdown === undefined ? [] : [captionUseMarkdown]),
             );
         }
         const total = files.reduce((size, file) => size + file.size, 0);
@@ -883,7 +890,7 @@ export default class ContentMessages {
                     ...media,
                 });
             }
-            const caption = captionModel ? createMediaCaptionFields(captionModel) : null;
+            const caption = captionModel ? createMediaCaptionFields(captionModel, captionUseMarkdown) : null;
             const content = createGalleryEventContent(items, caption);
             attachMentions(matrixClient.getSafeUserId(), content, caption ? captionModel! : null, replyToEvent);
             attachRelation(content, relation);

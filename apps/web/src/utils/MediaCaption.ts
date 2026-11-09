@@ -16,13 +16,19 @@ import { getMediaFileName, withMediaCaption, type MediaCaptionFields } from "./M
 
 export { type MediaCaptionFields, isCaptionableContent, withMediaCaption } from "./MediaCaptionContent";
 
-/** Serialize a caption like a text message; a blank editor model has no caption. */
-export function createMediaCaptionFields(model: EditorModel): MediaCaptionFields | null {
+/**
+ * Serialize a caption like a text message; a blank editor model has no caption.
+ * Rich drafts can enable Markdown serialization for their parts without changing the user's plain-text preference.
+ */
+export function createMediaCaptionFields(
+    model: EditorModel,
+    useMarkdown = SettingsStore.getValue("MessageComposerInput.useMarkdown"),
+): MediaCaptionFields | null {
     const body = textSerialize(model);
     if (!body.trim()) return null;
     const caption: MediaCaptionFields = { body };
     const formattedBody = htmlSerializeIfNeeded(model, {
-        useMarkdown: SettingsStore.getValue("MessageComposerInput.useMarkdown"),
+        useMarkdown,
     });
     if (formattedBody) {
         caption.format = "org.matrix.custom.html";

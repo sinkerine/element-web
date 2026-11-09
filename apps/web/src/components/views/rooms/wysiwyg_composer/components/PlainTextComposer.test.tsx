@@ -79,12 +79,15 @@ describe("PlainTextComposer", () => {
 
     it("Should call onSend when Enter is pressed when ctrlEnterToSend is false", async () => {
         //When
-        const onSend = vi.fn();
-        customRender(vi.fn(), onSend);
-        await userEvent.type(screen.getByRole("textbox"), "{enter}");
+        const onChange = vi.fn();
+        const onSend = vi.fn(() => expect(onChange).toHaveBeenLastCalledWith("message"));
+        customRender(onChange, onSend);
+        await userEvent.type(screen.getByRole("textbox"), "message{enter}");
 
-        // Then it sends a message
+        // The outgoing draft is captured before the empty content is reported.
         expect(onSend).toHaveBeenCalledTimes(1);
+        expect(onChange).toHaveBeenLastCalledWith("");
+        expect(screen.getByRole("textbox")).toHaveTextContent(/^$/);
     });
 
     it("Should not call onSend when Enter is pressed when ctrlEnterToSend is true", async () => {
@@ -215,8 +218,9 @@ describe("PlainTextComposer", () => {
             insertText: (text: string) => void;
         };
 
+        const onChange = vi.fn();
         render(
-            <PlainTextComposer onChange={vi.fn()} onSend={vi.fn()}>
+            <PlainTextComposer onChange={onChange} onSend={vi.fn()}>
                 {(ref, composerFunctions) => {
                     composer = composerFunctions;
                     return null;
@@ -227,10 +231,11 @@ describe("PlainTextComposer", () => {
         await userEvent.type(screen.getByRole("textbox"), "content");
         expect(screen.getByRole("textbox").innerHTML).toBe("content");
 
-        composer!.clear();
+        act(() => composer!.clear());
 
         // Then
         expect(screen.getByRole("textbox").innerHTML).toBeFalsy();
+        expect(onChange).toHaveBeenLastCalledWith("");
     });
 
     it("Should have data-is-expanded when it has two lines", async () => {

@@ -6,6 +6,8 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
+import { readFile } from "node:fs/promises";
+
 import { closeReleaseAnnouncementIfExists } from "@element-hq/element-web-playwright-common";
 
 import { test, expect } from "../../element-web-test";
@@ -230,6 +232,191 @@ test.describe("Composer", () => {
             await app.composerDragAndPasteFile("thread", getSampleFilePath("riot.png"), "image/png");
             await expect(page.locator(".mx_ImageBody")).toBeVisible();
         });
+
+        for (const rich of [true, false]) {
+            for (const inThread of [false, true]) {
+                test(`caption draft lifecycle in ${rich ? "rich" : "plain"} ${inThread ? "thread" : "room"} mode`, async ({
+                    page,
+                    app,
+                    room,
+                }) => {
+                    test.setTimeout(120_000);
+                    let rootId: string | undefined;
+                    if (inThread) {
+                        const main = app.getComposerField();
+                        await expect(main).toBeEditable();
+                        await main.pressSequentially("caption thread root");
+                        await app.getComposer().getByRole("button", { name: "Send message", exact: true }).click();
+                        await expect
+                            .poll(() =>
+                                app.client.evaluate(
+                                    (client, id) =>
+                                        client
+                                            .getRoom(id)!
+                                            .getLiveTimeline()
+                                            .getEvents()
+                                            .find(
+                                                (event) =>
+                                                    event.getContent().body === "caption thread root" &&
+                                                    event.status === null,
+                                            )
+                                            ?.getId(),
+                                    room.roomId,
+                                ),
+                            )
+                            .toMatch(/^\$/);
+                        rootId = await app.client.evaluate(
+                            (client, id) =>
+                                client
+                                    .getRoom(id)!
+                                    .getLiveTimeline()
+                                    .getEvents()
+                                    .find(
+                                        (event) =>
+                                            event.getContent().body === "caption thread root" && event.status === null,
+                                    )!
+                                    .getId(),
+                            room.roomId,
+                        );
+                        const tile = page
+                            .getByTestId("timeline")
+                            .getByTestId("event-tile")
+                            .filter({ hasText: "caption thread root" });
+                        await tile.hover();
+                        await tile.getByRole("button", { name: "Reply in thread", exact: true }).click();
+                        await main.pressSequentially("untouched room draft");
+                    }
+                    const region = app.getComposer(inThread);
+                    const composer = app.getComposerField(inThread);
+                    await expect(composer).toBeEditable();
+                    if (!rich) await region.getByRole("button", { name: "Hide formatting", exact: true }).click();
+                    // Rich captions must keep their formatting even when plain-text Markdown is disabled.
+                    await app.settings.setValue("MessageComposerInput.useMarkdown", null, SettingLevel.ACCOUNT, false);
+                    await composer.pressSequentially("seed ");
+                    if (rich) await composer.press(`${CtrlOrMeta}+KeyB`);
+                    await composer.pressSequentially(rich ? "bold" : "**bold**");
+                    if (rich) await composer.press(`${CtrlOrMeta}+KeyB`);
+                    const expectedSeed = "seed **bold**";
+                    const originalDraft = rich ? "seed bold" : expectedSeed;
+                    const dialog = page.getByRole("dialog", { name: "Send an image", exact: true });
+                    const caption = dialog.getByRole("textbox", { name: "Caption", exact: true });
+                    const fileBytes = (await readFile(getSampleFilePath("riot.png"))).toString("base64");
+                    const paste = async (): Promise<void> => {
+                        await composer.evaluate((element, bytes) => {
+                            const data = new DataTransfer();
+                            data.items.add(
+                                new File([Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))], "riot.png", {
+                                    type: "image/png",
+                                }),
+                            );
+                            element.dispatchEvent(
+                                new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+                            );
+                        }, fileBytes);
+                    };
+                    const events = () =>
+                        app.client.evaluate(
+                            (client, { roomId, rootId }) => {
+                                const room = client.getRoom(roomId)!;
+                                return (rootId ? room.getThread(rootId)!.events : room.getLiveTimeline().getEvents())
+                                    .filter(
+                                        (event) =>
+                                            event.getSender() === client.getUserId() &&
+                                            event.getContent().msgtype === "m.image" &&
+                                            event.status === null,
+                                    )
+                                    .map((event) => event.getContent());
+                            },
+                            { roomId: room.roomId, rootId },
+                        );
+                    const storageKey = `mx_wysiwyg_state_${room.roomId}${rootId ? `_${rootId}` : ""}`;
+
+                    await test.step("Paste seeds the caption and Cancel preserves the draft", async () => {
+                        await paste();
+                        await expect(caption).toHaveText(expectedSeed);
+                        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+                        await expect(composer).toHaveText(originalDraft);
+                        expect(await events()).toHaveLength(0);
+                    });
+                    await test.step("An empty confirmed caption preserves the draft", async () => {
+                        await app.setComposerInputFiles(inThread ? "thread" : "room", getSampleFilePath("riot.png"));
+                        await expect(caption).toHaveText(expectedSeed);
+                        await caption.fill("");
+                        await dialog.getByRole("button", { name: "Send", exact: true }).click();
+                        await expect.poll(events).toHaveLength(1);
+                        await expect(composer).toHaveText(originalDraft);
+                        expect((await events())[0].body).toBe("riot.png");
+                    });
+                    await test.step("A captioned send clears the model, Undo and persistent draft", async () => {
+                        await paste();
+                        await expect(caption).toHaveText(expectedSeed);
+                        await dialog.getByRole("button", { name: "Send", exact: true }).click();
+                        await expect.poll(events).toHaveLength(2);
+                        const content = (await events())[1];
+                        expect(content.body).toBe(expectedSeed);
+                        expect(content.formatted_body).toContain(rich ? "<strong>bold</strong>" : "**bold**");
+                        if (rootId)
+                            expect(content["m.relates_to"]).toMatchObject({ rel_type: "m.thread", event_id: rootId });
+                        await expect(composer).toBeEmpty();
+                        await expect
+                            .poll(() => page.evaluate((key) => localStorage.getItem(key), storageKey))
+                            .toBeNull();
+                        await composer.press(`${CtrlOrMeta}+KeyZ`);
+                        await expect(composer).toBeEmpty();
+                        if (inThread) await expect(app.getComposerField()).toHaveText("untouched room draft");
+                    });
+                    for (const newerTyping of [false, true]) {
+                        await test.step(`A failed upload ${newerTyping ? "keeps newer typing" : "restores the caption"}`, async () => {
+                            await composer.fill("failed caption");
+                            await paste();
+                            await expect(caption).toHaveText("failed caption");
+                            const endpoint = /\/_matrix\/(?:client\/v1\/media|media\/v3)\/upload/;
+                            let release!: () => void;
+                            const hold = new Promise<void>((resolve) => {
+                                release = resolve;
+                            });
+                            let requested!: () => void;
+                            const started = new Promise<void>((resolve) => {
+                                requested = resolve;
+                            });
+                            await page.route(endpoint, async (route) => {
+                                requested();
+                                await hold;
+                                await route.fulfill({
+                                    status: 500,
+                                    json: { errcode: "M_UNKNOWN", error: "Upload rejected by caption test" },
+                                });
+                            });
+                            try {
+                                await dialog.getByRole("button", { name: "Send", exact: true }).click();
+                                await started;
+                                await expect(composer).toBeEditable();
+                                await expect(composer).toBeEmpty();
+                                if (newerTyping) await composer.pressSequentially("newer typing");
+                                release();
+                                const error = page.getByRole("dialog", { name: "Upload Failed", exact: true });
+                                await expect(error).toBeVisible();
+                                await error.getByRole("button", { name: "OK", exact: true }).click();
+                                await expect(composer).toHaveText(newerTyping ? "newer typing" : "failed caption");
+                                expect(await events()).toHaveLength(2);
+                                if (!newerTyping)
+                                    await expect
+                                        .poll(() =>
+                                            page.evaluate(
+                                                (key) => JSON.parse(localStorage.getItem(key) ?? "null")?.content,
+                                                storageKey,
+                                            ),
+                                        )
+                                        .toContain("failed caption");
+                            } finally {
+                                release();
+                                await page.unroute(endpoint);
+                            }
+                        });
+                    }
+                });
+            }
+        }
 
         test.describe(() => {
             test.use({

@@ -118,10 +118,15 @@ describe("ContentMessages", () => {
             vi.mocked(BlurhashEncoder.instance.getBlurhash).mockResolvedValue("blurhashstring");
         });
 
-        it.each([false, true])("sends caption fields and mentions with encrypted=%s", async (encrypted) => {
+        it.each([
+            { encrypted: false, richDraft: false },
+            { encrypted: true, richDraft: false },
+            { encrypted: false, richDraft: true },
+            { encrypted: true, richDraft: true },
+        ])("sends caption fields and mentions with %j", async ({ encrypted, richDraft }) => {
             const settingsSpy = vi
                 .spyOn(SettingsStore, "getValue")
-                .mockImplementation((key) => key === "MessageComposerInput.useMarkdown");
+                .mockImplementation((key) => key === "MessageComposerInput.useMarkdown" && !richDraft);
             vi.mocked(client.uploadContent).mockResolvedValue({ content_uri: "mxc://server/file" });
             const cryptoSpy = vi.spyOn(client.getCrypto()!, "isEncryptionEnabledInRoom").mockResolvedValue(encrypted);
             vi.mocked(encrypt.encryptAttachment).mockResolvedValue({
@@ -139,6 +144,7 @@ describe("ContentMessages", () => {
                 undefined,
                 undefined,
                 model,
+                richDraft ? true : undefined,
             );
             expect(sent).toBe(true);
             expect(client.sendMessage).toHaveBeenCalledWith(
@@ -169,16 +175,21 @@ describe("ContentMessages", () => {
 
             afterEach(() => vi.restoreAllMocks());
 
-            it.each([false, true])(
-                "should upload all items and thumbnails with encryption=%s and preserve caption relations",
-                async (encrypted) => {
+            it.each([
+                { encrypted: false, richDraft: false },
+                { encrypted: true, richDraft: false },
+                { encrypted: false, richDraft: true },
+                { encrypted: true, richDraft: true },
+            ])(
+                "should upload all items and thumbnails and preserve caption relations with %j",
+                async ({ encrypted, richDraft }) => {
                     vi.spyOn(client.getCrypto()!, "isEncryptionEnabledInRoom").mockResolvedValue(encrypted);
                     vi.mocked(encrypt.encryptAttachment).mockResolvedValue({
                         data: new ArrayBuffer(0),
                         info: {} as IEncryptedFile,
                     });
                     vi.spyOn(SettingsStore, "getValue").mockImplementation(
-                        (key) => key === "MessageComposerInput.useMarkdown",
+                        (key) => key === "MessageComposerInput.useMarkdown" && !richDraft,
                     );
                     const pc = createPartCreator();
                     const model = new EditorModel([pc.plain("**photos** "), pc.userPill("Bob", "@bob:server")], pc);
@@ -199,6 +210,7 @@ describe("ContentMessages", () => {
                             reply,
                             undefined,
                             model,
+                            richDraft ? true : undefined,
                         ),
                     ).toBe(true);
                     expect(client.uploadContent).toHaveBeenCalledTimes(4);
@@ -923,6 +935,27 @@ describe("sendContentListToRoom captions", () => {
         messages = new ContentMessages();
     });
     afterEach(() => vi.restoreAllMocks());
+
+    it.each([true, false])("should carry the rich draft policy through confirmation (grouped=%s)", async (grouped) => {
+        const files = ["a.png", "b.png"].map((name) => new File(["image"], name, { type: "image/png" }));
+        const gallery = vi.spyOn(messages, "sendGalleryToRoom").mockResolvedValue(true);
+        const single = vi.spyOn(messages, "sendContentToRoom").mockResolvedValue(true);
+        vi.spyOn(Modal, "createDialog").mockImplementation(
+            (_component, props) =>
+                ({
+                    finished: (props as { files?: File[] })?.files
+                        ? Promise.resolve([true, { files, groupItems: grouped }])
+                        : new Promise(() => {}),
+                    close: vi.fn(),
+                }) as unknown as ReturnType<typeof Modal.createDialog>,
+        );
+        await messages.sendContentListToRoom(files, roomId, undefined, undefined, client, undefined, {
+            captionDraft: [{ type: Type.Plain, text: "**rich draft**" }],
+            captionUseMarkdown: true,
+        });
+        const calls = grouped ? gallery.mock.calls : single.mock.calls;
+        expect(calls.at(-1)?.[7]).toBe(true);
+    });
 
     it.each([
         { types: ["image/png", "video/mp4"], grouped: true, gallery: true },
