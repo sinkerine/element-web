@@ -532,22 +532,75 @@ test.describe("Attachment captions", () => {
             await expectGallery(galleryId, "Two images in one gallery");
         });
         await test.step("Lightbox buttons and arrow keys navigate gallery items", async () => {
-            await eventTile(galleryId).getByRole("button", { name: "riot.png", exact: true }).click();
+            const viewport = page.viewportSize()!;
             const lightbox = page.getByRole("dialog", { name: "Image view", exact: true });
-            await expect(lightbox).toBeVisible();
-            await expect(lightbox).toContainText("1 of 2");
-            await expect(lightbox).toContainText("riot.png");
-            await lightbox.getByRole("button", { name: "Next", exact: true }).click();
-            await expect(lightbox).toContainText("2 of 2");
-            await expect(lightbox).toContainText("element.png");
-            await page.keyboard.press("ArrowLeft");
-            await expect(lightbox).toContainText("1 of 2");
-            await page.keyboard.press("ArrowRight");
-            await expect(lightbox).toContainText("2 of 2");
-            await lightbox.getByRole("button", { name: "Previous", exact: true }).click();
-            await expect(lightbox).toContainText("1 of 2");
-            await page.keyboard.press("Escape");
-            await expect(lightbox).not.toBeVisible();
+            const expectSingleLineCounter = async (text: string): Promise<void> => {
+                const counter = lightbox.getByText(text, { exact: true });
+                await expect(counter).toBeVisible();
+                await expect
+                    .poll(() =>
+                        counter.evaluate((element) => {
+                            const range = document.createRange();
+                            range.selectNodeContents(element);
+                            return range.getClientRects().length;
+                        }),
+                    )
+                    .toBe(1);
+                for (const name of ["Previous", "Next", "Zoom in", "Download", "Close"]) {
+                    await expect(lightbox.getByRole("button", { name, exact: true })).toBeInViewport({ ratio: 1 });
+                }
+            };
+            for (const width of new Set([viewport.width, 1280])) {
+                await page.setViewportSize({ width, height: viewport.height });
+                await eventTile(galleryId).getByRole("button", { name: "riot.png", exact: true }).click();
+                await expect(lightbox).toBeVisible();
+                await expectSingleLineCounter("1 of 2");
+                await expect(lightbox).toContainText("riot.png");
+                await lightbox.getByRole("button", { name: "Next", exact: true }).click();
+                await expectSingleLineCounter("2 of 2");
+                await expect(lightbox).toContainText("element.png");
+                await page.keyboard.press("ArrowLeft");
+                await expectSingleLineCounter("1 of 2");
+                await page.keyboard.press("ArrowRight");
+                await expectSingleLineCounter("2 of 2");
+                const image = lightbox.getByRole("img", { name: "element.png", exact: true });
+                await expect
+                    .poll(() => image.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+                    .toBe(true);
+                await expect(image).toHaveCSS("opacity", "1");
+                await expect
+                    .poll(() =>
+                        lightbox.evaluate(
+                            (element) =>
+                                element.getAnimations({ subtree: true }).filter((a) => a.playState === "running")
+                                    .length,
+                        ),
+                    )
+                    .toBe(0);
+                await test.info().attach(`gallery-lightbox-${width}`, {
+                    body: await lightbox.screenshot(),
+                    contentType: "image/png",
+                });
+                const previous = lightbox.getByRole("button", { name: "Previous", exact: true });
+                await previous.click();
+                await expectSingleLineCounter("1 of 2");
+                await expect(previous).toBeFocused();
+                await expect(previous).toBeDisabled();
+                await expect(page.getByRole("tooltip", { name: "Previous", exact: true })).toBeVisible();
+                await page.keyboard.press("Escape");
+                await expect(lightbox).not.toBeVisible();
+
+                await eventTile(galleryId).getByRole("button", { name: "riot.png", exact: true }).click();
+                const next = lightbox.getByRole("button", { name: "Next", exact: true });
+                await next.click();
+                await expectSingleLineCounter("2 of 2");
+                await expect(next).toBeFocused();
+                await expect(next).toBeDisabled();
+                await expect(page.getByRole("tooltip", { name: "Next", exact: true })).toBeVisible();
+                await page.keyboard.press("Escape");
+                await expect(lightbox).not.toBeVisible();
+            }
+            await page.setViewportSize(viewport);
         });
         await test.step("Per-file remove and explicit separate sending preserve order and last caption", async () => {
             await upload(["riot.png", "element.png", "riot.png"]);

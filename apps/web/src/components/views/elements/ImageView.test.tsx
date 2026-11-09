@@ -12,6 +12,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
 import { render, fireEvent, waitFor } from "test-utils-rtl";
 import fetchMock from "@fetch-mock/vitest";
+import userEvent from "@testing-library/user-event";
 import { MatrixEvent, MsgType } from "matrix-js-sdk/src/matrix";
 import { stubClient } from "test-utils";
 
@@ -41,9 +42,11 @@ describe("<ImageView />", () => {
                 ]}
             />,
         );
+        const counter = getByText("1 of 4");
+        expect(counter).toHaveAttribute("aria-live", "polite");
         expect(getByRole("button", { name: "Previous" })).toHaveAttribute("aria-disabled", "true");
         fireEvent.click(getByRole("button", { name: "Next" }));
-        expect(getByText("2 of 4")).toBeInTheDocument();
+        expect(counter).toHaveTextContent("2 of 4");
         expect(container.querySelector("video")).toHaveAttribute("src", "two.mp4");
         expect(container.querySelector("img.mx_ImageView_image")).toBeNull();
         expect(container.querySelector('[title="Zoom in"]')).toBeNull();
@@ -56,7 +59,33 @@ describe("<ImageView />", () => {
         expect(getByRole("button", { name: "Next" })).toHaveAttribute("aria-disabled", "true");
         expect(container.querySelector(".mx_ImageView_file")).toHaveTextContent("four.txt");
         fireEvent.keyDown(getByRole("dialog"), { key: "ArrowLeft" });
-        expect(getByText("3 of 4")).toBeInTheDocument();
+        expect(counter).toHaveTextContent("3 of 4");
+        expect(counter).toHaveAttribute("aria-live", "polite");
+    });
+
+    it.each([
+        { initialIndex: 1, boundary: "Previous" },
+        { initialIndex: 0, boundary: "Next" },
+    ])("closes on Escape with the disabled $boundary control focused", async ({ initialIndex, boundary }) => {
+        const onFinished = vi.fn();
+        const { getByRole } = render(
+            <ImageView
+                src="one.png"
+                initialIndex={initialIndex}
+                onFinished={onFinished}
+                items={[
+                    { src: "one.png", name: "one.png" },
+                    { src: "two.png", name: "two.png" },
+                ]}
+            />,
+        );
+        const button = getByRole("button", { name: boundary });
+        await userEvent.click(button);
+        expect(button).toHaveAttribute("aria-disabled", "true");
+        expect(button).toHaveFocus();
+        await waitFor(() => expect(getByRole("tooltip", { name: boundary })).toBeVisible());
+        await userEvent.keyboard("{Escape}");
+        expect(onFinished).toHaveBeenCalledTimes(1);
     });
 
     it("starts at the requested image and resets transforms when switching", () => {

@@ -342,6 +342,13 @@ export default class ImageView extends React.Component<IProps, IState> {
         this.zoomDelta(-ZOOM_STEP);
     };
 
+    private onKeyDownCapture = (ev: KeyboardEvent): void => {
+        // Tooltips consume Escape before it can bubble up from the focused toolbar control.
+        if (getKeyBindingsManager().getAccessibilityAction(ev) === KeyBindingAction.Escape) {
+            this.onKeyDown(ev);
+        }
+    };
+
     private onKeyDown = (ev: KeyboardEvent): void => {
         if (this.props.items && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
             ev.preventDefault();
@@ -582,6 +589,7 @@ export default class ImageView extends React.Component<IProps, IState> {
             <FocusLock
                 returnFocus={true}
                 lockProps={{
+                    "onKeyDownCapture": this.onKeyDownCapture,
                     "onKeyDown": this.onKeyDown,
                     "role": "dialog",
                     "aria-label": _t("lightbox|title"),
@@ -603,7 +611,7 @@ export default class ImageView extends React.Component<IProps, IState> {
                                 >
                                     <ChevronLeftIcon />
                                 </AccessibleButton>
-                                <span aria-live="polite">
+                                <span className="mx_ImageView_counter" aria-live="polite">
                                     {_t("lightbox|counter", {
                                         current: this.state.activeIndex + 1,
                                         total: this.props.items.length,
