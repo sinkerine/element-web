@@ -421,15 +421,17 @@ interface IProps {
 
 ### Conventions
 
-- Copyright header on all new files:
-    ```ts
-    /*
-    Copyright 2026 sinkerine
-    
-    SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
-    Please see LICENSE in the repository root for full details.
-    */
-    ```
+Copyright header on all new files:
+
+```ts
+/*
+Copyright 2026 sinkerine
+
+SPDX-License-Identifier: AGPL-3.0-only OR LicenseRef-Element-Commercial
+Please see LICENSE in the repository root for full details.
+*/
+```
+
 - Named exports only, explicit `public`/`private`/`protected` member visibility, arrow-function actions on ViewModels, TSDoc on all exported symbols, Compound design tokens (`var(--cpd-space-…)`, `var(--cpd-color-…)`) in CSS modules and PostCSS.
 - Keep `MediaCaptionContent.ts` free of UI/store imports so Node unit tests never pull in `window.localStorage`.
 - Do not add unused re-exports (`knip` enforced by `pnpm lint`).
