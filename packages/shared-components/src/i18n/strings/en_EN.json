@@ -49,6 +49,8 @@
         "threads": "Threads"
     },
     "composer": {
+        "attachments": "Attachments",
+        "remove_attachment": "Remove %(name)s",
         "url_preview": {
             "clear_all": "Clear all",
             "collapse": "Collapse URL previews",
@@ -103,6 +105,11 @@
             "description": "%(brand)s was updated from a very old version and cannot migrate your encryption store to a new format.",
             "title": "This device cannot be used"
         }
+    },
+    "gallery": {
+        "animated": "GIF",
+        "error": "Unable to load media",
+        "show_media": "Show media"
     },
     "interactive_ui": {
         "carousel": "Carousel",

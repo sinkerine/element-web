@@ -116,3 +116,6 @@ export * from "./devtools/CustomThemesView";
 // MVVM
 export * from "./core/viewmodel";
 export * from "./threads/ThreadOwnMessagesView";
+
+export * from "./room/timeline/event-tile/body/MGalleryBodyView";
+export * from "./room/composer/ComposerAttachmentStripView";
