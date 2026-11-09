@@ -7,6 +7,8 @@ Please see LICENSE in the repository root for full details.
 
 import { readFile } from "node:fs/promises";
 import { type Locator } from "@playwright/test";
+import { closeReleaseAnnouncementIfExists } from "@element-hq/element-web-playwright-common";
+import { decryptAttachment } from "matrix-encrypt-attachment";
 
 import { test, expect } from "../../element-web-test";
 import { getSampleFilePath } from "../../sample-files";
@@ -617,12 +619,13 @@ test.describe("Attachment captions", () => {
         });
     });
 
-    test("should reject oversized initial and added media before uploading", async ({ page, app }) => {
+    test("should reject oversized initial and added media before uploading", async ({ page, app, user }) => {
         await page.route(/\/_matrix\/(?:client\/v1\/media|media\/v3)\/config/, (route) =>
             route.fulfill({ json: { "m.upload.size": 100_000 } }),
         );
         await app.client.createRoom({ name: "Size limit" });
         await app.viewRoomByName("Size limit");
+        await closeReleaseAnnouncementIfExists(page, "Introducing Sections");
         await app.setComposerInputFiles("room", [
             { name: "riot.png", mimeType: "image/png", buffer: await readFile(getSampleFilePath("riot.png")) },
             {
@@ -631,7 +634,7 @@ test.describe("Attachment captions", () => {
                 buffer: Buffer.alloc(100_001),
             },
         ]);
-        const dialog = page.getByRole("dialog");
+        const dialog = page.getByRole("dialog", { name: /^(Upload Error|Send an image)$/ });
         await expect(dialog).toContainText("too large");
         await dialog.getByRole("button", { name: "Upload 1 other file", exact: true }).click();
         await expect(dialog).toHaveAccessibleName("Send an image");
@@ -650,6 +653,7 @@ test.describe("Attachment captions", () => {
         app,
         bot,
         user,
+        request,
     }) => {
         test.setTimeout(240_000);
         const roomId = await app.client.createRoom({ name: "Captions", invite: [bot.credentials!.userId] });
@@ -1020,6 +1024,25 @@ test.describe("Attachment captions", () => {
                     expect(item.info.thumbnail_file.url).toMatch(/^mxc:\/\//);
                     expect(item.info.thumbnail_url).toBeUndefined();
                 }
+                await test.step(`Bob downloads and decrypts ${item.body} to its original bytes`, async () => {
+                    // Use only the recipient's media URL, credentials and decrypted event metadata.
+                    const download = await bot.evaluate(
+                        (client, url) => ({
+                            // Resolve with Bob's client; the app Media helper uses the sender's client.
+                            // eslint-disable-next-line no-restricted-properties
+                            url: client.mxcUrlToHttp(url, undefined, undefined, undefined, false, false, true)!,
+                            accessToken: client.getAccessToken(),
+                        }),
+                        item.file.url,
+                    );
+                    const response = await request.get(download.url, {
+                        headers: { Authorization: `Bearer ${download.accessToken}` },
+                    });
+                    expect(response.ok()).toBe(true);
+                    const ciphertext = new Uint8Array(await response.body()).buffer;
+                    const plaintext = await decryptAttachment(ciphertext, item.file);
+                    expect(Buffer.from(plaintext)).toEqual(await readFile(getSampleFilePath(item.body)));
+                });
             }
             await expectGallery(encryptedId, "Secret gallery");
         });
@@ -1058,6 +1081,28 @@ test.describe("Attachment captions", () => {
             );
             await expect(caption).toHaveText("fail me");
             await caption.press("Enter");
+            const error = page.getByRole("dialog", { name: "Upload Failed", exact: true });
+            await expect(error).toBeVisible();
+            await error.getByRole("button", { name: "OK", exact: true }).click();
+            await expect(composer).toHaveText("fail me");
+            expect(await ownEvents()).toEqual(before);
+            await page.unroute(uploadEndpoint);
+        });
+        await test.step("A failed single image restores its caption without sending a message", async () => {
+            const before = await ownEvents();
+            await composer.fill("fail me");
+            await upload(["riot.png"]);
+            await expect(dialog).toHaveAccessibleName("Send an image");
+            await expect(caption).toHaveText("fail me");
+            const uploadEndpoint = /\/_matrix\/(?:client\/v1\/media|media\/v3)\/upload/;
+            await page.route(uploadEndpoint, (route) =>
+                route.fulfill({
+                    status: 500,
+                    contentType: "application/json",
+                    body: JSON.stringify({ errcode: "M_UNKNOWN", error: "Upload rejected by test" }),
+                }),
+            );
+            await dialog.getByRole("button", { name: "Send", exact: true }).click();
             const error = page.getByRole("dialog", { name: "Upload Failed", exact: true });
             await expect(error).toBeVisible();
             await error.getByRole("button", { name: "OK", exact: true }).click();
