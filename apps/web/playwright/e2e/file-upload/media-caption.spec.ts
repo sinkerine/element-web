@@ -49,6 +49,7 @@ test.describe("Attachment captions", () => {
                             (event) =>
                                 event.getSender() === client.getUserId() &&
                                 event.getId()?.startsWith("$") &&
+                                event.status === null &&
                                 event.getContent().msgtype === "m.image" &&
                                 !event.getContent()["m.relates_to"]?.rel_type,
                         )
@@ -141,12 +142,13 @@ test.describe("Attachment captions", () => {
             firstMediaUrl = event.content.url;
             expect(firstMediaUrl).toMatch(/^mxc:\/\//);
         });
-        await test.step("3. Upload all puts the shared caption on the last file", async () => {
+        await test.step("3. Separate uploads put the shared caption on the last file", async () => {
             await openUpload(false, [getSampleFilePath("riot.png"), getSampleFilePath("element.png")]);
-            await expect(dialog).toHaveAccessibleName("Upload files (1 of 2)");
+            await expect(dialog).toHaveAccessibleName("Upload files");
+            await dialog.getByRole("checkbox", { name: "Send as one message" }).uncheck();
             await expect(dialog.getByText("The caption is sent with the last file", { exact: true })).toBeVisible();
             await caption.fill("Two files");
-            await dialog.getByRole("button", { name: "Upload all", exact: true }).click();
+            await dialog.getByRole("button", { name: "Upload", exact: true }).click();
             const events = await waitForMedia(3);
             batchFirstId = events[1].id;
             batchLastId = events[2].id;
@@ -404,6 +406,367 @@ test.describe("Attachment captions", () => {
             await mainTimelineHello.hover();
             await mainTimelineHello.getByRole("button", { name: "Reply in thread", exact: true }).click();
             await expect(eventTile(threadId)).toContainText("in thread");
+        });
+    });
+
+    test("should send galleries through the dialog and staged composer and persist encrypted edits", async ({
+        page,
+        app,
+        bot,
+        user,
+    }) => {
+        test.setTimeout(240_000);
+        const roomId = await app.client.createRoom({ name: "Captions", invite: [bot.credentials!.userId] });
+        const secretId = await app.client.createRoom({
+            name: "Secret",
+            invite: [bot.credentials!.userId],
+            initial_state: [
+                { type: "m.room.encryption", state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" } },
+            ],
+        });
+        await bot.joinRoom(roomId);
+        await bot.joinRoom(secretId);
+        await app.viewRoomById(roomId);
+        const composer = app.getComposerField();
+        const region = page.getByRole("region", { name: "Message composer", exact: true });
+        const strip = region.getByRole("list", { name: "Attachments", exact: true });
+        const dialog = page.getByRole("dialog", { name: "Upload files", exact: true });
+        const caption = dialog.getByRole("textbox", { name: "Caption", exact: true });
+        const eventTile = (id: string) =>
+            page
+                .getByTestId("timeline")
+                .getByTestId("event-tile")
+                .and(page.locator(`[data-event-id=${JSON.stringify(id)}]`));
+        const ownEvents = (id = roomId) =>
+            app.client.evaluate(
+                (client, roomId) =>
+                    client
+                        .getRoom(roomId)!
+                        .getLiveTimeline()
+                        .getEvents()
+                        .filter(
+                            (event) =>
+                                event.getSender() === client.getUserId() &&
+                                event.getType() === "m.room.message" &&
+                                event.status === null &&
+                                event.getId()?.startsWith("$"),
+                        )
+                        .map((event) => ({ id: event.getId()!, content: event.getOriginalContent() })),
+                id,
+            );
+        const sent = async (count: number, id = roomId) => {
+            await expect.poll(async () => (await ownEvents(id)).length).toBe(count);
+            const events = await ownEvents(id);
+            const latest = page.getByRole("button", { name: "Scroll to most recent messages", exact: true });
+            if (await latest.isVisible()) await latest.click();
+            await expect(eventTile(events[count - 1].id)).toBeVisible();
+            return events[count - 1];
+        };
+        const upload = async (names = ["riot.png", "element.png"]): Promise<void> => {
+            await page.getByLabel("User menu").hover();
+            await app.setComposerInputFiles("room", names.map(getSampleFilePath));
+            await expect(dialog).toBeVisible();
+        };
+        const transfer = async (names: string[]) => {
+            const files = await Promise.all(
+                names.map(async (name) => ({
+                    name,
+                    data: (await readFile(getSampleFilePath(name))).toString("base64"),
+                })),
+            );
+            return page.evaluateHandle((files) => {
+                const data = new DataTransfer();
+                for (const file of files)
+                    data.items.add(
+                        new File([Uint8Array.from(atob(file.data), (c) => c.charCodeAt(0))], file.name, {
+                            type: "image/png",
+                        }),
+                    );
+                return data;
+            }, files);
+        };
+        const edit = async (id: string) => {
+            const tile = eventTile(id);
+            await tile.hover();
+            await tile.getByRole("button", { name: "Edit", exact: true }).click();
+            const editor = tile.getByRole("textbox", { name: "Edit message", exact: true });
+            await expect(editor).toBeVisible();
+            return editor;
+        };
+        const expectGallery = async (id: string, text: string): Promise<void> => {
+            const tile = eventTile(id);
+            for (const name of ["riot.png", "element.png"]) {
+                const image = tile.getByRole("button", { name, exact: true });
+                await expect(image).toBeVisible();
+                await expect
+                    .poll(() =>
+                        image.locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+                    )
+                    .toBe(true);
+            }
+            if (text) await expect(tile).toContainText(text);
+        };
+        let galleryId = "";
+        let stagedId = "";
+        let singleId = "";
+        let encryptedId = "";
+        let galleryItems: unknown;
+
+        await test.step("Grouped dialog sends one gallery with persistent ordered media", async () => {
+            await upload();
+            await expect(dialog.getByRole("img", { name: "riot.png", exact: true })).toBeVisible();
+            await expect(dialog.getByRole("img", { name: "element.png", exact: true })).toBeVisible();
+            await expect(dialog.getByRole("checkbox", { name: "Send as one message" })).toBeChecked();
+            await expect(dialog.getByText("The caption is sent with the last file", { exact: true })).not.toBeVisible();
+            await caption.fill("Two images in one gallery");
+            await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+            const event = await sent(1);
+            galleryId = event.id;
+            expect(event.content).toMatchObject({ msgtype: "dm.filament.gallery", body: "Two images in one gallery" });
+            expect(event.content.itemtypes).toHaveLength(2);
+            expect(event.content.itemtypes).toMatchObject([
+                { itemtype: "m.image", body: "riot.png", url: expect.stringMatching(/^mxc:\/\//) },
+                { itemtype: "m.image", body: "element.png", url: expect.stringMatching(/^mxc:\/\//) },
+            ]);
+            galleryItems = event.content.itemtypes;
+            await expectGallery(galleryId, "Two images in one gallery");
+        });
+        await test.step("Lightbox buttons and arrow keys navigate gallery items", async () => {
+            await eventTile(galleryId).getByRole("button", { name: "riot.png", exact: true }).click();
+            const lightbox = page.getByRole("dialog", { name: "Image view", exact: true });
+            await expect(lightbox).toBeVisible();
+            await expect(lightbox).toContainText("1 of 2");
+            await expect(lightbox).toContainText("riot.png");
+            await lightbox.getByRole("button", { name: "Next", exact: true }).click();
+            await expect(lightbox).toContainText("2 of 2");
+            await expect(lightbox).toContainText("element.png");
+            await page.keyboard.press("ArrowLeft");
+            await expect(lightbox).toContainText("1 of 2");
+            await page.keyboard.press("ArrowRight");
+            await expect(lightbox).toContainText("2 of 2");
+            await lightbox.getByRole("button", { name: "Previous", exact: true }).click();
+            await expect(lightbox).toContainText("1 of 2");
+            await page.keyboard.press("Escape");
+            await expect(lightbox).not.toBeVisible();
+        });
+        await test.step("Per-file remove and explicit separate sending preserve order and last caption", async () => {
+            await upload(["riot.png", "element.png", "riot.png"]);
+            await expect(dialog.getByRole("button", { name: "Remove", exact: true })).toHaveCount(3);
+            await dialog.getByRole("button", { name: "Remove", exact: true }).last().click();
+            await expect(dialog.getByRole("img", { name: /^(riot|element)\.png$/ })).toHaveCount(2);
+            await dialog.getByRole("checkbox", { name: "Send as one message" }).uncheck();
+            await expect(dialog.getByText("The caption is sent with the last file", { exact: true })).toBeVisible();
+            await caption.fill("Last file only");
+            await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+            await sent(3);
+            const events = await ownEvents();
+            expect(events[1].content).toMatchObject({ msgtype: "m.image", body: "riot.png" });
+            expect(events[2].content).toMatchObject({
+                msgtype: "m.image",
+                filename: "element.png",
+                body: "Last file only",
+            });
+        });
+        await test.step("Composer drop stages media and paste appends before Enter sends one gallery", async () => {
+            const first = await transfer(["riot.png"]);
+            await region.dispatchEvent("drop", { dataTransfer: first });
+            await first.dispose();
+            await expect(dialog).not.toBeVisible();
+            await expect(strip.getByRole("listitem")).toHaveCount(1);
+            const second = await transfer(["element.png"]);
+            await composer.evaluate((element, clipboardData) => {
+                element.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+            }, second);
+            await second.dispose();
+            await expect(strip.getByRole("listitem")).toHaveCount(2);
+            await expect(strip.getByRole("img", { name: "riot.png" })).toBeVisible();
+            await expect(strip.getByRole("img", { name: "element.png" })).toBeVisible();
+            await composer.fill("Staged gallery caption");
+            await composer.press("Enter");
+            const event = await sent(4);
+            stagedId = event.id;
+            expect(event.content).toMatchObject({ msgtype: "dm.filament.gallery", body: "Staged gallery caption" });
+            expect(event.content.itemtypes).toHaveLength(2);
+            await expect(strip).not.toBeVisible();
+            await expect(composer).toBeEmpty();
+            await expectGallery(stagedId, "Staged gallery caption");
+        });
+        await test.step("Removing a staged item sends the remaining image as a standard captioned attachment", async () => {
+            const data = await transfer(["riot.png", "element.png"]);
+            await region.dispatchEvent("drop", { dataTransfer: data });
+            await data.dispose();
+            await strip.getByRole("button", { name: "Remove element.png", exact: true }).click();
+            await expect(strip.getByRole("listitem")).toHaveCount(1);
+            await composer.fill("Single staged");
+            await composer.press("Enter");
+            const event = await sent(5);
+            singleId = event.id;
+            expect(event.content).toMatchObject({
+                msgtype: "m.image",
+                filename: "riot.png",
+                body: "Single staged",
+                url: expect.stringMatching(/^mxc:\/\//),
+            });
+            expect(event.content.itemtypes).toBeUndefined();
+        });
+        await test.step("Room drop opens the dialog and cancelling grouped files preserves the draft", async () => {
+            await composer.fill("keep gallery draft");
+            const data = await transfer(["riot.png", "element.png"]);
+            await page.getByTestId("timeline").dispatchEvent("drop", { dataTransfer: data });
+            await data.dispose();
+            await expect(dialog).toBeVisible();
+            await expect(caption).toHaveText("keep gallery draft");
+            await dialog.getByRole("button", { name: "Close dialog", exact: true }).click();
+            await expect(dialog).not.toBeVisible();
+            await expect(composer).toHaveText("keep gallery draft");
+            expect(await ownEvents()).toHaveLength(5);
+            await composer.fill("");
+        });
+        await test.step("Caption edits and clearing preserve all gallery items and the edited marker", async () => {
+            let editor = await edit(galleryId);
+            await editor.fill("Updated gallery caption");
+            await editor.press("Enter");
+            await expect.poll(async () => (await ownEvents()).length).toBe(6);
+            let replacement = (await ownEvents())[5].content;
+            expect(replacement["m.relates_to"]).toEqual({ rel_type: "m.replace", event_id: galleryId });
+            expect(replacement["m.new_content"]).toMatchObject({
+                msgtype: "dm.filament.gallery",
+                body: "Updated gallery caption",
+                itemtypes: galleryItems,
+            });
+            await expectGallery(galleryId, "Updated gallery caption");
+            await expect(eventTile(galleryId)).toContainText("(edited)");
+            editor = await edit(galleryId);
+            await editor.fill("");
+            await editor.press("Enter");
+            await expect(editor).not.toBeVisible();
+            await expect.poll(async () => (await ownEvents()).length).toBe(7);
+            replacement = (await ownEvents())[6].content;
+            expect(replacement["m.new_content"]).toMatchObject({
+                msgtype: "dm.filament.gallery",
+                body: "",
+                itemtypes: galleryItems,
+            });
+            expect(replacement["m.new_content"].formatted_body).toBeUndefined();
+            await expect(page.getByRole("dialog", { name: "Remove message?" })).not.toBeVisible();
+            await expect(eventTile(galleryId)).not.toContainText("Updated gallery caption");
+            await expectGallery(galleryId, "(edited)");
+            const before = await ownEvents();
+            editor = await edit(galleryId);
+            await expect(editor).toBeEmpty();
+            await editor.press("Enter");
+            await expect(editor).not.toBeVisible();
+            expect(await ownEvents()).toEqual(before);
+        });
+        await test.step("Bob decrypts the encrypted gallery and every attachment", async () => {
+            await app.viewRoomById(secretId);
+            await upload();
+            await caption.fill("Secret gallery");
+            await caption.press("Enter");
+            const event = await sent(1, secretId);
+            encryptedId = event.id;
+            await expect
+                .poll(() =>
+                    bot.evaluate(
+                        async (client, { roomId, sender }) => {
+                            const events = client.getRoom(roomId)?.getLiveTimeline().getEvents() ?? [];
+                            for (const event of events) await client.decryptEventIfNeeded(event);
+                            return events
+                                .find(
+                                    (event) =>
+                                        event.getSender() === sender &&
+                                        event.getContent().msgtype === "dm.filament.gallery",
+                                )
+                                ?.getContent();
+                        },
+                        { roomId: secretId, sender: user.userId },
+                    ),
+                )
+                .toMatchObject({
+                    msgtype: "dm.filament.gallery",
+                    body: "Secret gallery",
+                    itemtypes: [
+                        {
+                            itemtype: "m.image",
+                            body: "riot.png",
+                            file: {
+                                url: expect.stringMatching(/^mxc:\/\//),
+                                key: { kty: "oct" },
+                                iv: expect.any(String),
+                                hashes: { sha256: expect.any(String) },
+                            },
+                        },
+                        {
+                            itemtype: "m.image",
+                            body: "element.png",
+                            file: {
+                                url: expect.stringMatching(/^mxc:\/\//),
+                                key: { kty: "oct" },
+                                iv: expect.any(String),
+                                hashes: { sha256: expect.any(String) },
+                            },
+                        },
+                    ],
+                });
+            const content = await bot.evaluate(
+                (client, id) =>
+                    client
+                        .getRoom(id)!
+                        .getLiveTimeline()
+                        .getEvents()
+                        .find((event) => event.getContent().body === "Secret gallery")!
+                        .getContent(),
+                secretId,
+            );
+            for (const item of content.itemtypes) {
+                expect(item.url).toBeUndefined();
+                if (item.info.thumbnail_file) {
+                    expect(item.info.thumbnail_file.url).toMatch(/^mxc:\/\//);
+                    expect(item.info.thumbnail_url).toBeUndefined();
+                }
+            }
+            await expectGallery(encryptedId, "Secret gallery");
+        });
+        await test.step("Reload preserves encrypted and plain galleries, single captions and cleared edits", async () => {
+            const saveAndReload = async (): Promise<void> => {
+                await app.client.evaluate((client) =>
+                    (client.store as unknown as { reallySave: () => Promise<void> }).reallySave(),
+                );
+                await page.reload();
+                await expect(composer).toBeVisible();
+            };
+            await saveAndReload();
+            await expectGallery(encryptedId, "Secret gallery");
+            await app.viewRoomById(roomId);
+            await saveAndReload();
+            await expectGallery(galleryId, "(edited)");
+            await expect(eventTile(galleryId)).not.toContainText("Updated gallery caption");
+            await expectGallery(stagedId, "Staged gallery caption");
+            await expect(eventTile(singleId)).toContainText("Single staged");
+            await expect(eventTile(singleId).getByRole("img", { name: "Single staged", exact: true })).toBeVisible();
+        });
+        await test.step("A failed staged gallery restores its caption without sending a partial message", async () => {
+            const before = await ownEvents();
+            const data = await transfer(["riot.png", "element.png"]);
+            await region.dispatchEvent("drop", { dataTransfer: data });
+            await data.dispose();
+            await expect(strip.getByRole("listitem")).toHaveCount(2);
+            const uploadEndpoint = /\/_matrix\/(?:client\/v1\/media|media\/v3)\/upload/;
+            await page.route(uploadEndpoint, (route) =>
+                route.fulfill({
+                    status: 413,
+                    contentType: "application/json",
+                    body: JSON.stringify({ errcode: "M_TOO_LARGE", error: "Upload rejected by test" }),
+                }),
+            );
+            await composer.fill("Retry gallery caption");
+            await composer.press("Enter");
+            const error = page.getByRole("dialog", { name: "Upload Failed", exact: true });
+            await expect(error).toBeVisible();
+            await error.getByRole("button", { name: "OK", exact: true }).click();
+            await expect(composer).toHaveText("Retry gallery caption");
+            expect(await ownEvents()).toEqual(before);
+            await page.unroute(uploadEndpoint);
         });
     });
 });

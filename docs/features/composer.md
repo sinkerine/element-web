@@ -26,22 +26,33 @@
 ## Attachments and captions
 
 Use the attachment button, paste an image, or drag files into the room to open the upload dialog. The dialog shows a
-preview and a **Caption** field. Text already in the composer is copied into the caption, including Markdown formatting
-and member mentions. The caption receives focus with the caret at the end, so you can keep typing immediately.
+preview of every selected file, per-file remove buttons, and a shared **Caption** field. Text already in the composer is
+copied into the caption, including Markdown formatting and member mentions. The caption receives focus with the caret at the end, so you can keep typing immediately.
 
 Press Enter or choose **Upload** to send the file and its caption as one message. Shift+Enter adds a line break to the
 caption. A nonempty caption clears the original composer draft after sending. Clearing the caption sends the file on
 its own and keeps the draft in the composer; closing the dialog also keeps the draft and sends nothing.
 
-When selecting several files, the shared caption is sent with the last file. Choose **Upload all** to send all selected
-files in order. Earlier files are sent without a caption.
+When selecting two or more images or videos, **Send as one message** is checked by default. Upload sends one gallery
+with a shared caption. Uncheck it to send separate messages in order, with the caption on the last file. Selections
+containing audio or other file types are sent separately. Removing files down to one sends a standard attachment.
+
+Drop images or videos onto the **Message composer** to stage them in an attachment strip above the input. Further drops,
+pastes, or attachment selections append images and videos to the strip. Remove individual items with their remove buttons.
+Type a shared caption in the composer and press Enter or Send to send the staged attachments together. An empty composer
+sends an uncaptioned gallery; a single remaining item sends a standard attachment. Galleries support up to 60 items.
+Dropping onto the room timeline opens the upload dialog. The rich text composer also uses the upload dialog.
+
+Click an image in a gallery to open the image viewer. Use **Previous**, **Next**, or the Left/Right arrow keys to move
+between items; the counter shows your position. Press Escape to close the viewer.
 
 Use **Edit** on an attachment message to add, change, or remove its caption. Formatting and member mentions are
-supported just as they are in the message composer. Saving an empty caption keeps the attachment, and the message
-continues to show its edited marker.
+supported just as they are in the message composer. Saving an empty caption keeps the attachment or all gallery items,
+and the message continues to show its edited marker.
 
 Captioned attachments also work in replies, threads, and encrypted rooms. A reply keeps the quoted message above the
-attachment; a thread attachment stays in its thread. In an encrypted room, both the caption and attachment are encrypted.
+attachment; a thread attachment stays in its thread. In an encrypted room, the caption and every gallery attachment are
+encrypted.
 
 ## Misc
 

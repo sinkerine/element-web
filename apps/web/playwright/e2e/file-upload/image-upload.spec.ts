@@ -34,10 +34,68 @@ test.describe("Image Upload", () => {
         await expect(page.locator(".mx_Dialog")).toMatchScreenshot("image-upload-preview.png");
     });
 
-    test("should allow upload via drag and drop", { tag: "@screenshot" }, async ({ page, app }) => {
+    test("should allow upload via drag and drop", async ({ page, app }) => {
         await app.composerDragAndUploadFiles("room", getSampleFilePath("riot.png"), "image/png");
         await app.timeline.scrollToBottom();
-        const imgTile = page.locator(".mx_ImageBody").first();
+        const imgTile = page.getByTestId("timeline").getByRole("img", { name: "riot.png", exact: true });
         await expect(imgTile).toBeVisible();
+    });
+
+    test("should group images and videos and fall back to a single video after removal", async ({ page, app }) => {
+        test.setTimeout(120_000);
+        const dialog = page.getByRole("dialog", { name: "Upload files", exact: true });
+        const files = [getSampleFilePath("riot.png"), getSampleFilePath("5secvid.webm")];
+        const events = () =>
+            app.client.evaluate((client) => {
+                const room = client.getRooms().find((room) => room.name === "My Pictures")!;
+                return room
+                    .getLiveTimeline()
+                    .getEvents()
+                    .filter(
+                        (event) =>
+                            event.getSender() === client.getUserId() &&
+                            event.getType() === "m.room.message" &&
+                            event.status === null,
+                    )
+                    .map((event) => event.getContent());
+            });
+        await app.setComposerInputFiles("room", files);
+        await expect(dialog.getByRole("checkbox", { name: "Send as one message" })).toBeChecked();
+        await dialog.getByRole("textbox", { name: "Caption", exact: true }).fill("Image and video");
+        await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+        await expect.poll(async () => (await events()).length).toBe(1);
+        expect((await events())[0]).toMatchObject({
+            msgtype: "dm.filament.gallery",
+            body: "Image and video",
+            itemtypes: [
+                { itemtype: "m.image", body: "riot.png", url: expect.stringMatching(/^mxc:\/\//) },
+                {
+                    itemtype: "m.video",
+                    body: "5secvid.webm",
+                    url: expect.stringMatching(/^mxc:\/\//),
+                    info: { mimetype: "video/webm" },
+                },
+            ],
+        });
+        const tile = page.getByTestId("timeline").getByTestId("event-tile").filter({ hasText: "Image and video" });
+        await expect(tile.getByRole("button", { name: "riot.png", exact: true })).toBeVisible();
+        await expect(tile.getByRole("button", { name: "5secvid.webm", exact: true })).toBeVisible();
+
+        await app.setComposerInputFiles("room", files);
+        await dialog.getByRole("button", { name: "Remove", exact: true }).first().click();
+        await expect(dialog.getByRole("checkbox", { name: "Send as one message" })).not.toBeVisible();
+        await dialog.getByRole("textbox", { name: "Caption", exact: true }).fill("Single video");
+        await dialog.getByRole("button", { name: "Upload", exact: true }).click();
+        await expect.poll(async () => (await events()).length).toBe(2);
+        expect((await events())[1]).toMatchObject({
+            msgtype: "m.video",
+            filename: "5secvid.webm",
+            body: "Single video",
+            url: expect.stringMatching(/^mxc:\/\//),
+        });
+        expect((await events())[1].itemtypes).toBeUndefined();
+        await expect(
+            page.getByTestId("timeline").getByTestId("event-tile").filter({ hasText: "Single video" }),
+        ).toBeVisible();
     });
 });
