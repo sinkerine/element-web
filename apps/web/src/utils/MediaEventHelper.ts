@@ -6,10 +6,11 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { type MatrixEvent, EventType, MsgType } from "matrix-js-sdk/src/matrix";
-import { type FileContent, type ImageContent, type MediaEventContent } from "matrix-js-sdk/src/types";
+import { MatrixEvent, EventType, MsgType } from "matrix-js-sdk/src/matrix";
+import { type ImageContent, type MediaEventContent } from "matrix-js-sdk/src/types";
 import { logger } from "matrix-js-sdk/src/logger";
 
+import { galleryItemToMediaContent, isGalleryContent } from "./MediaCaptionContent";
 import { LazyValue } from "./LazyValue";
 import { type Media, mediaFromContent } from "../customisations/Media";
 import { decryptFile } from "./DecryptFile";
@@ -30,21 +31,26 @@ export class MediaEventHelper implements IDestroyable {
 
     public readonly media: Media;
 
-    public constructor(private event: MatrixEvent) {
+    public constructor(private eventOrContent: MatrixEvent | MediaEventContent) {
         this.sourceUrl = new LazyValue(this.prepareSourceUrl);
         this.thumbnailUrl = new LazyValue(this.prepareThumbnailUrl);
         this.sourceBlob = new LazyValue(this.fetchSource);
         this.thumbnailBlob = new LazyValue(this.fetchThumbnail);
 
-        this.media = mediaFromContent(this.event.getContent());
+        this.media = mediaFromContent(this.content);
+    }
+
+    private get content(): MediaEventContent {
+        if (!(this.eventOrContent instanceof MatrixEvent)) return this.eventOrContent;
+        const content = this.eventOrContent.getContent();
+        // Event-level actions use the first item as the gallery's representative media.
+        return isGalleryContent(content)
+            ? galleryItemToMediaContent(content.itemtypes[0])
+            : this.eventOrContent.getContent<MediaEventContent>();
     }
 
     public get fileName(): string {
-        return (
-            this.event.getContent<FileContent>().filename ||
-            this.event.getContent<MediaEventContent>().body ||
-            "download"
-        );
+        return this.content.filename || this.content.body || "download";
     }
 
     /**
@@ -80,7 +86,7 @@ export class MediaEventHelper implements IDestroyable {
     };
 
     private fetchSource = (): Promise<Blob> => {
-        const content = this.event.getContent<MediaEventContent>();
+        const content = this.content;
         const uploaded = queryUploadedMediaCache(this.media.srcMxc);
         if (uploaded) {
             return Promise.resolve(
@@ -103,7 +109,7 @@ export class MediaEventHelper implements IDestroyable {
     private fetchThumbnail = (): Promise<Blob | null> => {
         if (!this.media.hasThumbnail) return Promise.resolve(null);
 
-        const content = this.event.getContent<ImageContent>();
+        const content = this.content as ImageContent;
         const uploaded = queryUploadedMediaCache(this.media.thumbnailMxc);
         if (uploaded) {
             return Promise.resolve(
@@ -145,6 +151,7 @@ export class MediaEventHelper implements IDestroyable {
 
         const content = event.getContent();
         const mediaMsgTypes: string[] = [MsgType.Video, MsgType.Audio, MsgType.Image, MsgType.File];
+        if (isGalleryContent(content)) return true;
         if (mediaMsgTypes.includes(content.msgtype!)) return true;
         if (typeof content.url === "string") return true;
 
@@ -162,6 +169,7 @@ export class MediaEventHelper implements IDestroyable {
         if (event.isRedacted()) return false;
         const content = event.getContent();
         const hideTypes: string[] = [MsgType.Video, MsgType.Image];
+        if (isGalleryContent(content)) return true;
         if (hideTypes.includes(content.msgtype!)) return true;
         return false;
     }

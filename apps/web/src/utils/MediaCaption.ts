@@ -31,7 +31,7 @@ export function createMediaCaptionFields(model: EditorModel): MediaCaptionFields
     return caption;
 }
 
-/** Build a caption replacement with edit fallbacks, a replacement relation and intentional mentions. */
+/** Build a single-media or gallery caption replacement with edit fallbacks, a relation and intentional mentions. */
 export function createMediaCaptionEditContent(
     model: EditorModel,
     editedEvent: MatrixEvent,

@@ -20,7 +20,13 @@ import {
     isCaptionableContent,
     withMediaCaption,
 } from "./MediaCaption";
-import { CAPTIONABLE_MSGTYPES, getMediaCaption, getMediaFileName } from "./MediaCaptionContent";
+import {
+    GALLERY_MSGTYPE,
+    STABLE_GALLERY_MSGTYPE,
+    CAPTIONABLE_MSGTYPES,
+    getMediaCaption,
+    getMediaFileName,
+} from "./MediaCaptionContent";
 
 const pc = createPartCreator();
 const textModel = (text: string): EditorModel => new EditorModel([pc.plain(text)], pc);
@@ -202,6 +208,47 @@ describe("MediaCaption", () => {
                 "m.mentions": { user_ids: ["@reply:example.org", "@old:example.org", "@new:example.org"] },
             });
         });
+
+        it.each([GALLERY_MSGTYPE, STABLE_GALLERY_MSGTYPE])(
+            "should edit and clear %s captions while preserving items and notifying new mentions",
+            (msgtype) => {
+                const items = [{ itemtype: "m.image", body: "photo.png", file: { url: media.url }, info: media.info }];
+                const original = {
+                    msgtype,
+                    "body": "old caption",
+                    "itemtypes": items,
+                    "format": "org.matrix.custom.html",
+                    "formatted_body": "<b>old caption</b>",
+                    "m.mentions": { user_ids: ["@old:example.org"] },
+                    "m.relates_to": { rel_type: "m.thread", event_id: "$thread" },
+                };
+                const editedEvent = event(original);
+                const model = new EditorModel([pc.userPill("New", "@new:example.org")], pc);
+                const content = createMediaCaptionEditContent(model, editedEvent, event({}, "@reply:example.org"));
+                expect(content.body).toBe("* New");
+                expect(content).toHaveProperty(
+                    "formatted_body",
+                    '* <a href="https://matrix.to/#/@new:example.org">New</a>',
+                );
+                expect(content["m.relates_to"]).toEqual({ rel_type: "m.replace", event_id: "$event" });
+                expect(content["m.mentions"]).toEqual({ user_ids: ["@reply:example.org", "@new:example.org"] });
+                expect(content["m.new_content"]).toMatchObject({
+                    msgtype,
+                    "body": "New",
+                    "itemtypes": items,
+                    "m.mentions": { user_ids: ["@reply:example.org", "@new:example.org"] },
+                });
+                expect(content["m.new_content"]).not.toHaveProperty("m.relates_to");
+                expect(content["m.new_content"]).not.toHaveProperty("filename");
+                const cleared = createMediaCaptionEditContent(textModel(" "), editedEvent);
+                expect(cleared.body).toBe("* ");
+                expect(cleared["m.new_content"]).toEqual({ msgtype, "body": "", "itemtypes": items, "m.mentions": {} });
+                expect(cleared).not.toHaveProperty("format");
+                expect(cleared).not.toHaveProperty("formatted_body");
+                expect((cleared["m.new_content"] as IContent).itemtypes).toBe(items);
+                expect(editedEvent.getContent()).toEqual(original);
+            },
+        );
 
         it("should keep filename and remove HTML when removing a caption", () => {
             const content = createMediaCaptionEditContent(
