@@ -69,6 +69,14 @@ export function MediaUploadDialog({
             hasCancel={false}
             fixedWidth={false}
             onFinished={vm.onCancel}
+            onPasteCapture={(event) => {
+                const images = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+                if (!images.length) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+                vm.onAddFiles(images);
+            }}
             onKeyDown={(event) => {
                 // BaseDialog disables its Escape handler together with the built-in cancel button.
                 if (getKeyBindingsManager().getAccessibilityAction(event) === KeyBindingAction.Escape) {

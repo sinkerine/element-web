@@ -46,6 +46,9 @@ interface IProps {
     // called when a key is pressed
     "onKeyDown"?: (e: KeyboardEvent | React.KeyboardEvent) => void;
 
+    /** Handle clipboard data before child editors process the paste. */
+    "onPasteCapture"?: React.ClipboardEventHandler;
+
     // CSS class to apply to dialog div
     "className"?: string;
 
@@ -151,6 +154,7 @@ export default class BaseDialog extends React.Component<IProps> {
 
         const lockProps: Record<string, any> = {
             "onKeyDown": this.onKeyDown,
+            "onPasteCapture": this.props.onPasteCapture,
             "role": "dialog",
             // Allow the dialog to be keyboard focusable
             // So the escape key handling works in more cases (say you select the header)

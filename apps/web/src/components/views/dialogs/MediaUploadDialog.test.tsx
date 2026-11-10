@@ -125,6 +125,124 @@ describe("MediaUploadDialog", () => {
         expect(onFinished).toHaveBeenCalledWith(true, { files: expect.any(Array), groupItems: totalFiles > 1 });
     });
 
+    it.each(["caption", "button"])("should append clipboard images while the %s has focus", async (target) => {
+        const client = createTestClient();
+        const room = new Room("!room:server", client, client.getSafeUserId());
+        const pc = new PartCreator(room, client);
+        const captionModel = new EditorModel([pc.plain("Keep this caption")], pc);
+        const onFinished = vi.fn();
+        const createUrl = vi.spyOn(URL, "createObjectURL");
+        const revoke = vi.spyOn(URL, "revokeObjectURL");
+        const original = new File(["a"], "original.png", { type: "image/png" });
+        const pasted = [
+            new File(["b"], "clipboard.png", { type: "image/png" }),
+            new File(["c"], "clipboard2.jpg", { type: "image/jpeg" }),
+        ];
+        const { getByRole, queryByRole, unmount } = render(
+            <SDKContext.Provider value={SDKContextClass.instance}>
+                <MediaUploadDialog
+                    files={[original]}
+                    isFileSizeAcceptable={() => true}
+                    room={room}
+                    captionModel={captionModel}
+                    onFinished={onFinished}
+                />
+            </SDKContext.Provider>,
+        );
+        const caption = getByRole("textbox", { name: "Caption" });
+        const send = getByRole("button", { name: "Send" });
+        const pasteTarget = target === "caption" ? caption : send;
+        pasteTarget.focus();
+        expect(
+            fireEvent.paste(pasteTarget, {
+                clipboardData: { files: [...pasted, new File(["ignore"], "notes.txt", { type: "text/plain" })] },
+            }),
+        ).toBe(false);
+
+        for (const image of pasted) {
+            expect(getByRole("img", { name: image.name })).toBeInTheDocument();
+            expect(createUrl).toHaveBeenCalledWith(image);
+        }
+        expect(getByRole("heading", { name: "3 images selected" })).toBeInTheDocument();
+        expect(caption).toHaveTextContent("Keep this caption");
+        expect(captionModel.parts.map((part) => part.text).join("")).toBe("Keep this caption");
+        expect(getByRole("checkbox", { name: "Group items" })).toBeChecked();
+        expect(onFinished).not.toHaveBeenCalled();
+
+        revoke.mockClear();
+        fireEvent.click(getByRole("button", { name: "Remove clipboard.png" }));
+        expect(queryByRole("img", { name: "clipboard.png" })).toBeNull();
+        expect(revoke).toHaveBeenCalledTimes(1);
+        fireEvent.click(send);
+        expect(onFinished).toHaveBeenCalledExactlyOnceWith(true, {
+            files: [original, pasted[1]],
+            groupItems: true,
+        });
+        unmount();
+        expect(revoke).toHaveBeenCalledTimes(3);
+    });
+
+    it("should apply file size validation to pasted images", () => {
+        const original = new File(["a"], "original.png", { type: "image/png" });
+        const tooLarge = new File(["too large"], "large.png", { type: "image/png" });
+        const onFinished = vi.fn();
+        const { getByRole, queryByRole } = render(
+            <MediaUploadDialog
+                files={[original]}
+                isFileSizeAcceptable={(file) => file.size < 2}
+                onFinished={onFinished}
+            />,
+        );
+        fireEvent.paste(getByRole("dialog"), { clipboardData: { files: [tooLarge] } });
+        expect(getByRole("alert")).toHaveTextContent("large.png");
+        expect(queryByRole("img", { name: "large.png" })).toBeNull();
+        fireEvent.click(getByRole("button", { name: "Send" }));
+        expect(onFinished).toHaveBeenCalledExactlyOnceWith(true, { files: [original], groupItems: false });
+    });
+
+    it("should paste text into the caption without adding an attachment", async () => {
+        const user = userEvent.setup();
+        const client = createTestClient();
+        const room = new Room("!room:server", client, client.getSafeUserId());
+        const pc = new PartCreator(room, client);
+        const captionModel = new EditorModel([], pc);
+        const file = new File(["a"], "original.png", { type: "image/png" });
+        const onFinished = vi.fn();
+        const { getByRole } = render(
+            <SDKContext.Provider value={SDKContextClass.instance}>
+                <MediaUploadDialog
+                    files={[file]}
+                    isFileSizeAcceptable={() => true}
+                    room={room}
+                    captionModel={captionModel}
+                    onFinished={onFinished}
+                />
+            </SDKContext.Provider>,
+        );
+        const caption = getByRole("textbox", { name: "Caption" });
+        await waitFor(() => expect(caption).toHaveFocus());
+        await user.paste("Pasted caption");
+        expect(caption).toHaveTextContent("Pasted caption");
+        fireEvent.click(getByRole("button", { name: "Send" }));
+        expect(onFinished).toHaveBeenCalledExactlyOnceWith(true, { files: [file], groupItems: false });
+    });
+
+    it("should ignore non-image clipboard files", () => {
+        const file = new File(["a"], "original.png", { type: "image/png" });
+        const onFinished = vi.fn();
+        const { getByRole } = render(
+            <MediaUploadDialog files={[file]} isFileSizeAcceptable={() => true} onFinished={onFinished} />,
+        );
+        const send = getByRole("button", { name: "Send" });
+        expect(
+            fireEvent.paste(send, {
+                clipboardData: { files: [new File(["text"], "notes.txt", { type: "text/plain" })] },
+            }),
+        ).toBe(true);
+        fireEvent.click(send);
+        expect(onFinished).toHaveBeenCalledExactlyOnceWith(true, { files: [file], groupItems: false });
+    });
+
     it("renders the title and cancels on Escape", () => {
         const onFinished = vi.fn();
         const { getByRole } = render(
