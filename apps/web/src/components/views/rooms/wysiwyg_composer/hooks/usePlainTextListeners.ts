@@ -6,7 +6,15 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import { type KeyboardEvent, type RefObject, type SyntheticEvent, useCallback, useRef, useState } from "react";
+import {
+    type KeyboardEvent,
+    type RefObject,
+    type SyntheticEvent,
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
 import { type AllowedMentionAttributes, type MappedSuggestion } from "@vector-im/matrix-wysiwyg";
 
 import { useSettingValue } from "../../../../../hooks/useSettings";
@@ -65,6 +73,23 @@ export function usePlainTextListeners(
     const ref = useRef<HTMLDivElement>(null);
     const autocompleteRef = useRef<Autocomplete>(null);
     const [content, setContent] = useState<string | undefined>(initialContent);
+
+    useEffect(() => {
+        const ownerDocument = ref.current?.ownerDocument ?? document;
+        const onHistoryInput = (event: InputEvent): void => {
+            if (event.inputType !== "historyUndo" && event.inputType !== "historyRedo") return;
+            const editor = ref.current;
+            if (!editor || !editor.contains(ownerDocument.activeElement)) return;
+            // Native history is shared between editing hosts. Once this editor's history is exhausted,
+            // Chromium can target another editor even though focus and selection are still here.
+            if (!(event.target instanceof Node) || !editor.contains(event.target)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+        ownerDocument.addEventListener("beforeinput", onHistoryInput, true);
+        return () => ownerDocument.removeEventListener("beforeinput", onHistoryInput, true);
+    }, []);
 
     const setText = useCallback(
         (text?: string) => {

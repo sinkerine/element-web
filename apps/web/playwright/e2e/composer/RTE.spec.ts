@@ -368,9 +368,32 @@ test.describe("Composer", () => {
                         await expect(composer).toBeEmpty();
                         if (inThread) await expect(app.getComposerField()).toHaveText("untouched room draft");
                     });
+                    if (!rich) {
+                        await test.step("New plain text retains local Undo and Redo when history is exhausted", async () => {
+                            await composer.press("x");
+                            await expect(composer).toHaveText("x");
+                            await composer.press(`${CtrlOrMeta}+KeyZ`);
+                            await expect(composer).toBeEmpty();
+                            // Exhausting this editor's history must not consume another editor's transaction.
+                            await composer.press(`${CtrlOrMeta}+KeyZ`);
+                            await expect(composer).toBeEmpty();
+                            if (inThread) await expect(app.getComposerField()).toHaveText("untouched room draft");
+                            await expect(composer).toBeFocused();
+                            await composer.press(`${CtrlOrMeta}+Shift+KeyZ`);
+                            await expect(composer).toHaveText("x");
+                            await composer.press(`${CtrlOrMeta}+Shift+KeyZ`);
+                            await expect(composer).toHaveText("x");
+                            if (inThread) await expect(app.getComposerField()).toHaveText("untouched room draft");
+                            await expect(composer).toBeFocused();
+                            await composer.press(`${CtrlOrMeta}+KeyZ`);
+                            await expect(composer).toBeEmpty();
+                        });
+                    }
                     for (const newerTyping of [false, true]) {
                         await test.step(`A failed upload ${newerTyping ? "keeps newer typing" : "restores the caption"}`, async () => {
-                            await composer.fill("failed caption");
+                            // The previous failure restores this exact draft for the newer-typing case.
+                            if (!newerTyping) await composer.pressSequentially("failed caption");
+                            await expect(composer).toHaveText("failed caption");
                             await paste();
                             await expect(caption).toHaveText("failed caption");
                             const endpoint = /\/_matrix\/(?:client\/v1\/media|media\/v3)\/upload/;
