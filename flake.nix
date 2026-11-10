@@ -76,8 +76,11 @@
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
-          nodejs_24
+          # Corepack supplies pnpm/pnpx as well as corepack. Prefer these shims
+          # over Node's bundled Corepack so lifecycle scripts use the same tool.
           corepack
+          nodejs_24
+          testUnit
         ];
         shellHook = ''
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath browserLibraries}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

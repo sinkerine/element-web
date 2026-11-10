@@ -10,6 +10,21 @@ Please see LICENSE in the repository root for full details.
 The repository flake supports `x86_64-linux`. `flake.lock` pins nixpkgs; Node 24 and Corepack provide the pnpm version
 specified by the repository. Run commands from this checkout, with the repository dependencies installed.
 
+## Automatic environment with direnv
+
+With direnv installed and its shell hook enabled, approve this checkout's `.envrc` once:
+
+```sh
+direnv allow
+```
+
+The environment loads automatically when entering the checkout and reloads when `flake.nix` or `flake.lock` changes.
+It supplies `node`, `corepack`, and the `pnpm`/`pnpx` shims, including for nested lifecycle scripts, and exports the
+browser libraries through `LD_LIBRARY_PATH`. The generated `.direnv/` cache is ignored by Git. Without direnv,
+use `nix develop` before running project commands; `corepack pnpm` alone does not load the browser libraries.
+
+The shell also provides `element-web-test-unit`, the same full-suite runner as `nix run .#test-unit` below.
+
 ## Native browser tests
 
 ```sh
