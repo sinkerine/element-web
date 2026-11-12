@@ -35,6 +35,7 @@ export * from "./room/timeline/event-tile/body/MImageReplyBodyView";
 export * from "./room/timeline/event-tile/body/MjolnirBodyView";
 export * from "./room/timeline/event-tile/body/MVideoBodyView";
 export * from "./room/timeline/event-tile/body/TextualBodyView";
+export * from "./room/timeline/event-tile/body/AnswerNavigationView";
 export * from "./room/timeline/event-tile/body/UnknownBodyView";
 export * from "./room/timeline/event-tile/body/ViewSourceEventView";
 export * from "./room/timeline/event-tile/EventTileView/TileErrorView";

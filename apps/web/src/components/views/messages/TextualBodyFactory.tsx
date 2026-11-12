@@ -11,6 +11,7 @@ import { MsgType } from "matrix-js-sdk/src/matrix";
 import {
     _t,
     EventContentBodyView,
+    AnswerNavigationView,
     TextualBodyView,
     type TextualBodyContentElement,
     useCreateAutoDisposedViewModel,
@@ -43,6 +44,7 @@ import PopOutIcon from "@vector-im/compound-design-tokens/assets/web/icons/pop-o
 import { EditMessageComposerWrapper } from "../rooms/EditMessageComposerWrapper";
 import { ModuleApi } from "../../../modules/Api";
 import { GALLERY_MSGTYPES } from "../../../utils/MediaCaptionContent";
+import { AnswerNavigationViewModel } from "../../../viewmodels/message-body/AnswerNavigationViewModel";
 
 const logger = rootLogger.getChild("TextualBodyFactory");
 
@@ -74,6 +76,16 @@ export function TextualBodyFactory(props: Readonly<IBodyProps>): JSX.Element {
     const willHaveWrapper = !!props.replacingEventId || !!props.isSeeingThroughMessageHiddenForModeration || isEmote;
     const stripReply = !props.mxEvent.replacingEvent() && !!getParentEventId(props.mxEvent);
     const contentRef = useRef<TextualBodyContentElement>(null);
+    const answerNavigationVm = useCreateAutoDisposedViewModel(() => new AnswerNavigationViewModel());
+    const navigationEnabled =
+        !props.highlightLink &&
+        !props.editState &&
+        (content.msgtype === MsgType.Text || content.msgtype === MsgType.Notice);
+
+    useEffect(() => {
+        answerNavigationVm.setElement(navigationEnabled ? contentRef.current : null);
+        return () => answerNavigationVm.setElement(null);
+    }, [answerNavigationVm, navigationEnabled, willHaveWrapper, props.mxEvent]);
 
     const urlPreviewBundleEnabled = useSettingValue("feature_msc4095_url_preview_bundle");
     const e2eeBundledUrlPreviewsOnly = useSettingValue("urlPreviewsEnabled_e2ee_bundled_only");
@@ -111,6 +123,7 @@ export function TextualBodyFactory(props: Readonly<IBodyProps>): JSX.Element {
                 renderMentionPills: true,
                 renderCodeBlocks: true,
                 renderSpoilers: true,
+                renderHeadingContainers: true,
                 client: roomContext.room?.client ?? client ?? null,
             }),
     );
@@ -325,6 +338,7 @@ export function TextualBodyFactory(props: Readonly<IBodyProps>): JSX.Element {
             vm={textualBodyVm}
             body={<EventContentBodyView vm={eventContentBodyVm} as={willHaveWrapper ? "span" : "div"} />}
             bodyRef={contentRef}
+            navigation={navigationEnabled ? <AnswerNavigationView vm={answerNavigationVm} /> : undefined}
             urlPreviews={<MediaPreviewGroupPreview vm={mediaPreviewVm} className="mx_TextualBody_urlPreviews" />}
             className={getTextualBodyClassName(content.msgtype)}
         />

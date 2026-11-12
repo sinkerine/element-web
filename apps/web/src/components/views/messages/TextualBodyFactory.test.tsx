@@ -186,6 +186,26 @@ describe("<TextualBody />", () => {
         expect(container.querySelector(".mx_EventTile_caption")).toHaveTextContent("gallery caption");
     });
 
+    it.each([false, true])("only offers answer navigation outside search results (search=%s)", async (search) => {
+        const ev = mkEvent({
+            type: "m.room.message",
+            room: room1Id,
+            user: "sender",
+            event: true,
+            content: {
+                msgtype: "m.text",
+                body: "Long answer",
+                format: "org.matrix.custom.html",
+                formatted_body: `<h2>Overview</h2><p>${"Detailed explanation. ".repeat(110)}</p><h2>Details</h2><h2>Sources</h2>`,
+            },
+        });
+        getComponent({ mxEvent: ev, highlightLink: search ? "#/room/example" : undefined });
+        await waitFor(() =>
+            expect(screen.queryAllByRole("button", { name: "In this message" })).toHaveLength(search ? 0 : 1),
+        );
+        expect(screen.queryAllByRole("button", { name: "Sections" })).toHaveLength(search ? 0 : 3);
+    });
+
     it("renders m.emote correctly", () => {
         DMRoomMap.makeShared(defaultMatrixClient);
 

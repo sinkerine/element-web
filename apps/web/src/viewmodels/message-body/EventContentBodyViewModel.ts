@@ -32,6 +32,7 @@ import {
     ambiguousLinkTooltipRenderer,
     codeBlockRenderer,
     spoilerRenderer,
+    headingRenderer,
 } from "../../renderer";
 import { filterBoolean } from "../../utils/arrays";
 import SettingsStore from "../../settings/SettingsStore";
@@ -40,6 +41,8 @@ import SettingsStore from "../../settings/SettingsStore";
  * Options for configuring which renderers to apply.
  */
 export interface ReplacerOptions {
+    /** Keep heading titles separate from optional answer navigation actions. */
+    renderHeadingContainers?: boolean;
     /**
      * Whether to render room/user mentions as pills.
      * @default false
@@ -162,6 +165,7 @@ const createReplacer = (props: EventContentBodyViewModelProps): Replacer => {
             ? ambiguousLinkTooltipRenderer
             : undefined,
         options.renderSpoilers ? spoilerRenderer : undefined,
+        options.renderHeadingContainers ? headingRenderer : undefined,
         options.renderCodeBlocks ? codeBlockRenderer : undefined,
     ]);
 

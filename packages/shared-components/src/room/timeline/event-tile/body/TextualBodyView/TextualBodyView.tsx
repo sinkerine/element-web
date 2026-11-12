@@ -122,6 +122,8 @@ interface TextualBodyViewProps {
      * Optional URL preview subtree rendered after the body.
      */
     urlPreviews?: ReactNode;
+    /** Optional navigation rendered before the message body. */
+    navigation?: ReactNode;
     /**
      * Optional host-level class names.
      */
@@ -152,6 +154,7 @@ export function TextualBodyView({
     body,
     bodyRef,
     urlPreviews,
+    navigation,
     className,
 }: Readonly<TextualBodyViewProps>): JSX.Element {
     const eventPresentationAttributes = useEventPresentationAttributes();
@@ -275,6 +278,7 @@ export function TextualBodyView({
         // The interactive children will handle their own keyboard events.
         // oxlint-disable-next-line jsx-a11y/click-events-have-key-events
         <div id={id} className={rootClasses} onClick={vm.onRootClick} {...eventPresentationAttributes}>
+            {navigation}
             {renderedBody}
             {urlPreviews}
         </div>

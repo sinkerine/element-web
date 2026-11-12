@@ -41,6 +41,12 @@
         "view_source": "View source",
         "yes": "Yes"
     },
+    "answer_navigation": {
+        "current": "Current",
+        "in_this_message": "In this message",
+        "sections": "Sections",
+        "sources": "Sources"
+    },
     "common": {
         "attachment": "Attachment",
         "encryption_enabled": "Encryption enabled",
