@@ -15,6 +15,7 @@ import Timer from "../../utils/Timer";
 import { getKeyBindingsManager } from "../../KeyBindingsManager";
 import { KeyBindingAction } from "../../accessibility/KeyboardShortcuts";
 import { SDKContext } from "../../contexts/SDKContext";
+import { TimelineReadingAnchor } from "./TimelineReadingAnchor";
 
 // The amount of extra scroll distance to allow prior to unfilling.
 // See getExcessHeight.
@@ -124,9 +125,9 @@ interface IProps {
  *   - fixed, in which the viewport is conceptually tied at a specific scroll
  *     offset.  We don't save the absolute scroll offset, because that would be
  *     affected by window width, zoom level, amount of scrollback, etc. Instead,
- *     we save an identifier for the last fully-visible message, and the number
- *     of pixels the window was scrolled below it - which is hopefully near
- *     enough.
+ *     we save an identifier for the message at the top of the viewport and
+ *     the offset of a visible text block within it. Room restoration uses the
+ *     message offset, while live updates also compensate for block movement.
  *
  * The 'stickyBottom' property controls the behaviour when we reach the bottom
  * of the window (either through a user-initiated scroll, or by calling
@@ -177,6 +178,7 @@ export default class ScrollPanel extends React.Component<IProps> {
     // Is that next fill request scheduled because of a props update?
     private pendingFillDueToPropsUpdate = false;
     private scrollState!: IScrollState;
+    private readingAnchor?: TimelineReadingAnchor;
     private preventShrinkingState: IPreventShrinkingState | null = null;
     private unfillDebouncer: number | null = null;
     private bottomGrowth!: number;
@@ -516,8 +518,7 @@ export default class ScrollPanel extends React.Component<IProps> {
      *   tracking.
      *
      * number bottomOffset: undefined if stuckAtBottom is true; if it is false,
-     *   the number of pixels the bottom of the tracked child is above the
-     *   bottom of the scroll panel.
+     *   the distance from the list bottom to the tracked reading anchor.
      */
     public getScrollState = (): IScrollState => this.scrollState;
 
@@ -534,6 +535,7 @@ export default class ScrollPanel extends React.Component<IProps> {
      * child list.)
      */
     public resetScrollState = (): void => {
+        this.readingAnchor = undefined;
         this.scrollState = {
             stuckAtBottom: this.props.startAtBottom,
         };
@@ -612,6 +614,7 @@ export default class ScrollPanel extends React.Component<IProps> {
      */
     public scrollToToken = (scrollToken: string, pixelOffset = 0, offsetBase = 0): void => {
         // set the trackedScrollToken, so we can get the node through getTrackedNode
+        this.readingAnchor = undefined;
         this.scrollState = {
             stuckAtBottom: false,
             trackedScrollToken: scrollToken,
@@ -633,6 +636,7 @@ export default class ScrollPanel extends React.Component<IProps> {
 
     private saveScrollState(): void {
         if (this.props.stickyBottom && this.isAtBottom()) {
+            this.readingAnchor = undefined;
             this.scrollState = { stuckAtBottom: true };
             debuglog("saved stuckAtBottom state");
             return;
@@ -640,6 +644,7 @@ export default class ScrollPanel extends React.Component<IProps> {
 
         const scrollNode = this.getScrollNode();
         const viewportBottom = scrollNode.scrollHeight - (scrollNode.scrollTop + scrollNode.clientHeight);
+        const viewportTop = viewportBottom + scrollNode.clientHeight;
 
         const itemlist = this.itemlist.current;
         if (!itemlist) return;
@@ -655,9 +660,9 @@ export default class ScrollPanel extends React.Component<IProps> {
                 continue;
             }
             node = htmlMessage;
-            // break at the first message (coming from the bottom)
-            // that has it's offsetTop above the bottom of the viewport.
-            if (this.topFromBottom(node) > viewportBottom) {
+            // Track the message at the top of the viewport. Anchoring a later visible
+            // message would move the passage being read when an earlier answer grows.
+            if (this.topFromBottom(node) >= viewportTop) {
                 // Use this node as the scrollToken
                 break;
             }
@@ -669,13 +674,17 @@ export default class ScrollPanel extends React.Component<IProps> {
         }
         const scrollToken = node.dataset.scrollTokens?.split(",")[0];
         debuglog("saving anchored scroll state to message", scrollToken);
-        const bottomOffset = this.topFromBottom(node);
+        const tileBottomOffset = this.topFromBottom(node);
+        const viewport = scrollNode.getBoundingClientRect();
+        this.readingAnchor = TimelineReadingAnchor.capture(node, viewport.top, viewport.bottom);
+        const bottomOffset = tileBottomOffset - (this.readingAnchor?.getOffset(node) ?? 0);
         this.scrollState = {
             stuckAtBottom: false,
             trackedNode: node,
             trackedScrollToken: scrollToken,
             bottomOffset: bottomOffset,
-            pixelOffset: bottomOffset - viewportBottom, //needed for restoring the scroll position when coming back to the room
+            // Room restoration still uses the tile's offset, not the transient text block.
+            pixelOffset: tileBottomOffset - viewportBottom,
         };
     }
 
@@ -691,7 +700,8 @@ export default class ScrollPanel extends React.Component<IProps> {
             const itemlist = this.itemlist.current;
             const trackedNode = this.getTrackedNode();
             if (trackedNode) {
-                const newBottomOffset = this.topFromBottom(trackedNode);
+                const newBottomOffset =
+                    this.topFromBottom(trackedNode) - (this.readingAnchor?.getOffset(trackedNode) ?? 0);
                 const bottomDiff = newBottomOffset - (scrollState.bottomOffset ?? 0);
                 this.bottomGrowth += bottomDiff;
                 scrollState.bottomOffset = newBottomOffset;
