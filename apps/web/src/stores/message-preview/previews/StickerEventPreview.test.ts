@@ -8,7 +8,7 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { Room } from "matrix-js-sdk/src/matrix";
+import { Room, RoomMember } from "matrix-js-sdk/src/matrix";
 import { mkEvent, stubClient } from "test-utils";
 
 import { StickerEventPreview } from "./StickerEventPreview";
@@ -113,5 +113,23 @@ describe("StickerEventPreview", () => {
                 expect(preview.getTextFor(event, undefined, true)).toBe("wave");
             });
         });
+    });
+    it("should use the plain display name only when requested", () => {
+        const event = mkEvent({
+            event: true,
+            type: "m.sticker",
+            content: { body: "wave" },
+            user: "@assistant:server",
+            room: "!room:server",
+        });
+        event.sender = new RoomMember("!room:server", "@assistant:server");
+        event.sender.name = "🤖 assistant (@assistant:server)";
+        event.sender.rawDisplayName = "🤖 assistant";
+        const previewer = new StickerEventPreview();
+        const plain = previewer.getTextFor(event, undefined, false, { plainSenderName: true });
+        expect(plain).toContain("🤖 assistant");
+        expect(plain).not.toContain("(@");
+        expect(previewer.getTextFor(event)).toContain("(@assistant:server)");
+        expect(previewer.getTextFor(event, undefined, false, { textOnly: true })).toBe("wave");
     });
 });

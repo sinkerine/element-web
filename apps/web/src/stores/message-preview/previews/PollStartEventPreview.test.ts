@@ -9,7 +9,7 @@ Please see LICENSE files in the repository root for full details.
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { type MatrixClient } from "matrix-js-sdk/src/matrix";
+import { type MatrixClient, RoomMember } from "matrix-js-sdk/src/matrix";
 import { makePollStartEvent } from "test-utils";
 
 // Import directly from the file to avoid circular dependencies with MessagePreviewStore
@@ -36,5 +36,15 @@ describe("PollStartEventPreview", () => {
         const pollStartEvent = makePollStartEvent("Your Question", "@yo:example.com");
         const preview = new PollStartEventPreview();
         expect(preview.getTextFor(pollStartEvent)).toBe("@yo:example.com: Your Question");
+    });
+    it("should omit the poll sender only in text-only mode", () => {
+        const event = makePollStartEvent("Question?", "@assistant:server");
+        event.sender = new RoomMember("!room:server", "@assistant:server");
+        event.sender.name = "🤖 assistant (@assistant:server)";
+        event.sender.rawDisplayName = "🤖 assistant";
+        const preview = new PollStartEventPreview();
+        expect(preview.getTextFor(event, undefined, false, { textOnly: true })).toBe("Question?");
+        expect(preview.getTextFor(event, undefined, false, { plainSenderName: true })).toBe("🤖 assistant: Question?");
+        expect(preview.getTextFor(event)).toBe("🤖 assistant (@assistant:server): Question?");
     });
 });

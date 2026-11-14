@@ -29,6 +29,9 @@ import { StickerEventPreview } from "./previews/StickerEventPreview";
 import { ReactionEventPreview } from "./previews/ReactionEventPreview";
 import { UPDATE_EVENT } from "../AsyncStore";
 import { type Preview } from "./previews";
+import SettingsStore from "../../settings/SettingsStore";
+import { type PreviewOptions } from "./previews/Preview";
+import { getTextOnlyPreviewSelection, isTextOnlyPreviewEnabled } from "./TextOnlyPreviewSelection";
 import shouldHideEvent from "../../shouldHideEvent";
 
 // Emitted event for when a room's preview has changed. First argument will the room for which
@@ -96,6 +99,8 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
     // null indicates the preview is empty / irrelevant
     private previews = new Map<string, Map<TagID | TAG_ANY, MessagePreview | null>>();
 
+    private selectionWatchers: string[] = [];
+
     // Previewers keyed by event type
     private readonly previewers: Record<string, { isState: boolean; previewer: Preview }>;
 
@@ -143,13 +148,22 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
         return previews.get(TAG_ANY) ?? null;
     }
 
-    public generatePreviewForEvent(event: MatrixEvent): string {
+    /** Generate a preview outside the room list, preserving attribution unless options request otherwise. */
+    public generatePreviewForEvent(event: MatrixEvent, options?: PreviewOptions): string {
         const previewDef = this.previewers[event.getType()];
-        return previewDef?.previewer.getTextFor(event, undefined, true) ?? "";
+        return previewDef?.previewer.getTextFor(event, undefined, true, options) ?? "";
     }
 
     private async generatePreview(room: Room, tagId?: TagID): Promise<void> {
+        const textOnly = isTextOnlyPreviewEnabled(room.roomId);
+        const options: PreviewOptions = { plainSenderName: true, textOnly };
         const events = [...room.getLiveTimeline().getEvents(), ...room.getPendingEvents()];
+        if (textOnly) {
+            for (const thread of room.getThreads()) {
+                const reply = thread.replyToEvent;
+                if (reply && !events.includes(reply)) events.push(reply);
+            }
+        }
 
         // sort events from oldest to newest
         events.sort((a: MatrixEvent, b: MatrixEvent) => {
@@ -184,7 +198,7 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
             if (!previewDef) continue;
             if (previewDef.isState && isNullOrUndefined(event.getStateKey())) continue;
 
-            const anyPreviewText = previewDef.previewer.getTextFor(event);
+            const anyPreviewText = previewDef.previewer.getTextFor(event, undefined, undefined, options);
             if (!anyPreviewText) continue; // not previewable for some reason
 
             changed = changed || anyPreviewText !== map.get(TAG_ANY)?.text;
@@ -193,7 +207,7 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
             const tagsToGenerate = Array.from(map.keys()).filter((t) => t !== TAG_ANY); // we did the any tag above
             for (const genTagId of tagsToGenerate) {
                 const realTagId = genTagId === TAG_ANY ? undefined : genTagId;
-                const preview = previewDef.previewer.getTextFor(event, realTagId);
+                const preview = previewDef.previewer.getTextFor(event, realTagId, undefined, options);
 
                 if (preview === anyPreviewText) {
                     changed = changed || anyPreviewText !== map.get(genTagId)?.text;
@@ -240,11 +254,29 @@ export class MessagePreviewStore extends AsyncStoreWithClient<EmptyObject> {
     protected async onReady(): Promise<void> {
         if (!this.matrixClient) return;
         this.matrixClient.on(RoomEvent.LocalEchoUpdated, this.onLocalEchoUpdated);
+        this.selectionWatchers = [
+            SettingsStore.watchSetting("RoomList.textOnlyPreview", null, (_name, roomId) => {
+                if (roomId) void this.regenerateCachedPreview(roomId);
+            }),
+            SettingsStore.watchSetting("RoomList.textOnlyPreviewDmUsers", null, () => {
+                for (const roomId of this.previews.keys()) {
+                    if (getTextOnlyPreviewSelection(roomId).dmUserId) void this.regenerateCachedPreview(roomId);
+                }
+            }),
+        ];
     }
 
     protected async onNotReady(): Promise<void> {
+        this.selectionWatchers.forEach((watcher) => SettingsStore.unwatchSetting(watcher));
+        this.selectionWatchers = [];
         if (!this.matrixClient) return;
         this.matrixClient.off(RoomEvent.LocalEchoUpdated, this.onLocalEchoUpdated);
+    }
+
+    private async regenerateCachedPreview(roomId: string): Promise<void> {
+        if (!this.previews.has(roomId)) return;
+        const room = this.matrixClient?.getRoom(roomId);
+        if (room) await this.generatePreview(room);
     }
 
     protected onLocalEchoUpdated = async (ev: MatrixEvent, room: Room): Promise<void> => {

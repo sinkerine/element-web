@@ -340,6 +340,10 @@ export interface Settings {
     "RoomList.panelSize": IBaseSetting<number | null>;
     "RoomList.isPanelCollapsed": IBaseSetting<boolean>;
     "RoomList.showMessagePreview": IBaseSetting<boolean>;
+    /** Room account override; null follows the DM person selection. */
+    "RoomList.textOnlyPreview": IBaseSetting<boolean | null>;
+    /** Account-wide list of DM people whose previews show message text only. */
+    "RoomList.textOnlyPreviewDmUsers": IBaseSetting<string[]>;
     "RightPanel.phasesGlobal": IBaseSetting<IRightPanelForRoomStored | null>;
     "RightPanel.phases": IBaseSetting<IRightPanelForRoomStored | null>;
     "enableEventIndexing": IBaseSetting<boolean>;
@@ -1284,6 +1288,14 @@ export const SETTINGS: Settings = {
     "RoomList.isPanelCollapsed": {
         supportedLevels: [SettingLevel.DEVICE],
         default: false,
+    },
+    "RoomList.textOnlyPreview": {
+        supportedLevels: [SettingLevel.ROOM_ACCOUNT],
+        default: null,
+    },
+    "RoomList.textOnlyPreviewDmUsers": {
+        supportedLevels: [SettingLevel.ACCOUNT],
+        default: [],
     },
     "RoomList.showMessagePreview": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS_WITH_CONFIG,

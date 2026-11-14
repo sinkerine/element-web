@@ -8,7 +8,8 @@ Please see LICENSE files in the repository root for full details.
 
 import { type MatrixEvent, MsgType, RelationType } from "matrix-js-sdk/src/matrix";
 
-import { type Preview } from "./Preview";
+import { MatrixClientPeg } from "../../../MatrixClientPeg";
+import { type Preview, type PreviewOptions } from "./Preview";
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 import { _t, sanitizeForTranslation } from "../../../languageHandler";
 import { getSenderName, isSelf, shouldPrefixMessagesIn } from "./utils";
@@ -17,7 +18,7 @@ import { stripHTMLReply, stripPlainReply } from "../../../utils/Reply";
 import { getMediaCaption, isGalleryContent } from "../../../utils/MediaCaptionContent";
 
 export class MessageEventPreview implements Preview {
-    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null {
+    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string | null {
         let eventContent = event.getContent();
 
         if (event.isRelation(RelationType.Replace)) {
@@ -46,8 +47,17 @@ export class MessageEventPreview implements Preview {
             body = eventContent.formatted_body;
         }
 
+        const relation = event.getRelation();
+        const original =
+            options?.textOnly && relation?.rel_type === RelationType.Replace && relation.event_id
+                ? MatrixClientPeg.get()?.getRoom(event.getRoomId())?.findEventById(relation.event_id)
+                : undefined;
+        const stripFallback =
+            !!event.getWireContent()["m.relates_to"]?.["m.in_reply_to"] ||
+            (options?.textOnly && !!original?.replyEventId);
+
         // XXX: Newer relations have a getRelation() function which is not compatible with replies.
-        if (event.getWireContent()["m.relates_to"]?.["m.in_reply_to"]) {
+        if (stripFallback || (options?.textOnly && hasHtml)) {
             // If this is a reply, get the real reply and use that
             if (hasHtml) {
                 body = (stripHTMLReply(body) || "").trim();
@@ -66,15 +76,15 @@ export class MessageEventPreview implements Preview {
         body = sanitizeForTranslation(body);
 
         if (msgtype === MsgType.Emote) {
-            return _t("event_preview|m.emote", { senderName: getSenderName(event), emote: body });
+            return _t("event_preview|m.emote", { senderName: getSenderName(event, options), emote: body });
         }
 
         const roomId = event.getRoomId();
 
-        if (isThread || isSelf(event) || (roomId && !shouldPrefixMessagesIn(roomId, tagId))) {
+        if (options?.textOnly || isThread || isSelf(event) || (roomId && !shouldPrefixMessagesIn(roomId, tagId))) {
             return body;
         } else {
-            return _t("event_preview|m.text", { senderName: getSenderName(event), message: body });
+            return _t("event_preview|m.text", { senderName: getSenderName(event, options), message: body });
         }
     }
 }

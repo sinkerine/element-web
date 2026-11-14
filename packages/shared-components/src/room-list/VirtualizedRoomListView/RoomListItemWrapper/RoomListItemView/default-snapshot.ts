@@ -56,4 +56,8 @@ export const defaultSnapshot: RoomListItemViewSnapshot = {
     ],
     areSectionsEnabled: true,
     canChangeSection: true,
+    canChangeTextOnlyPreview: false,
+    isTextOnlyPreview: false,
+    canChangeDmUserTextOnlyPreview: false,
+    isDmUserTextOnlyPreview: false,
 };

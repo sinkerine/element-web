@@ -10,7 +10,7 @@ import { type MatrixEvent, type PollStartEventContent } from "matrix-js-sdk/src/
 import { InvalidEventError } from "matrix-js-sdk/src/extensible_events_v1/InvalidEventError";
 import { PollStartEvent } from "matrix-js-sdk/src/extensible_events_v1/PollStartEvent";
 
-import { type Preview } from "./Preview";
+import { type Preview, type PreviewOptions } from "./Preview";
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 import { _t, sanitizeForTranslation } from "../../../languageHandler";
 import { getSenderName, isSelf, shouldPrefixMessagesIn } from "./utils";
@@ -20,7 +20,7 @@ export class PollStartEventPreview implements Preview {
     public static contextType = MatrixClientContext;
     declare public context: React.ContextType<typeof MatrixClientContext>;
 
-    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null {
+    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string | null {
         let eventContent = event.getContent();
 
         if (event.isRelation("m.replace")) {
@@ -42,10 +42,10 @@ export class PollStartEventPreview implements Preview {
             let question = poll.question.text.trim();
             question = sanitizeForTranslation(question);
 
-            if (isThread || isSelf(event) || !shouldPrefixMessagesIn(event.getRoomId()!, tagId)) {
+            if (options?.textOnly || isThread || isSelf(event) || !shouldPrefixMessagesIn(event.getRoomId()!, tagId)) {
                 return question;
             } else {
-                return _t("event_preview|m.text", { senderName: getSenderName(event), message: question });
+                return _t("event_preview|m.text", { senderName: getSenderName(event, options), message: question });
             }
         } catch (e) {
             if (e instanceof InvalidEventError) {

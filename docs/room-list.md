@@ -212,3 +212,32 @@ The list renders either as a flat list or a grouped list with section headers, d
 `isFlatList` flag in the snapshot (see [Flat list mode](#flat-list-mode)); in the grouped case,
 drag-and-drop is wired back to the root view model, which reorders sections, moves rooms between
 them, and collapses the sections for the duration of a section drag.
+
+### Message previews
+
+Room-list previews always use the sender's display name without the Matrix user ID added for disambiguation.
+When a sender has no display name, their user ID remains their name. The timeline keeps its full disambiguation.
+Same-named senders therefore look alike in the room list.
+
+With **Show message previews** enabled, a joined room's hover **More Options** menu and right-click menu offer
+**Preview message text only**. For a DM, **Preview message text only in all DMs with this person** also applies to
+all rooms mapped to that person by your `m.direct` account data. Two-member rooms are not inferred to be DMs.
+These choices do not enable or disable previews, and are hidden for pending invites and while previews are off.
+
+`RoomList.textOnlyPreview` is a nullable boolean at the `ROOM_ACCOUNT` level, stored in the room's
+`im.vector.web.settings` account data. Its default, `null`, follows the DM person's choice.
+`RoomList.textOnlyPreviewDmUsers` is an array of Matrix user IDs at the `ACCOUNT` level, stored in the account's
+`im.vector.web.settings` account data, and defaults to `[]`. Both settings sync across your devices.
+An explicit room `true` or `false` overrides the DM person; the DM person overrides the default (off).
+Changing a room to match its inherited choice stores `null`, so future person-wide changes apply to that room.
+Changes to `m.direct` apply when the preview is next regenerated.
+
+Selected conversations show the newest message text, including thread replies, without sender prefixes or reply
+fallback quotes. Edits use the new text. HTML `<mx-reply>` fallback is removed, but deliberate plain-text quotes
+without a reply relation are preserved. Sticker names, gallery captions and poll questions have no sender prefix.
+Emotes, reactions and legacy calls retain the sender as a grammatical subject, using the plain display name.
+Reply and thread relations, timeline quotes and thread panels stay intact. Unselected conversations still exclude
+thread replies and retain their existing sender prefixes, including in one-to-one DMs.
+
+These strings are generated in Element Web. No homeserver change is required. Duplicate display names can reproduce
+the old disambiguated preview label in fixtures; that does not establish the cause of any production incident.

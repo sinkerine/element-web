@@ -113,6 +113,10 @@ export const createMockRoomSnapshot = (
     sections: [],
     areSectionsEnabled: true,
     canChangeSection: true,
+    canChangeTextOnlyPreview: false,
+    isTextOnlyPreview: false,
+    canChangeDmUserTextOnlyPreview: false,
+    isDmUserTextOnlyPreview: false,
 });
 
 export function createMockRoomItemViewModel(
@@ -130,6 +134,8 @@ export function createMockRoomItemViewModel(
         onMarkAsUnread: fn(),
         onToggleFavorite: fn(),
         onToggleLowPriority: fn(),
+        onToggleTextOnlyPreview: fn(),
+        onToggleDmUserTextOnlyPreview: fn(),
         onInvite: fn(),
         onCopyRoomLink: fn(),
         onLeaveRoom: fn(),

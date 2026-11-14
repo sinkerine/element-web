@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
-import { type Preview } from "./Preview";
+import { type Preview, type PreviewOptions } from "./Preview";
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 import { getSenderName, isSelf } from "./utils";
 import { _t } from "../../../languageHandler";
@@ -18,7 +18,7 @@ import type { MessagePreviewStore } from "../MessagePreviewStore";
 export class ReactionEventPreview implements Preview {
     public constructor(private readonly messagePreviewStore: MessagePreviewStore) {}
 
-    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null {
+    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string | null {
         const roomId = event.getRoomId();
         if (!roomId) return null; // not a room event
 
@@ -33,7 +33,7 @@ export class ReactionEventPreview implements Preview {
         const relatedEvent = relation.event_id ? room?.findEventById(relation.event_id) : null;
         if (!relatedEvent) return null;
 
-        const message = this.messagePreviewStore.generatePreviewForEvent(relatedEvent);
+        const message = this.messagePreviewStore.generatePreviewForEvent(relatedEvent, options);
         if (isSelf(event)) {
             return _t("event_preview|m.reaction|you", {
                 reaction,
@@ -42,7 +42,7 @@ export class ReactionEventPreview implements Preview {
         }
 
         return _t("event_preview|m.reaction|user", {
-            sender: getSenderName(event),
+            sender: getSenderName(event, options),
             reaction,
             message,
         });

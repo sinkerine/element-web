@@ -7,6 +7,7 @@
 
 // @vitest-environment happy-dom
 
+import { logger } from "matrix-js-sdk/src/logger";
 import EventEmitter from "node:events";
 import { vi, describe, it, expect, beforeEach, afterEach, type Mock } from "vitest";
 import {
@@ -25,6 +26,7 @@ import { RoomNotificationState } from "../../stores/notifications/RoomNotificati
 import { RoomNotificationStateStore } from "../../stores/notifications/RoomNotificationStateStore";
 import { NotificationStateEvents } from "../../stores/notifications/NotificationState";
 import { type MessagePreview, MessagePreviewStore } from "../../stores/message-preview";
+import { type SettingKey } from "../../settings/Settings";
 import SettingsStore, { type CallbackFn } from "../../settings/SettingsStore";
 import DMRoomMap from "../../utils/DMRoomMap";
 import { DefaultTagID } from "../../stores/room-list-v3/skip-list/tag";
@@ -35,6 +37,7 @@ import { CallEvent, type Call } from "../../models/Call";
 import { RoomListItemViewModel } from "./RoomListItemViewModel";
 import RoomListStoreV3 from "../../stores/room-list-v3/RoomListStoreV3";
 import * as tagRoomModule from "../../utils/room/tagRoom";
+import { SettingLevel } from "../../settings/SettingLevel";
 import { CHATS_TAG } from "../../stores/room-list-v3/section";
 
 vi.mock("./utils", () => ({
@@ -721,6 +724,124 @@ describe("RoomListItemViewModel", () => {
             viewModel.dispose();
 
             expect(offSpy).toHaveBeenCalled();
+        });
+    });
+    describe("message text only selections", () => {
+        let roomValue: boolean | null;
+        let dmUsers: string[];
+        let showPreviews: boolean;
+        let callbacks: Map<string, CallbackFn<SettingKey>>;
+        beforeEach(() => {
+            roomValue = null;
+            dmUsers = [];
+            showPreviews = true;
+            callbacks = new Map();
+            vi.spyOn(room, "getMyMembership").mockReturnValue(KnownMembership.Join);
+            vi.mocked(SettingsStore.getValue).mockImplementation((key) => {
+                if (key === "RoomList.showMessagePreview") return showPreviews;
+                if (key === "RoomList.textOnlyPreview") return roomValue;
+                if (key === "RoomList.textOnlyPreviewDmUsers") return dmUsers;
+                if (key === "RoomList.OrderedCustomSections") return [];
+                if (key === "RoomList.CustomSectionData") return {};
+                return false;
+            });
+            vi.mocked(SettingsStore.watchSetting).mockImplementation((key, _roomId, cb) => {
+                callbacks.set(key, cb);
+                return key;
+            });
+        });
+        it("should write room account data and wait for a settings echo without sending events", async () => {
+            viewModel = new RoomListItemViewModel({ room, client: matrixClient });
+            expect(viewModel.getSnapshot().canChangeTextOnlyPreview).toBe(true);
+            expect(viewModel.getSnapshot().canChangeDmUserTextOnlyPreview).toBe(false);
+            viewModel.onToggleTextOnlyPreview();
+            expect(SettingsStore.setValue).toHaveBeenCalledWith(
+                "RoomList.textOnlyPreview",
+                room.roomId,
+                SettingLevel.ROOM_ACCOUNT,
+                true,
+            );
+            expect(viewModel.getSnapshot().isTextOnlyPreview).toBe(false);
+            roomValue = true;
+            callbacks.get("RoomList.textOnlyPreview")!(
+                "RoomList.textOnlyPreview",
+                room.roomId,
+                SettingLevel.ROOM_ACCOUNT,
+                true,
+                true,
+            );
+            expect(viewModel.getSnapshot().isTextOnlyPreview).toBe(true);
+            room.emit(RoomEvent.Name, room);
+            expect(viewModel.getSnapshot().isTextOnlyPreview).toBe(true);
+            expect(matrixClient.sendEvent).not.toHaveBeenCalled();
+            expect(matrixClient.sendMessage).not.toHaveBeenCalled();
+            expect(matrixClient.sendStateEvent).not.toHaveBeenCalled();
+        });
+        it("should toggle the DM person and reflect a remote account update", () => {
+            vi.mocked(DMRoomMap.shared().getUserIdForRoomId).mockReturnValue("@assistant:server");
+            viewModel = new RoomListItemViewModel({ room, client: matrixClient });
+            expect(viewModel.getSnapshot().canChangeDmUserTextOnlyPreview).toBe(true);
+            viewModel.onToggleDmUserTextOnlyPreview();
+            expect(SettingsStore.setValue).toHaveBeenCalledWith(
+                "RoomList.textOnlyPreviewDmUsers",
+                null,
+                SettingLevel.ACCOUNT,
+                ["@assistant:server"],
+            );
+            dmUsers = ["@assistant:server"];
+            callbacks.get("RoomList.textOnlyPreviewDmUsers")!(
+                "RoomList.textOnlyPreviewDmUsers",
+                null,
+                SettingLevel.ACCOUNT,
+                dmUsers,
+                dmUsers,
+            );
+            expect(viewModel.getSnapshot().isDmUserTextOnlyPreview).toBe(true);
+            expect(viewModel.getSnapshot().isTextOnlyPreview).toBe(true);
+        });
+        it("should offer no toggles with previews off or pending invites", () => {
+            viewModel = new RoomListItemViewModel({ room, client: matrixClient });
+            showPreviews = false;
+            callbacks.get("RoomList.showMessagePreview")!(
+                "RoomList.showMessagePreview",
+                null,
+                SettingLevel.DEVICE,
+                false,
+                false,
+            );
+            expect(viewModel.getSnapshot().canChangeTextOnlyPreview).toBe(false);
+            showPreviews = true;
+            vi.mocked(room.getMyMembership).mockReturnValue(KnownMembership.Invite);
+            callbacks.get("RoomList.showMessagePreview")!(
+                "RoomList.showMessagePreview",
+                null,
+                SettingLevel.DEVICE,
+                true,
+                true,
+            );
+            expect(viewModel.getSnapshot().canChangeTextOnlyPreview).toBe(false);
+        });
+        it("should preserve state and log failed writes for both toggles", async () => {
+            vi.mocked(DMRoomMap.shared().getUserIdForRoomId).mockReturnValue("@assistant:server");
+            const error = new Error("write failed");
+            vi.mocked(SettingsStore.setValue).mockRejectedValue(error);
+            const warn = vi.spyOn(logger, "warn");
+            viewModel = new RoomListItemViewModel({ room, client: matrixClient });
+            await flushPromises();
+            const snapshot = viewModel.getSnapshot();
+            viewModel.onToggleTextOnlyPreview();
+            viewModel.onToggleDmUserTextOnlyPreview();
+            await flushPromises();
+            expect(viewModel.getSnapshot()).toEqual(snapshot);
+            expect(warn).toHaveBeenCalledWith("Failed to set room text-only preview", error);
+            expect(warn).toHaveBeenCalledWith("Failed to set DM-person text-only preview", error);
+        });
+        it("should dispose both selection watchers", () => {
+            const unwatch = vi.spyOn(SettingsStore, "unwatchSetting");
+            viewModel = new RoomListItemViewModel({ room, client: matrixClient });
+            viewModel.dispose();
+            expect(unwatch).toHaveBeenCalledWith("RoomList.textOnlyPreview");
+            expect(unwatch).toHaveBeenCalledWith("RoomList.textOnlyPreviewDmUsers");
         });
     });
 });

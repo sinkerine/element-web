@@ -10,6 +10,7 @@ import { render, screen } from "@test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect } from "vitest";
 
+import { RoomListItemContextMenu } from "./RoomListItemContextMenu";
 import { RoomListItemMoreOptionsMenu, MoreOptionContent } from "./RoomListItemMoreOptionsMenu";
 import { useMockedViewModel } from "../../../../core/viewmodel";
 import type { RoomListItemViewSnapshot } from "./RoomListItemView";
@@ -311,5 +312,63 @@ describe("<RoomListItemMoreOptionsMenu />", () => {
         expect(screen.queryByRole("menuitem", { name: "Move to" })).not.toBeInTheDocument();
         // The remaining entries are unaffected
         expect(screen.getByRole("menuitem", { name: "Leave room" })).toBeInTheDocument();
+    });
+    it.each([false, true])("should render and toggle the room selection (%s)", async (checked) => {
+        const user = userEvent.setup();
+        renderMenu({ canChangeTextOnlyPreview: true, isTextOnlyPreview: checked });
+        await user.click(screen.getByRole("button", { name: "More Options" }));
+        const toggle = screen.getByRole("menuitemcheckbox", { name: "Preview message text only" });
+        expect(toggle).toHaveAttribute("aria-checked", String(checked));
+        await user.click(toggle);
+        expect(mockCallbacks.onToggleTextOnlyPreview).toHaveBeenCalled();
+    });
+    it.each([false, true])("should render and toggle the DM-person selection (%s)", async (checked) => {
+        const user = userEvent.setup();
+        renderMenu({
+            canChangeTextOnlyPreview: true,
+            canChangeDmUserTextOnlyPreview: true,
+            isDmUserTextOnlyPreview: checked,
+        });
+        await user.click(screen.getByRole("button", { name: "More Options" }));
+        const toggle = screen.getByRole("menuitemcheckbox", {
+            name: "Preview message text only in all DMs with this person",
+        });
+        expect(toggle).toHaveAttribute("aria-checked", String(checked));
+        await user.click(toggle);
+        expect(mockCallbacks.onToggleDmUserTextOnlyPreview).toHaveBeenCalled();
+    });
+    it("should hide both toggles when the view model cannot change previews", async () => {
+        const user = userEvent.setup();
+        renderMenu({ canChangeTextOnlyPreview: false, canChangeDmUserTextOnlyPreview: false });
+        await user.click(screen.getByRole("button", { name: "More Options" }));
+        expect(screen.queryByRole("menuitemcheckbox", { name: /Preview message text only/ })).not.toBeInTheDocument();
+    });
+    it("should offer the same checked selections through the context menu", async () => {
+        const TestComponent = (): JSX.Element => {
+            const vm = useMockedViewModel(
+                {
+                    ...defaultSnapshot,
+                    canChangeTextOnlyPreview: true,
+                    canChangeDmUserTextOnlyPreview: true,
+                    isTextOnlyPreview: true,
+                    isDmUserTextOnlyPreview: true,
+                },
+                mockCallbacks,
+            );
+            return (
+                <RoomListItemContextMenu vm={vm}>
+                    <button>Room</button>
+                </RoomListItemContextMenu>
+            );
+        };
+        render(<TestComponent />);
+        const user = userEvent.setup();
+        await user.pointer({ keys: "[MouseRight]", target: screen.getByRole("button", { name: "Room" }) });
+        expect(screen.getByRole("menuitemcheckbox", { name: "Preview message text only" })).toBeChecked();
+        expect(
+            screen.getByRole("menuitemcheckbox", { name: "Preview message text only in all DMs with this person" }),
+        ).toBeChecked();
+        await user.click(screen.getByRole("menuitemcheckbox", { name: "Preview message text only" }));
+        expect(mockCallbacks.onToggleTextOnlyPreview).toHaveBeenCalled();
     });
 });

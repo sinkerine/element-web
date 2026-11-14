@@ -21,6 +21,11 @@ import type { Room, MatrixClient, RoomMember, ClientEventHandlerMap } from "matr
 import type { RoomNotificationState } from "../../stores/notifications/RoomNotificationState";
 import { RoomNotificationStateStore } from "../../stores/notifications/RoomNotificationStateStore";
 import { NotificationStateEvents } from "../../stores/notifications/NotificationState";
+import {
+    getTextOnlyPreviewSelection,
+    setRoomTextOnlyPreview,
+    setDmUserTextOnlyPreview,
+} from "../../stores/message-preview/TextOnlyPreviewSelection";
 import { MessagePreviewStore } from "../../stores/message-preview";
 import { DefaultTagID } from "../../stores/room-list-v3/skip-list/tag";
 import DMRoomMap from "../../utils/DMRoomMap";
@@ -118,6 +123,21 @@ export class RoomListItemViewModel
             SettingsStore.unwatchSetting(settingsWatchRef);
         });
 
+        const roomSelectionRef = SettingsStore.watchSetting(
+            "RoomList.textOnlyPreview",
+            props.room.roomId,
+            this.onTextOnlyPreviewSettingChanged,
+        );
+        const dmSelectionRef = SettingsStore.watchSetting(
+            "RoomList.textOnlyPreviewDmUsers",
+            null,
+            this.onTextOnlyPreviewSettingChanged,
+        );
+        this.disposables.track(() => {
+            SettingsStore.unwatchSetting(roomSelectionRef);
+            SettingsStore.unwatchSetting(dmSelectionRef);
+        });
+
         // Subscribe to settings changes for section toggle
         const settingsShowSectionsRef = SettingsStore.watchSetting(
             "RoomList.showSections",
@@ -177,8 +197,30 @@ export class RoomListItemViewModel
     };
 
     private onMessagePreviewSettingChanged = (): void => {
+        this.onTextOnlyPreviewSettingChanged();
         void this.loadAndSetMessagePreview();
     };
+
+    private onTextOnlyPreviewSettingChanged = (): void => {
+        this.snapshot.merge(RoomListItemViewModel.getTextOnlyPreviewFields(this.props.room));
+    };
+
+    private static getTextOnlyPreviewFields(
+        room: Room,
+    ): Pick<
+        RoomListItemViewSnapshot,
+        "canChangeTextOnlyPreview" | "isTextOnlyPreview" | "canChangeDmUserTextOnlyPreview" | "isDmUserTextOnlyPreview"
+    > {
+        const selection = getTextOnlyPreviewSelection(room.roomId);
+        const canChangeTextOnlyPreview =
+            SettingsStore.getValue("RoomList.showMessagePreview") && room.getMyMembership() !== KnownMembership.Invite;
+        return {
+            canChangeTextOnlyPreview,
+            isTextOnlyPreview: selection.enabled,
+            canChangeDmUserTextOnlyPreview: canChangeTextOnlyPreview && selection.dmUserId !== null,
+            isDmUserTextOnlyPreview: selection.dmUserSelected,
+        };
+    }
 
     private readonly onShowSectionsChange = (): void => {
         const areSectionsEnabled = SettingsStore.getValue("RoomList.showSections");
@@ -416,6 +458,7 @@ export class RoomListItemViewModel
             sections,
             areSectionsEnabled,
             canChangeSection,
+            ...RoomListItemViewModel.getTextOnlyPreviewFields(room),
         };
     }
 
@@ -440,6 +483,22 @@ export class RoomListItemViewModel
     public onToggleFavorite = (): void => {
         tagRoom(this.props.room, DefaultTagID.Favourite);
         PosthogTrackers.trackInteraction("WebRoomListRoomTileContextMenuFavouriteToggle");
+    };
+
+    /** Toggle this room's effective selection, following settings echoes for state updates. */
+    public onToggleTextOnlyPreview = (): void => {
+        setRoomTextOnlyPreview(this.props.room.roomId, !this.snapshot.current.isTextOnlyPreview).catch((error) =>
+            logger.warn("Failed to set room text-only preview", error),
+        );
+    };
+
+    /** Toggle every DM with this room's DM person. */
+    public onToggleDmUserTextOnlyPreview = (): void => {
+        const { dmUserId } = getTextOnlyPreviewSelection(this.props.room.roomId);
+        if (!dmUserId) return;
+        setDmUserTextOnlyPreview(dmUserId, !this.snapshot.current.isDmUserTextOnlyPreview).catch((error) =>
+            logger.warn("Failed to set DM-person text-only preview", error),
+        );
     };
 
     public onToggleLowPriority = (): void => {

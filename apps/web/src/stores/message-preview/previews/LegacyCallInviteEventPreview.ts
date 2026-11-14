@@ -8,24 +8,24 @@ Please see LICENSE files in the repository root for full details.
 
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
-import { type Preview } from "./Preview";
+import { type Preview, type PreviewOptions } from "./Preview";
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 import { getSenderName, isSelf, shouldPrefixMessagesIn } from "./utils";
 import { _t } from "../../../languageHandler";
 
 export class LegacyCallInviteEventPreview implements Preview {
-    public getTextFor(event: MatrixEvent, tagId?: TagID): string {
+    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string {
         if (shouldPrefixMessagesIn(event.getRoomId()!, tagId)) {
             if (isSelf(event)) {
                 return _t("event_preview|m.call.invite|you");
             } else {
-                return _t("event_preview|m.call.invite|user", { senderName: getSenderName(event) });
+                return _t("event_preview|m.call.invite|user", { senderName: getSenderName(event, options) });
             }
         } else {
             if (isSelf(event)) {
                 return _t("event_preview|m.call.invite|dm_send");
             } else {
-                return _t("event_preview|m.call.invite|dm_receive", { senderName: getSenderName(event) });
+                return _t("event_preview|m.call.invite|dm_receive", { senderName: getSenderName(event, options) });
             }
         }
     }

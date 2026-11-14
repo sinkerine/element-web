@@ -86,6 +86,10 @@ export class PreviewRoomListItemViewModel
             sections: [],
             areSectionsEnabled: false,
             canChangeSection: false,
+            canChangeTextOnlyPreview: false,
+            isTextOnlyPreview: false,
+            canChangeDmUserTextOnlyPreview: false,
+            isDmUserTextOnlyPreview: false,
         };
     }
 
@@ -102,6 +106,10 @@ export class PreviewRoomListItemViewModel
     public onMarkAsUnread = (): void => {};
     public onToggleFavorite = (): void => {};
     public onToggleLowPriority = (): void => {};
+    /** Preview rooms cannot change selections. */
+    public onToggleTextOnlyPreview = (): void => {};
+    /** Preview rooms cannot change selections. */
+    public onToggleDmUserTextOnlyPreview = (): void => {};
     public onInvite = (): void => {};
     public onCopyRoomLink = (): void => {};
     public onLeaveRoom = (): void => {};

@@ -19,6 +19,8 @@ import {
     ArrowRightIcon,
     CheckIcon,
     MinusIcon,
+    ChatIcon,
+    UserProfileIcon,
 } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { _t } from "../../../../core/i18n/i18n";
@@ -116,6 +118,24 @@ export function MoreOptionContent({ vm }: MoreOptionContentProps): JSX.Element {
                         onClick={(evt) => evt.stopPropagation()}
                     />
                 </>
+            )}
+            {snapshot.canChangeTextOnlyPreview && (
+                <ToggleMenuItem
+                    checked={snapshot.isTextOnlyPreview}
+                    Icon={ChatIcon}
+                    label={_t("room_list|more_options|text_only_preview")}
+                    onSelect={vm.onToggleTextOnlyPreview}
+                    onClick={(evt) => evt.stopPropagation()}
+                />
+            )}
+            {snapshot.canChangeDmUserTextOnlyPreview && (
+                <ToggleMenuItem
+                    checked={snapshot.isDmUserTextOnlyPreview}
+                    Icon={UserProfileIcon}
+                    label={_t("room_list|more_options|text_only_preview_dm_user")}
+                    onSelect={vm.onToggleDmUserTextOnlyPreview}
+                    onClick={(evt) => evt.stopPropagation()}
+                />
             )}
             <Separator />
             {snapshot.canInvite && (

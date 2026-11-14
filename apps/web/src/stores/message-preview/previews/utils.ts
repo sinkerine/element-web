@@ -6,8 +6,11 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
+import { removeDirectionOverrideChars } from "matrix-js-sdk/src/utils";
+
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
+import { type PreviewOptions } from "./Preview";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import { DefaultTagID, type TagID } from "../../room-list-v3/skip-list/tag";
 
@@ -28,6 +31,10 @@ export function shouldPrefixMessagesIn(roomId: string, tagId?: TagID): boolean {
     return room.currentState.getJoinedMemberCount() !== 2;
 }
 
-export function getSenderName(event: MatrixEvent): string {
+/** Resolve a preview sender name, optionally omitting SDK disambiguation. */
+export function getSenderName(event: MatrixEvent, options?: PreviewOptions): string {
+    if (options?.plainSenderName || options?.textOnly) {
+        return removeDirectionOverrideChars(event.sender?.rawDisplayName ?? event.getSender() ?? "");
+    }
     return event.sender?.name ?? event.getSender() ?? "";
 }

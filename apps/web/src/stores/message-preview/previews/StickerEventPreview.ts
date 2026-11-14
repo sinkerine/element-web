@@ -8,20 +8,20 @@ Please see LICENSE files in the repository root for full details.
 
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
-import { type Preview } from "./Preview";
+import { type Preview, type PreviewOptions } from "./Preview";
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 import { getSenderName, isSelf, shouldPrefixMessagesIn } from "./utils";
 import { _t } from "../../../languageHandler";
 
 export class StickerEventPreview implements Preview {
-    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null {
+    public getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string | null {
         const stickerName = event.getContent()["body"];
         if (!stickerName) return null;
 
-        if (isThread || isSelf(event) || !shouldPrefixMessagesIn(event.getRoomId()!, tagId)) {
+        if (options?.textOnly || isThread || isSelf(event) || !shouldPrefixMessagesIn(event.getRoomId()!, tagId)) {
             return stickerName;
         } else {
-            return _t("event_preview|m.sticker", { senderName: getSenderName(event), stickerName });
+            return _t("event_preview|m.sticker", { senderName: getSenderName(event, options), stickerName });
         }
     }
 }

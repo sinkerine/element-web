@@ -289,7 +289,9 @@
             "mark_read": "Mark as read",
             "mark_unread": "Mark as unread",
             "move_to_section": "Move to",
-            "remove_from_section": "Remove from section"
+            "remove_from_section": "Remove from section",
+            "text_only_preview": "Preview message text only",
+            "text_only_preview_dm_user": "Preview message text only in all DMs with this person"
         },
         "notification_options": "Notification options",
         "open_space_menu": "Open space menu",

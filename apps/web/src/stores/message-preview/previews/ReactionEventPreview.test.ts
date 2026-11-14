@@ -131,4 +131,39 @@ describe("ReactionEventPreview", () => {
             expect(preview.getTextFor(event)).toMatchInlineSnapshot(`"Bob reacted 🪿 to duck duck goose"`);
         });
     });
+    it("should preserve the reaction subject and pass text-only options to the related message", () => {
+        const cli = MatrixClientPeg.safeGet();
+        const room = new Room(roomId, cli, cli.getSafeUserId());
+        vi.mocked(cli.getRoom).mockReturnValue(room);
+        const message = mkEvent({
+            event: true,
+            room: roomId,
+            user: userId,
+            type: "m.room.message",
+            content: {
+                "body": "> <@alice:server> Question\n\nReply",
+                "m.relates_to": { "m.in_reply_to": { event_id: "$root" } },
+            },
+        });
+        room.getUnfilteredTimelineSet().addLiveEvent(message, { addToState: true });
+        const reaction = mkEvent({
+            event: true,
+            room: roomId,
+            user: userId,
+            type: "m.reaction",
+            content: {
+                "m.relates_to": { rel_type: "m.annotation", event_id: message.getId(), key: "👍" },
+            },
+        });
+        reaction.sender = new RoomMember(roomId, userId);
+        reaction.sender.name = `🤖 assistant (${userId})`;
+        reaction.sender.rawDisplayName = "🤖 assistant";
+        expect(preview.getTextFor(reaction, undefined, false, { textOnly: true })).toBe(
+            "🤖 assistant reacted 👍 to Reply",
+        );
+        expect(preview.getTextFor(reaction, undefined, false, { plainSenderName: true })).toBe(
+            "🤖 assistant reacted 👍 to Reply",
+        );
+        expect(preview.getTextFor(reaction)).toContain(`🤖 assistant (${userId})`);
+    });
 });

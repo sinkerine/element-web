@@ -8,7 +8,7 @@ Please see LICENSE files in the repository root for full details.
 
 // @vitest-environment happy-dom
 
-import { vi, describe, it, expect, beforeEach, type Mocked } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach, type Mocked } from "vitest";
 import {
     EventStatus,
     EventTimeline,
@@ -21,11 +21,16 @@ import {
     PendingEventOrdering,
     RelationType,
     Room,
+    RoomMember,
 } from "matrix-js-sdk/src/matrix";
 import { mkEvent, mkMessage, mkReaction, setupAsyncStoreWithClient, stubClient } from "test-utils";
-import { mkThread } from "test-utils/threads";
+import { mkThread, populateThread } from "test-utils/threads";
 
 import { MessagePreviewStore } from ".";
+import { type SettingKey } from "../../settings/Settings";
+import SettingsStore, { type CallbackFn } from "../../settings/SettingsStore";
+import { SettingLevel } from "../../settings/SettingLevel";
+import DMRoomMap from "../../utils/DMRoomMap";
 import { DefaultTagID } from "../room-list-v3/skip-list/tag";
 
 describe("MessagePreviewStore", () => {
@@ -454,6 +459,126 @@ describe("MessagePreviewStore", () => {
             });
 
             expect(store.generatePreviewForEvent(topicEvent)).toBe("");
+        });
+    });
+    describe("text-only room selections", () => {
+        let enabled: boolean | null;
+        let dmUsers: string[];
+        let roomWatcher: CallbackFn<SettingKey>;
+        let dmWatcher: CallbackFn<SettingKey>;
+        const person = "@assistant:server";
+        beforeEach(async () => {
+            enabled = null;
+            dmUsers = [];
+            vi.spyOn(SettingsStore, "getValue").mockImplementation(
+                (key) =>
+                    (key === "RoomList.textOnlyPreview"
+                        ? enabled
+                        : key === "RoomList.textOnlyPreviewDmUsers"
+                          ? dmUsers
+                          : false) as never,
+            );
+            vi.spyOn(DMRoomMap, "shared").mockReturnValue({ getUserIdForRoomId: () => person } as unknown as DMRoomMap);
+            vi.spyOn(SettingsStore, "watchSetting").mockImplementation((key, _room, callback) => {
+                if (key === "RoomList.textOnlyPreview") roomWatcher = callback;
+                if (key === "RoomList.textOnlyPreviewDmUsers") dmWatcher = callback;
+                return key;
+            });
+            // Restart hooks to acquire watchers after installing spies.
+            // @ts-ignore access protected lifecycle hook to verify watcher ownership
+            await store.onNotReady();
+            // @ts-ignore access protected lifecycle hook to verify watcher ownership
+            await store.onReady();
+        });
+        afterEach(() => vi.restoreAllMocks());
+
+        it("should update cached previews on room and account settings echoes and restore the default", async () => {
+            const message = mkMessage({ user: person, event: true, room: room.roomId, msg: "Latest text" });
+            await addEvent(store, room, message);
+            expect((await store.getPreviewForRoom(room, DefaultTagID.DM))?.text).toBe(`${person}: Latest text`);
+            const changed = vi.fn();
+            store.on(MessagePreviewStore.getPreviewChangedEventName(room), changed);
+            enabled = true;
+            roomWatcher("RoomList.textOnlyPreview", room.roomId, SettingLevel.ROOM_ACCOUNT, true, true);
+            await vi.waitFor(async () =>
+                expect((await store.getPreviewForRoom(room, DefaultTagID.DM))?.text).toBe("Latest text"),
+            );
+            expect(changed).toHaveBeenCalled();
+            enabled = null;
+            dmUsers = [person];
+            dmWatcher("RoomList.textOnlyPreviewDmUsers", null, SettingLevel.ACCOUNT, dmUsers, dmUsers);
+            await vi.waitFor(async () =>
+                expect((await store.getPreviewForRoom(room, DefaultTagID.DM))?.text).toBe("Latest text"),
+            );
+            dmUsers = [];
+            dmWatcher("RoomList.textOnlyPreviewDmUsers", null, SettingLevel.ACCOUNT, [], []);
+            await vi.waitFor(async () =>
+                expect((await store.getPreviewForRoom(room, DefaultTagID.DM))?.text).toBe(`${person}: Latest text`),
+            );
+            roomWatcher("RoomList.textOnlyPreview", "!not-cached:server", SettingLevel.ROOM_ACCOUNT, true, true);
+        });
+
+        it("should use plain sender names in the room list and preserve other callers", async () => {
+            const message = mkMessage({ user: person, event: true, room: room.roomId, msg: "waves" });
+            message.getContent().msgtype = "m.emote";
+            await addEvent(store, room, message, false);
+            message.sender = new RoomMember(room.roomId, person);
+            message.sender.name = `🤖 assistant (${person})`;
+            message.sender.rawDisplayName = "🤖 assistant";
+            expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe("* 🤖 assistant waves");
+            expect(store.generatePreviewForEvent(message)).toBe(`* 🤖 assistant (${person}) waves`);
+        });
+
+        it("should include the newest thread reply only when selected, then accept a newer main message", async () => {
+            const main = mkMessage({ user: person, event: true, room: room.roomId, msg: "Main", ts: 100 });
+            await addEvent(store, room, main);
+            const { thread } = mkThread({ room, client, authorId: person, participantUserIds: [person] });
+            const reply = mkMessage({ user: person, event: true, room: room.roomId, msg: "Thread", ts: 200 });
+            vi.spyOn(thread, "replyToEvent", "get").mockReturnValue(reply);
+            vi.spyOn(room, "getThreads").mockReturnValue([thread]);
+            expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe(`${person}: Main`);
+            enabled = true;
+            roomWatcher("RoomList.textOnlyPreview", room.roomId, SettingLevel.ROOM_ACCOUNT, true, true);
+            await vi.waitFor(async () =>
+                expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe("Thread"),
+            );
+            await addEvent(
+                store,
+                room,
+                mkMessage({ user: person, event: true, room: room.roomId, msg: "New main", ts: 300 }),
+            );
+            expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe("New main");
+        });
+
+        it("should unwatch both selections when stopped", async () => {
+            const unwatch = vi.spyOn(SettingsStore, "unwatchSetting");
+            // @ts-ignore protected lifecycle ownership is the subject of this test
+            await store.onNotReady();
+            expect(unwatch).toHaveBeenCalledWith("RoomList.textOnlyPreview");
+            expect(unwatch).toHaveBeenCalledWith("RoomList.textOnlyPreviewDmUsers");
+        });
+        it("should preview a real loaded thread and fall back to its bundled reply when the timeline is unloaded", async () => {
+            enabled = true;
+            vi.mocked(client.supportsThreads).mockReturnValue(true);
+            const { thread, rootEvent, events } = await populateThread({
+                room,
+                client,
+                authorId: person,
+                participantUserIds: [person],
+                length: 3,
+                ts: 200,
+            });
+            expect(room.getThreads()).toContain(thread);
+            expect(thread.replyToEvent).toBe(events[2]);
+            expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe(`reply 2 by ${person}`);
+            // An unloaded timeline still has the server's latest-event aggregation on the root.
+            thread.initialEventsFetched = false;
+            await thread.resetLiveTimeline();
+            expect(rootEvent.getUnsigned()["m.relations"]?.[RelationType.Thread]?.latest_event).toBeDefined();
+            roomWatcher("RoomList.textOnlyPreview", room.roomId, SettingLevel.ROOM_ACCOUNT, true, true);
+            await vi.waitFor(async () =>
+                expect((await store.getPreviewForRoom(room, DefaultTagID.Untagged))?.text).toBe(`reply 2 by ${person}`),
+            );
         });
     });
 });

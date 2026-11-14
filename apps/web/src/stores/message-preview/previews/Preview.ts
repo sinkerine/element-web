@@ -10,6 +10,14 @@ import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 
 import { type TagID } from "../../room-list-v3/skip-list/tag";
 
+/** Options changing how a preview is rendered. */
+export interface PreviewOptions {
+    /** Use the display name without the user ID added for disambiguation. Always enabled by the room list. */
+    plainSenderName?: boolean;
+    /** Remove sender prefixes and reply fallbacks. Implies plainSenderName. */
+    textOnly?: boolean;
+}
+
 /**
  * Represents an event preview.
  */
@@ -19,7 +27,8 @@ export interface Preview {
      * @param event The event to preview.
      * @param tagId Optional. The tag where the room the event was sent in resides.
      * @param isThread Optional. Whether the preview being generated is for a thread summary.
+     * @param options Optional rendering choices for room-list previews.
      * @returns The preview.
      */
-    getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean): string | null;
+    getTextFor(event: MatrixEvent, tagId?: TagID, isThread?: boolean, options?: PreviewOptions): string | null;
 }

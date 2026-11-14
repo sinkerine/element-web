@@ -106,6 +106,14 @@ export interface RoomListItemViewSnapshot {
      * that assign a section (Favourited, Low priority and "Move to").
      */
     canChangeSection: boolean;
+    /** Whether previews are enabled and this room is not a pending invite. */
+    canChangeTextOnlyPreview: boolean;
+    /** Whether this room's preview shows message text only (effective value). */
+    isTextOnlyPreview: boolean;
+    /** Whether the choice can apply to every DM with this room's DM person. */
+    canChangeDmUserTextOnlyPreview: boolean;
+    /** Whether the DM person is selected for message text only previews. */
+    isDmUserTextOnlyPreview: boolean;
 }
 
 /**
@@ -123,6 +131,11 @@ export interface RoomListItemViewActions {
     onToggleFavorite: () => void;
     /** Called when the room's low priority status should be toggled */
     onToggleLowPriority: () => void;
+    /** Toggle message text only previews for this room. */
+    onToggleTextOnlyPreview: () => void;
+    /** Toggle message text only previews for every DM with this room's DM person. */
+    onToggleDmUserTextOnlyPreview: () => void;
+
     /** Called when inviting users to the room */
     onInvite: () => void;
     /** Called when copying the room link */
