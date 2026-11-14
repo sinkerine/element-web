@@ -38,6 +38,12 @@ storybook-static
 # TSC incremental compilation information
 *.tsbuildinfo
 
+# Keep the repository deployment skill despite global agent-directory ignores.
+!/.agents/
+!/.agents/skills/
+!/.agents/skills/deploy-sachi/
+!/.agents/skills/deploy-sachi/SKILL.md
+
 /.link-config
 
 .nx/cache

@@ -60,6 +60,36 @@ describe("ActionBarView", () => {
         expect(screen.queryByRole("button", { name: /reply/i })).not.toBeInTheDocument();
     });
 
+    it("supports copying text with the pointer and keyboard", async () => {
+        const user = userEvent.setup();
+        const onCopyTextClick = vi.fn();
+        const onParentClick = vi.fn();
+        class CopyViewModel extends MockViewModel<ActionBarViewSnapshot> implements ActionBarViewActions {
+            public onCopyTextClick = onCopyTextClick;
+        }
+        const vm = new CopyViewModel({
+            actions: [ActionBarAction.CopyText, ActionBarAction.Options],
+            isDownloadEncrypted: false,
+            isDownloadLoading: false,
+            isPinned: false,
+            isQuoteExpanded: false,
+            isThreadReplyAllowed: true,
+        });
+        render(
+            <div onClick={onParentClick}>
+                <ActionBarView vm={vm} />
+            </div>,
+        );
+        const button = screen.getByRole("button", { name: "Copy text" });
+        await user.click(button);
+        expect(onCopyTextClick).toHaveBeenCalledWith(button);
+        await user.keyboard("{Enter}");
+        expect(onCopyTextClick).toHaveBeenCalledTimes(2);
+        expect(onParentClick).not.toHaveBeenCalled();
+        await user.keyboard("{ArrowRight}");
+        expect(screen.getByRole("button", { name: "Options" })).toHaveFocus();
+    });
+
     it("renders a loading download action with the downloading label", () => {
         render(<DownloadingAttachment />);
 

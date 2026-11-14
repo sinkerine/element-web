@@ -23,6 +23,7 @@ import {
     type ActionBarViewActions,
     type ActionBarViewSnapshot,
 } from "@element-hq/web-shared-components";
+import { copyPlainTextToClipboard } from "@element-hq/element-web-shared-utils";
 
 import { MatrixClientPeg } from "../../MatrixClientPeg";
 import defaultDispatcher from "../../dispatcher/dispatcher";
@@ -34,7 +35,7 @@ import { TimelineRenderingType } from "../../contexts/RoomContext";
 import Resend from "../../Resend";
 import PinningUtils from "../../utils/PinningUtils";
 import PosthogTrackers from "../../PosthogTrackers";
-import { shouldDisplayReply } from "../../utils/Reply";
+import { shouldDisplayReply, stripPlainReply } from "../../utils/Reply";
 import { MediaEventHelper } from "../../utils/MediaEventHelper";
 import SettingsStore from "../../settings/SettingsStore";
 import { type SettingKey } from "../../settings/Settings";
@@ -77,6 +78,7 @@ interface LocalActionBarState {
 }
 
 interface DerivedEventState {
+    showCopyText: boolean;
     showCancel: boolean;
     showEdit: boolean;
     showPinOrUnpin: boolean;
@@ -169,6 +171,9 @@ export class EventTileActionBarViewModel
         if (eventState.showEdit) {
             actions.push(ActionBarAction.Edit);
         }
+        if (eventState.showCopyText) {
+            actions.push(ActionBarAction.CopyText);
+        }
         if (eventState.showPinOrUnpin) {
             actions.push(ActionBarAction.Pin);
         }
@@ -195,6 +200,7 @@ export class EventTileActionBarViewModel
         const relationType = mxEvent.getRelation()?.rel_type;
 
         return {
+            showCopyText: contentActionable && Boolean(EventTileActionBarViewModel.getCopyText(mxEvent)),
             showCancel: canCancel(mxEvent.status) || canCancel(editStatus) || canCancel(redactStatus),
             showEdit: canEditContent(client, mxEvent),
             showPinOrUnpin: PinningUtils.canPin(client, mxEvent) || PinningUtils.canUnpin(client, mxEvent),
@@ -211,6 +217,12 @@ export class EventTileActionBarViewModel
             isPinned: PinningUtils.isPinned(client, mxEvent),
             isQuoteExpanded: props.isQuoteExpanded ?? false,
         };
+    }
+
+    private static getCopyText(mxEvent: MatrixEvent): string {
+        const body = mxEvent.getContent().body;
+        if (mxEvent.getType() !== EventType.RoomMessage || typeof body !== "string") return "";
+        return mxEvent.replyEventId ? stripPlainReply(body) : body;
     }
 
     private static getDerivedMediaState(
@@ -253,6 +265,7 @@ export class EventTileActionBarViewModel
         const roomId = mxEvent.getRoomId();
         this.trackEvent(mxEvent, MatrixEventEvent.Status, this.refreshSnapshot);
         this.trackEvent(mxEvent, MatrixEventEvent.Decrypted, this.refreshSnapshot);
+        this.trackEvent(mxEvent, MatrixEventEvent.Replaced, this.refreshSnapshot);
         this.trackEvent(mxEvent, MatrixEventEvent.BeforeRedaction, this.refreshSnapshot);
         this.watchSetting("mediaPreviewConfig", roomId ?? null);
         this.watchSetting("showMediaEventIds", null);
@@ -395,6 +408,13 @@ export class EventTileActionBarViewModel
             event: this.props.mxEvent,
             context: this.props.timelineRenderingType,
         });
+    };
+
+    /** Copies the current message body without the quoted reply fallback. */
+    public onCopyTextClick = async (_anchor: HTMLElement | null): Promise<void> => {
+        if (!isContentActionable(this.props.mxEvent)) return;
+        const text = EventTileActionBarViewModel.getCopyText(this.props.mxEvent);
+        if (text) await copyPlainTextToClipboard(text);
     };
 
     /** Opens the edit composer for the current event. */
