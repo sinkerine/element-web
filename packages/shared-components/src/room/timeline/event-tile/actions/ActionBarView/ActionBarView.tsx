@@ -9,6 +9,7 @@ import React, { type JSX, useCallback, useMemo, useRef } from "react";
 import classNames from "classnames";
 import {
     CollapseIcon,
+    CopyIcon,
     DeleteIcon,
     EditIcon,
     ExpandIcon,
@@ -65,6 +66,7 @@ export interface ActionBarViewSnapshot {
  */
 export interface ActionBarViewActions {
     onCancelClick?: (anchor: HTMLElement | null) => void;
+    onCopyTextClick?: (anchor: HTMLElement | null) => void;
     onCopyLinkClick?: (anchor: HTMLElement | null) => void;
     onDownloadClick?: (anchor: HTMLElement | null) => void;
     onEditClick?: (anchor: HTMLElement | null) => void;
@@ -92,6 +94,7 @@ export type ActionBarViewModel = ViewModel<ActionBarViewSnapshot, ActionBarViewA
 export enum ActionBarAction {
     Cancel = "cancel",
     CopyLink = "copyLink",
+    CopyText = "copyText",
     Download = "download",
     Edit = "edit",
     Expand = "expand",
@@ -192,6 +195,17 @@ export function ActionBarView({ vm, className }: Readonly<ActionBarViewProps>): 
             label={_t("action|delete")}
             onActivate={vm.onCancelClick}
             icon={DeleteIcon}
+        />
+    );
+
+    actionButtons[ActionBarAction.CopyText] = (
+        <ActionBarButton
+            key={ActionBarAction.CopyText}
+            presentation={presentation}
+            buttonRef={actionButtonRefSetters[ActionBarAction.CopyText]}
+            label={_t("action|copy_text")}
+            onActivate={vm.onCopyTextClick}
+            icon={CopyIcon}
         />
     );
 

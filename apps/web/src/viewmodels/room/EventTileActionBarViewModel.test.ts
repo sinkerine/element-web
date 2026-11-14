@@ -20,6 +20,7 @@ import {
     RelationType,
     RoomStateEvent,
 } from "matrix-js-sdk/src/matrix";
+import { copyPlainTextToClipboard } from "@element-hq/element-web-shared-utils";
 import { ActionBarAction } from "@element-hq/web-shared-components";
 import { vi, describe, it, expect, beforeEach, afterEach, type Mock } from "vitest";
 import { createTestClient } from "test-utils";
@@ -105,8 +106,14 @@ vi.mock("../../utils/PinningUtils", () => ({
     },
 }));
 
-vi.mock("../../utils/Reply", () => ({
+vi.mock("../../utils/Reply", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../utils/Reply")>()),
     shouldDisplayReply: vi.fn(),
+}));
+
+vi.mock("@element-hq/element-web-shared-utils", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@element-hq/element-web-shared-utils")>()),
+    copyPlainTextToClipboard: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../../utils/media/mediaVisibility", () => ({
@@ -226,6 +233,7 @@ describe("EventTileActionBarViewModel", () => {
                     ActionBarAction.Reply,
                     ActionBarAction.ReplyInThread,
                     ActionBarAction.Edit,
+                    ActionBarAction.CopyText,
                     ActionBarAction.Expand,
                     ActionBarAction.Options,
                 ],
@@ -349,6 +357,61 @@ describe("EventTileActionBarViewModel", () => {
         expect(roomStateOffSpy).toHaveBeenCalledWith(RoomStateEvent.Events, expect.any(Function));
         expect(SettingsStore.unwatchSetting).toHaveBeenCalledWith("mediaPreviewConfig:!room:example.org");
         expect(SettingsStore.unwatchSetting).toHaveBeenCalledWith("showMediaEventIds:global");
+    });
+
+    it.each([MsgType.Text, MsgType.Notice, MsgType.Emote])("copies the full %s body", async (msgtype) => {
+        const body = "> A deliberate quote\n\nMessage **with formatting**\nSecond line";
+        const vm = createVm({ mxEvent: createMessageEvent({ content: { msgtype, body } }) });
+
+        expect(vm.getSnapshot().actions).toContain(ActionBarAction.CopyText);
+        await vm.onCopyTextClick(null);
+        expect(copyPlainTextToClipboard).toHaveBeenCalledWith(body);
+        vm.dispose();
+    });
+
+    it("copies the current edited body and strips reply fallbacks", async () => {
+        const mxEvent = createMessageEvent({
+            content: {
+                "msgtype": MsgType.Text,
+                "body": "> <@bob:example.org> Quoted message\n\nOriginal reply",
+                "m.relates_to": { "m.in_reply_to": { event_id: "$quoted" } },
+            },
+        });
+        const vm = createVm({ mxEvent });
+        await vm.onCopyTextClick(null);
+        expect(copyPlainTextToClipboard).toHaveBeenLastCalledWith("Original reply");
+
+        mxEvent.makeReplaced(
+            createMessageEvent({
+                event_id: "$edit",
+                content: {
+                    "msgtype": MsgType.Text,
+                    "body": "* Edited reply",
+                    "m.new_content": { msgtype: MsgType.Text, body: "Edited reply" },
+                    "m.relates_to": { rel_type: RelationType.Replace, event_id: mxEvent.getId() },
+                },
+            }),
+        );
+        await vm.onCopyTextClick(null);
+        expect(copyPlainTextToClipboard).toHaveBeenLastCalledWith("Edited reply");
+        vm.dispose();
+    });
+
+    it.each([undefined, "", 123])("hides copy for missing or invalid text: %s", async (body) => {
+        const vm = createVm({ mxEvent: createMessageEvent({ content: { msgtype: MsgType.Text, body } }) });
+        expect(vm.getSnapshot().actions).not.toContain(ActionBarAction.CopyText);
+        await vm.onCopyTextClick(null);
+        expect(copyPlainTextToClipboard).not.toHaveBeenCalled();
+        vm.dispose();
+    });
+
+    it("does not offer or copy non-actionable content", async () => {
+        vi.mocked(isContentActionable).mockReturnValue(false);
+        const vm = createVm();
+        expect(vm.getSnapshot().actions).not.toContain(ActionBarAction.CopyText);
+        await vm.onCopyTextClick(null);
+        expect(copyPlainTextToClipboard).not.toHaveBeenCalled();
+        vm.dispose();
     });
 
     it("routes resend and cancel actions to the actionable failed event variant", () => {

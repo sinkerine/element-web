@@ -90,6 +90,18 @@ test.describe("Timeline", () => {
         },
     });
 
+    test("copies message text from the hover toolbar", async ({ page, app, room, user }) => {
+        const body = "Copy this entire message\nIncluding the second line";
+        await app.client.sendMessage(room.roomId, { msgtype: "m.text", body });
+        await app.viewRoomByName(ROOM_NAME);
+
+        await page.getByText("Copy this entire message", { exact: false }).hover();
+        const copyButton = page.getByRole("button", { name: "Copy text", exact: true });
+        await expect(copyButton).toBeVisible();
+        await copyButton.click();
+        await expect.poll(() => app.getClipboard()).toBe(body);
+    });
+
     let oldAvatarUrl: string;
     let newAvatarUrl: string;
 
